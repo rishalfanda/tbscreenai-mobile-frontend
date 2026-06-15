@@ -9,6 +9,11 @@ class DiagnosisOutcome {
     required this.processingTime,
     required this.modelVersion,
     required this.createdAt,
+    this.consolidation = 0,
+    this.cavity = 0,
+    this.effusion = 0,
+    this.fibrotic = 0,
+    this.calcification = 0,
   });
 
   final bool isPositive;
@@ -16,6 +21,11 @@ class DiagnosisOutcome {
   final String processingTime;
   final String modelVersion;
   final DateTime createdAt;
+  final double consolidation;
+  final double cavity;
+  final double effusion;
+  final double fibrotic;
+  final double calcification;
 }
 
 class DiagnosisProvider extends ChangeNotifier {
@@ -141,6 +151,11 @@ class DiagnosisProvider extends ChangeNotifier {
       processingTime: '${(processingMs / 1000).toStringAsFixed(1)}s',
       modelVersion: 'TBScreen v2.1.0',
       createdAt: DateTime.now(),
+      consolidation: isPositive ? (20 + _random.nextDouble() * 15) : (1 + _random.nextDouble() * 4),
+      cavity: isPositive ? (_random.nextDouble() * 5) : 0.0,
+      effusion: isPositive ? (3 + _random.nextDouble() * 8) : (_random.nextDouble() * 2),
+      fibrotic: _random.nextDouble() * 2,
+      calcification: _random.nextDouble() * 3,
     );
 
     isRunning = false;

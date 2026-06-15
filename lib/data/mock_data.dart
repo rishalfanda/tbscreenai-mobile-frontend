@@ -71,6 +71,18 @@ class DatasetRecord {
   final String status;
 }
 
+class TrendDataPoint {
+  const TrendDataPoint({
+    required this.date,
+    required this.totalDiagnoses,
+    required this.totalPatients,
+  });
+
+  final String date;
+  final int totalDiagnoses;
+  final int totalPatients;
+}
+
 class MockData {
   static const dashboardMetrics = <DashboardMetric>[
     DashboardMetric(
@@ -243,5 +255,18 @@ class MockData {
     DatasetRecord(date: '2026-04-14', patientId: 'TB000004', image: 'xray_004.png', status: 'Labeled'),
     DatasetRecord(date: '2026-04-13', patientId: 'TB000005', image: 'xray_005.png', status: 'Pending'),
     DatasetRecord(date: '2026-04-12', patientId: 'TB000006', image: 'xray_006.png', status: 'Reviewed'),
+  ];
+
+  static const trendData = <TrendDataPoint>[
+    TrendDataPoint(date: 'Apr 1', totalDiagnoses: 20, totalPatients: 15),
+    TrendDataPoint(date: 'Apr 4', totalDiagnoses: 24, totalPatients: 18),
+    TrendDataPoint(date: 'Apr 7', totalDiagnoses: 18, totalPatients: 14),
+    TrendDataPoint(date: 'Apr 10', totalDiagnoses: 26, totalPatients: 20),
+    TrendDataPoint(date: 'Apr 14', totalDiagnoses: 22, totalPatients: 16),
+    TrendDataPoint(date: 'Apr 17', totalDiagnoses: 24, totalPatients: 18),
+    TrendDataPoint(date: 'Apr 20', totalDiagnoses: 21, totalPatients: 16),
+    TrendDataPoint(date: 'Apr 24', totalDiagnoses: 28, totalPatients: 22),
+    TrendDataPoint(date: 'Apr 27', totalDiagnoses: 23, totalPatients: 17),
+    TrendDataPoint(date: 'Apr 30', totalDiagnoses: 25, totalPatients: 19),
   ];
 }

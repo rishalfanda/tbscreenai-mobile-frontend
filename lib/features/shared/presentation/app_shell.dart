@@ -76,9 +76,11 @@ class AppShell extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: Container(
-                color: AppTheme.background,
-                child: child,
+              child: SizedBox.expand(
+                child: Container(
+                  color: AppTheme.background,
+                  child: child,
+                ),
               ),
             ),
           ],
@@ -110,6 +112,17 @@ class _NavItem extends StatefulWidget {
 class _NavItemState extends State<_NavItem> {
   bool _hovered = false;
 
+  // Fix: check mounted before setState to prevent mouse_tracker assertion
+  void _setHovered(bool value) {
+    if (mounted) setState(() => _hovered = value);
+  }
+
+  @override
+  void dispose() {
+    _hovered = false;
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final bg = widget.active
@@ -121,15 +134,15 @@ class _NavItemState extends State<_NavItem> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: MouseRegion(
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
+        onEnter: (_) => _setHovered(true),
+        onExit: (_) => _setHovered(false),
         child: InkWell(
           onTap: widget.onTap,
           borderRadius: BorderRadius.circular(14),
           child: Center(
             child: SizedBox(
               width: 56,
-              height: 52,
+              height: 64,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(vertical: 8),
@@ -152,7 +165,9 @@ class _NavItemState extends State<_NavItem> {
                             style: TextStyle(
                               fontSize: 9,
                               color: labelColor,
-                              fontWeight: widget.active ? FontWeight.w700 : FontWeight.w500,
+                              fontWeight: widget.active
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
                             ),
                           ),
                         ),
@@ -163,14 +178,19 @@ class _NavItemState extends State<_NavItem> {
                         top: -4,
                         right: -4,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(
                             color: AppTheme.error,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
                             widget.badgeCount.toString(),
-                            style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),

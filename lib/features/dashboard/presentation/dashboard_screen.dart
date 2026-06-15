@@ -29,7 +29,7 @@ class DashboardScreen extends StatelessWidget {
                 const SizedBox(height: 24),
                 _buildDiagnosisTrendsChart(context),
                 const SizedBox(height: 24),
-                _buildDistributionDonuts(context),
+                _buildDistributionDonuts(context, dashboard),
                 const SizedBox(height: 24),
                 _buildRecentActivity(context),
               ],
@@ -358,7 +358,7 @@ class DashboardScreen extends StatelessWidget {
               width: double.infinity,
               color: Colors.transparent,
               child: CustomPaint(
-                painter: TrendsChartPainter(),
+                painter: TrendsChartPainter(MockData.trendData),
               ),
             ),
           ],
@@ -377,7 +377,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDistributionDonuts(BuildContext context) {
+  Widget _buildDistributionDonuts(BuildContext context, DashboardProvider dashboard) {
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.cardRadius),
@@ -388,6 +388,35 @@ class DashboardScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'TB Case Distribution',
+                  style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.navy, fontSize: 18),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                    border: Border.all(color: AppTheme.borderLight),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: dashboard.selectedDistributionFilter,
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.subtitleGrey),
+                      items: dashboard.distributionFilters.map((s) => DropdownMenuItem(
+                        value: s,
+                        child: Text(s, style: const TextStyle(fontSize: 14)),
+                      )).toList(),
+                      onChanged: (v) => dashboard.setDistributionFilter(v!),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
             Row(
               children: [
                 Expanded(child: _buildDonut('TB Case Distribution by AI', 65, '428 cases')),
@@ -537,43 +566,151 @@ class DashboardScreen extends StatelessWidget {
 }
 
 class TrendsChartPainter extends CustomPainter {
+  final List<TrendDataPoint> data;
+
+  TrendsChartPainter(this.data);
+
   @override
   void paint(Canvas canvas, Size size) {
-    final paint1 = Paint()
-      ..color = AppTheme.primary
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
+    final double padding = 40.0;
+    final double chartWidth = size.width - padding - 20;
+    final double chartHeight = size.height - padding - 20;
 
-    final paint2 = Paint()
-      ..color = AppTheme.lightBlue
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
-
-    final path1 = Path();
-    final path2 = Path();
-
-    // Mock trend paths
-    path1.moveTo(0, size.height * 0.7);
-    path1.quadraticBezierTo(size.width * 0.2, size.height * 0.4, size.width * 0.4, size.height * 0.6);
-    path1.quadraticBezierTo(size.width * 0.6, size.height * 0.8, size.width * 0.8, size.height * 0.3);
-    path1.lineTo(size.width, size.height * 0.5);
-
-    path2.moveTo(0, size.height * 0.8);
-    path2.quadraticBezierTo(size.width * 0.2, size.height * 0.5, size.width * 0.4, size.height * 0.7);
-    path2.quadraticBezierTo(size.width * 0.6, size.height * 0.9, size.width * 0.8, size.height * 0.4);
-    path2.lineTo(size.width, size.height * 0.6);
-
-    canvas.drawPath(path1, paint1);
-    canvas.drawPath(path2, paint2);
-
-    // Draw axes
-    final axisPaint = Paint()
+    final gridPaint = Paint()
       ..color = AppTheme.borderLight
       ..strokeWidth = 1;
-    canvas.drawLine(Offset(0, size.height), Offset(size.width, size.height), axisPaint);
-    canvas.drawLine(const Offset(0, 0), Offset(0, size.height), axisPaint);
+
+    final labelStyle = TextStyle(
+      color: AppTheme.subtitleGrey,
+      fontSize: 10,
+      fontWeight: FontWeight.w500,
+    );
+
+    // Find max value for y-axis
+    int maxValue = 0;
+    for (var point in data) {
+      if (point.totalDiagnoses > maxValue) maxValue = point.totalDiagnoses;
+      if (point.totalPatients > maxValue) maxValue = point.totalPatients;
+    }
+    // Round up to nearest multiple of 7
+    maxValue = ((maxValue / 7).ceil()) * 7;
+    final yStep = maxValue / 4;
+
+    // Draw Grid Lines & Labels (Y-Axis)
+    for (int i = 0; i <= 4; i++) {
+      double y = padding + (chartHeight - (i * chartHeight / 4));
+      canvas.drawLine(Offset(padding, y), Offset(padding + chartWidth, y), gridPaint);
+      
+      // Y-Axis Labels
+      final textSpan = TextSpan(
+        text: '${(i * yStep).toInt()}',
+        style: labelStyle,
+      );
+      final textPainter = TextPainter(
+        text: textSpan,
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.layout();
+      textPainter.paint(canvas, Offset(0, y - textPainter.height / 2));
+    }
+
+    // X-Axis Labels
+    for (int i = 0; i < data.length; i++) {
+      double x = padding + (i * chartWidth / (data.length - 1));
+      
+      final textSpan = TextSpan(
+        text: data[i].date,
+        style: labelStyle,
+      );
+      final textPainter = TextPainter(
+        text: textSpan,
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.layout();
+      textPainter.paint(canvas, Offset(x - textPainter.width / 2, padding + chartHeight + 10));
+    }
+
+    // Normalize data
+    final diagnosesData = data.map((d) => d.totalDiagnoses / maxValue).toList();
+    final patientsData = data.map((d) => d.totalPatients / maxValue).toList();
+
+    _drawLine(canvas, chartWidth, chartHeight, padding, diagnosesData, AppTheme.primary, false);
+    _drawLine(canvas, chartWidth, chartHeight, padding, patientsData, AppTheme.lightBlue, false);
+  }
+
+  void _drawLine(Canvas canvas, double width, double height, double padding, List<double> data, Color color, bool showArea) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final path = Path();
+    final areaPath = Path();
+
+    for (int i = 0; i < data.length; i++) {
+      double x = padding + (i * width / (data.length - 1));
+      double y = padding + (height - (data[i] * height));
+
+      if (i == 0) {
+        path.moveTo(x, y);
+        areaPath.moveTo(x, padding + height);
+        areaPath.lineTo(x, y);
+      } else {
+        double prevX = padding + ((i - 1) * width / (data.length - 1));
+        double prevY = padding + (height - (data[i - 1] * height));
+        
+        // Use cubic bezier for smooth curves
+        path.cubicTo(
+          prevX + (x - prevX) / 2, prevY,
+          prevX + (x - prevX) / 2, y,
+          x, y
+        );
+        areaPath.cubicTo(
+          prevX + (x - prevX) / 2, prevY,
+          prevX + (x - prevX) / 2, y,
+          x, y
+        );
+      }
+
+      if (i == data.length - 1) {
+        areaPath.lineTo(x, padding + height);
+        areaPath.close();
+      }
+    }
+
+    // Draw area with gradient
+    if (showArea) {
+      final areaPaint = Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [color.withValues(alpha: 0.3), color.withValues(alpha: 0.0)],
+        ).createShader(Rect.fromLTRB(padding, padding, padding + width, padding + height))
+        ..style = PaintingStyle.fill;
+      canvas.drawPath(areaPath, areaPaint);
+    }
+
+    // Draw line
+    canvas.drawPath(path, paint);
+
+    // Draw data points
+    final dotPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    final dotOutlinePaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    for (int i = 0; i < data.length; i++) {
+      double x = padding + (i * width / (data.length - 1));
+      double y = padding + (height - (data[i] * height));
+      canvas.drawCircle(Offset(x, y), 5, dotPaint);
+      canvas.drawCircle(Offset(x, y), 5, dotOutlinePaint);
+    }
   }
 
   @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
+  bool shouldRepaint(CustomPainter oldDelegate) => true;
 }

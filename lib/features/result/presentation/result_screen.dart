@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
@@ -11,255 +11,368 @@ class ResultScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final diagnosis = context.watch<DiagnosisProvider>();
     final result = diagnosis.lastOutcome;
-    final hasResult = result != null;
-    final isPositive = result?.isPositive ?? false;
-    final gradient = hasResult
-        ? (isPositive
-            ? const [AppTheme.error, Color(0xFFB91C1C)]
-            : const [AppTheme.success, Color(0xFF15803D)])
-        : const [AppTheme.primary, AppTheme.primaryDark];
+    final isPositive = result?.isPositive ?? true;
 
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.all(24),
-          child: Row(
+    return SingleChildScrollView(
+      physics: const ClampingScrollPhysics(),
+      padding: const EdgeInsets.all(32),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1600),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                flex: 2,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () {},
-                          icon: const Icon(Icons.save_alt_rounded),
-                          label: const Text('Save'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: () {},
-                          icon: const Icon(Icons.picture_as_pdf_rounded),
-                          label: const Text('Export PDF'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: () {},
-                          icon: const Icon(Icons.print_rounded),
-                          label: const Text('Print'),
-                        ),
-                      ],
+              // Header Row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Diagnosis Result',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.navy,
                     ),
-                    const SizedBox(height: 16),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            AspectRatio(
-                              aspectRatio: 16 / 9,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF111827),
-                                  borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-                                ),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  diagnosis.imageLabel ?? 'No image',
-                                  style: const TextStyle(color: Colors.white70),
+                  ),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () {},
+                        icon: const Icon(Icons.save_rounded),
+                        label: const Text('Save'),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        onPressed: () {},
+                        icon: const Icon(Icons.picture_as_pdf_rounded),
+                        label: const Text('Export PDF'),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        onPressed: () {},
+                        icon: const Icon(Icons.print_rounded),
+                        label: const Text('Print'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+
+              // Main Content
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Left Column
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      children: [
+                        // X-ray Image Card
+                        Card(
+                          child: AspectRatio(
+                            aspectRatio: 16 / 9,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF111827),
+                                borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+                              ),
+                              child: const Center(
+                                child: Icon(
+                                  Icons.image_rounded,
+                                  size: 64,
+                                  color: Colors.white24,
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 20),
-                            Text(
-                              'Patient Summary',
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                            const SizedBox(height: 16),
-                            Wrap(
-                              spacing: 16,
-                              runSpacing: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Patient Summary Card
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _MetaCard(label: 'Name', value: diagnosis.patientName.isEmpty ? '-' : diagnosis.patientName),
-                                _MetaCard(label: 'Gender', value: diagnosis.gender),
-                                _MetaCard(label: 'Age', value: diagnosis.age?.toString() ?? '-'),
-                                _MetaCard(label: 'Height', value: diagnosis.heightCm == null ? '-' : '${diagnosis.heightCm!.toStringAsFixed(0)} cm'),
-                                _MetaCard(label: 'Weight', value: diagnosis.weightKg == null ? '-' : '${diagnosis.weightKg!.toStringAsFixed(0)} kg'),
-                                _MetaCard(label: 'BMI', value: diagnosis.bmi == null ? '-' : diagnosis.bmi!.toStringAsFixed(1)),
+                                const Text(
+                                  'Patient Summary',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.navy,
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                Wrap(
+                                  spacing: 16,
+                                  runSpacing: 16,
+                                  children: [
+                                    _SummaryField('Name', diagnosis.patientName),
+                                    _SummaryField('Gender', diagnosis.gender),
+                                    _SummaryField('Age', '${diagnosis.age ?? 0}'),
+                                    _SummaryField('Height', '${diagnosis.heightCm ?? 0} cm'),
+                                    _SummaryField('Weight', '${diagnosis.weightKg ?? 0} kg'),
+                                    _SummaryField(
+                                      'BMI',
+                                      diagnosis.heightCm != null && diagnosis.weightKg != null
+                                          ? ((diagnosis.weightKg! / ((diagnosis.heightCm! / 100) * (diagnosis.heightCm! / 100))).toStringAsFixed(1))
+                                          : '-',
+                                    ),
+                                  ],
+                                ),
                               ],
                             ),
-                            const SizedBox(height: 20),
-                            Text(
-                              'Clinical Data',
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                            const SizedBox(height: 16),
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: diagnosis.symptoms.isEmpty
-                                  ? [const Chip(label: Text('No symptoms selected'))]
-                                  : diagnosis.symptoms
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Clinical Data Card
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Clinical Data',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.navy,
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                // Symptoms
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: diagnosis.symptoms
                                       .map(
-                                        (symptom) => Chip(
-                                          label: Text(symptom),
-                                          backgroundColor: AppTheme.primary.withValues(alpha: 0.15),
+                                        (s) => Chip(
+                                          label: Text(s),
+                                          backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
                                         ),
                                       )
                                       .toList(),
-                            ),
-                            const SizedBox(height: 16),
-                            Wrap(
-                              spacing: 16,
-                              runSpacing: 16,
-                              children: [
-                                _MetaCard(label: 'Comorbidity', value: diagnosis.comorbidity),
-                                _MetaCard(label: 'Smoking', value: diagnosis.smoking),
-                                _MetaCard(label: 'TB Contact', value: diagnosis.tbContact),
-                                _MetaCard(label: 'TB History', value: diagnosis.tbHistory),
-                                _MetaCard(label: 'Model Type', value: diagnosis.modelType),
-                                _MetaCard(label: 'IGRA', value: diagnosis.igra),
+                                ),
+                                const SizedBox(height: 20),
+                                Table(
+                                  columnWidths: const {
+                                    0: IntrinsicColumnWidth(),
+                                    1: FlexColumnWidth(),
+                                  },
+                                  children: [
+                                    _ClinicalRow('Comorbidity', diagnosis.comorbidity),
+                                    _ClinicalRow('Smoking Status', diagnosis.smoking),
+                                    _ClinicalRow('TB Contact', diagnosis.tbContact),
+                                    _ClinicalRow('Sputum (BTA)', diagnosis.bta),
+                                    _ClinicalRow('Culture', diagnosis.culture),
+                                  ],
+                                ),
                               ],
                             ),
-                          ],
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-                        gradient: LinearGradient(colors: gradient),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            isPositive ? Icons.warning_amber_rounded : Icons.verified_rounded,
-                            color: Colors.white,
-                            size: 64,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            hasResult ? (isPositive ? 'TB Detected' : 'Normal') : 'No Result Yet',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 28,
-                              fontWeight: FontWeight.w800,
+                  ),
+                  const SizedBox(width: 32),
+
+                  // Right Column
+                  SizedBox(
+                    width: 320,
+                    child: Column(
+                      children: [
+                        // AI Result Card
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: isPositive
+                                  ? [AppTheme.error, const Color(0xFFB91C1C)]
+                                  : [AppTheme.success, const Color(0xFF15803D)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
+                            borderRadius: BorderRadius.circular(AppTheme.cardRadius),
                           ),
-                          const SizedBox(height: 10),
-                          Text(
-                            hasResult ? '${result.confidence}%' : '--',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 42,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'AI result is a screening tool, not a diagnosis',
-                            style: TextStyle(color: Colors.white70),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Recommendations',
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                            const SizedBox(height: 12),
-                            ...(isPositive
-                                    ? const [
-                                        'Refer to pulmonology team for confirmatory testing',
-                                        'Prioritize bacteriology and infection control workflow',
-                                        'Review TB contact and treatment history immediately',
-                                      ]
-                                    : const [
-                                        'Continue symptom monitoring over the next 2-4 weeks',
-                                        'Repeat imaging if symptoms worsen',
-                                        'Maintain adequate ventilation and follow-up screening',
-                                      ])
-                                .map(
-                                  (item) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 10),
-                                    child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Icon(Icons.check_circle_rounded, color: AppTheme.primaryDark, size: 20),
-                                        const SizedBox(width: 10),
-                                        Expanded(child: Text(item)),
-                                      ],
-                                    ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  isPositive ? Icons.warning_rounded : Icons.check_circle_rounded,
+                                  size: 64,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  isPositive ? 'TB Detected' : 'Normal',
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
                                   ),
                                 ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Analysis Meta',
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                                const SizedBox(height: 20),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        '${result?.confidence ?? 85}%',
+                                        style: const TextStyle(
+                                          fontSize: 40,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const Text(
+                                        'AI Confidence',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'AI results are screening tools only.\nConfirmation by a qualified medical professional is required.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 12),
-                            _MetaLine(label: 'Date', value: result?.createdAt.toString() ?? '-'),
-                            _MetaLine(label: 'Model Version', value: result?.modelVersion ?? '-'),
-                            _MetaLine(label: 'Processing Time', value: result?.processingTime ?? '-'),
-                          ],
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 16),
+
+                        // Recommendations Card
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Recommendations',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.navy,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                ...(isPositive
+                                    ? [
+                                        'Refer to pulmonologist immediately',
+                                        'Start contact tracing',
+                                        'Order additional diagnostic tests',
+                                      ]
+                                    : [
+                                        'Monitor symptoms',
+                                        'Schedule follow-up in 6 months',
+                                        'Maintain healthy lifestyle',
+                                      ])
+                                    .map(
+                                      (item) => Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 4),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Padding(
+                                              padding: const EdgeInsets.only(top: 4),
+                                              child: Icon(
+                                                isPositive ? Icons.circle : Icons.check_circle,
+                                                size: 8,
+                                                color: isPositive ? AppTheme.error : AppTheme.success,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Text(
+                                                item,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Analysis Details
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Analysis Details',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.navy,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Table(
+                                  columnWidths: const {
+                                    0: IntrinsicColumnWidth(),
+                                    1: FlexColumnWidth(),
+                                  },
+                                  children: [
+                                    _AnalysisRow('Analysis Date', DateTime.now().toString().split(' ')[0]),
+                                    _AnalysisRow('Model Version', 'TBScreen v2.1.0'),
+                                    _AnalysisRow('Processing Time', '2.8s'),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // New Diagnosis Button
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              diagnosis.resetForNewDiagnosis();
+                              context.go('/diagnosis');
+                            },
+                            icon: const Icon(Icons.add_rounded),
+                            label: const Text('New Diagnosis'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 16),
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                        gradient: const LinearGradient(
-                          colors: [AppTheme.primary, AppTheme.primaryDark],
-                        ),
-                      ),
-                      child: ElevatedButton(
-                        onPressed: () {
-                          diagnosis.resetForNewDiagnosis();
-                          context.go('/diagnosis');
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const Text('New Diagnosis'),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -267,52 +380,89 @@ class ResultScreen extends StatelessWidget {
       ),
     );
   }
-}
 
-class _MetaCard extends StatelessWidget {
-  const _MetaCard({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _SummaryField(String label, String value) {
     return Container(
-      width: 180,
-      padding: const EdgeInsets.all(16),
+      width: 160,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5EDF3)),
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Colors.black54)),
-          const SizedBox(height: 6),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );
   }
-}
 
-class _MetaLine extends StatelessWidget {
-  const _MetaLine({required this.label, required this.value});
+  TableRow _ClinicalRow(String label, String value) {
+    return TableRow(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: const TextStyle(color: Colors.black54))),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
-        ],
-      ),
+  TableRow _AnalysisRow(String label, String value) {
+    return TableRow(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

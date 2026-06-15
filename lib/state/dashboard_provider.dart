@@ -3,10 +3,12 @@ import 'package:flutter/foundation.dart';
 class DashboardProvider extends ChangeNotifier {
   String _selectedTimePeriod = 'Last 30 days';
   String _selectedInstitution = 'All Institutions';
+  String _selectedDistributionFilter = 'All Cases';
   bool _isLoading = false;
 
   String get selectedTimePeriod => _selectedTimePeriod;
   String get selectedInstitution => _selectedInstitution;
+  String get selectedDistributionFilter => _selectedDistributionFilter;
   bool get isLoading => _isLoading;
 
   final List<String> timePeriods = [
@@ -23,6 +25,12 @@ class DashboardProvider extends ChangeNotifier {
     'RS. PKU Muhammadiyah',
   ];
 
+  final List<String> distributionFilters = [
+    'All Cases',
+    'Positive TB',
+    'Negative TB',
+  ];
+
   void setTimePeriod(String value) {
     if (_selectedTimePeriod != value) {
       _selectedTimePeriod = value;
@@ -35,6 +43,13 @@ class DashboardProvider extends ChangeNotifier {
     if (_selectedInstitution != value) {
       _selectedInstitution = value;
       _fetchData();
+      notifyListeners();
+    }
+  }
+
+  void setDistributionFilter(String value) {
+    if (_selectedDistributionFilter != value) {
+      _selectedDistributionFilter = value;
       notifyListeners();
     }
   }
