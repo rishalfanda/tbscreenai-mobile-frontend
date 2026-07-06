@@ -79,7 +79,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
                   flex: 1,
                   child: Container(
                     decoration: BoxDecoration(
-                      border: Border(right: BorderSide(color: Colors.grey.shade300, width: 1)),
+                      border: Border(right: BorderSide(color: AppTheme.borderLight, width: 1)),
                     ),
                     child: SingleChildScrollView(
                       physics: const ClampingScrollPhysics(),
@@ -321,7 +321,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
                           color: Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(color: Colors.grey.shade200),
+                            side: BorderSide(color: AppTheme.borderLight),
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(24),
@@ -337,10 +337,10 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
                                   height: 360,
                                   width: double.infinity,
                                   decoration: BoxDecoration(
-                                    color: Colors.grey.shade50,
+                                    color: AppTheme.background,
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
-                                      color: Colors.grey.shade300,
+                                      color: AppTheme.borderLight,
                                       width: 1.5,
                                       style: BorderStyle.solid,
                                     ),
@@ -350,11 +350,11 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
                                       : Column(
                                           mainAxisAlignment: MainAxisAlignment.center,
                                           children: [
-                                            Icon(Icons.upload_rounded, size: 48, color: Colors.grey.shade400),
+                                            Icon(Icons.upload_rounded, size: 48, color: AppTheme.textSecondary),
                                             const SizedBox(height: 12),
                                             Text(
                                               'Upload or capture chest X-ray image',
-                                              style: TextStyle(color: Colors.grey.shade500),
+                                              style: TextStyle(color: AppTheme.textSecondary),
                                             ),
                                           ],
                                         ),
@@ -406,8 +406,8 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
                                   }
                                 : null,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF86D3A0), // Green color from screenshot
-                              disabledBackgroundColor: const Color(0xFF86D3A0).withValues(alpha: 0.5),
+                              backgroundColor: AppTheme.success,
+                              disabledBackgroundColor: AppTheme.success.withValues(alpha: 0.5),
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
@@ -447,7 +447,7 @@ class _SectionCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey.shade100),
+        side: BorderSide(color: AppTheme.borderLight),
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -477,12 +477,12 @@ class _CustomTextField extends StatelessWidget {
       keyboardType: keyboardType,
       decoration: InputDecoration(
         hintText: hintText,
-        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+        hintStyle: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         fillColor: Colors.white,
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade200, width: 1.5),
+          borderSide: BorderSide(color: AppTheme.borderLight, width: 1.5),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -508,14 +508,14 @@ class _CustomDropdown extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade200, width: 1.5),
+          borderSide: BorderSide(color: AppTheme.borderLight, width: 1.5),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppTheme.cyan, width: 1.5),
         ),
       ),
-      items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, style: TextStyle(color: s == items[0] ? Colors.grey.shade400 : AppTheme.navy, fontSize: 14)))).toList(),
+      items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, style: TextStyle(color: s == items[0] ? AppTheme.textSecondary : AppTheme.navy, fontSize: 14)))).toList(),
       onChanged: onChanged,
     );
   }
@@ -539,7 +539,7 @@ class _CustomCheckbox extends StatelessWidget {
             value: value,
             onChanged: onChanged,
             activeColor: AppTheme.navy,
-            side: BorderSide(color: Colors.grey.shade400, width: 1.5),
+            side: BorderSide(color: AppTheme.textSecondary, width: 1.5),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
           ),
         ),
@@ -564,7 +564,9 @@ class _CustomRadio extends StatelessWidget {
       children: [
         Radio<String>(
           value: value,
+          // ignore: deprecated_member_use
           groupValue: groupValue,
+          // ignore: deprecated_member_use
           onChanged: onChanged,
           activeColor: AppTheme.navy,
           visualDensity: VisualDensity.compact,

@@ -194,12 +194,12 @@ class _AccountStat extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5EDF3)),
+        border: Border.all(color: AppTheme.borderLight),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Colors.black54)),
+          Text(label, style: const TextStyle(color: AppTheme.textSecondary)),
           const SizedBox(height: 8),
           Text(value, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
         ],

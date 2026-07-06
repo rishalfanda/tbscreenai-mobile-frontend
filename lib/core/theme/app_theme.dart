@@ -8,8 +8,10 @@ class AppTheme {
   static const Color background = Color(0xFFF9FAFB);
   static const Color navy = secondary;
   static const Color success = Color(0xFF22C55E);
+  static const Color successDark = Color(0xFF15803D);
   static const Color warning = Color(0xFFF59E0B);
   static const Color error = Color(0xFFEF4444);
+  static const Color errorDark = Color(0xFFB91C1C);
   static const Color textPrimary = Color(0xFF111827);
   static const Color textSecondary = Color(0xFF6B7280);
   static const Color inactiveRail = Color(0xFFB0C4DE);
@@ -94,7 +96,11 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          minimumSize: const Size.fromHeight(56),
+          // Finite minWidth (0). Size.fromHeight = Size(infinity, 56) which forces
+          // infinite width and crashes any ElevatedButton placed in an unbounded
+          // context (Stack/Positioned, Row without Expanded). Full-width buttons
+          // opt in via SizedBox(width: infinity)/Expanded/stretch at the call site.
+          minimumSize: const Size(0, 56),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(inputRadius),
           ),

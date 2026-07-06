@@ -90,6 +90,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
 
     // Simulate artificial delay
     await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
 
     setState(() {
       final index = _cases.indexWhere((c) => c.id == _selectedId);
@@ -484,7 +485,6 @@ class _TabItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      onHover: (_) {},
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         margin: const EdgeInsets.only(right: 8),
@@ -528,7 +528,6 @@ class _PatientItem extends StatelessWidget {
     final statusColor = _getStatusColor(c.status);
     return InkWell(
       onTap: onTap,
-      onHover: (_) {},
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(

@@ -13,8 +13,10 @@ class AppShell extends StatelessWidget {
     (route: '/dashboard', icon: Icons.space_dashboard_rounded, label: 'Dashboard'),
     (route: '/patients', icon: Icons.people_alt_rounded, label: 'Patients'),
     (route: '/diagnosis', icon: Icons.biotech_rounded, label: 'Diagnose'),
+    (route: '/result', icon: Icons.analytics_rounded, label: 'Result'),
     (route: '/validation', icon: Icons.verified_user_rounded, label: 'Validation'),
     (route: '/dataset', icon: Icons.table_chart_rounded, label: 'Dataset'),
+    (route: '/sync', icon: Icons.cloud_sync_rounded, label: 'Sync'),
     (route: '/account', icon: Icons.person_rounded, label: 'Account'),
   ];
 

@@ -56,7 +56,6 @@ class _PatientsScreenState extends State<PatientsScreen> {
                           final active = _selected?.id == patient.id;
                           return InkWell(
                             onTap: () => setState(() => _selected = patient),
-                            onHover: (_) {},
                             borderRadius: BorderRadius.circular(16),
                             child: Container(
                               padding: const EdgeInsets.all(14),

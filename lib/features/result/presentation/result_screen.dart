@@ -74,7 +74,7 @@ class ResultScreen extends StatelessWidget {
                             aspectRatio: 16 / 9,
                             child: Container(
                               decoration: BoxDecoration(
-                                color: const Color(0xFF111827),
+                                color: AppTheme.textPrimary,
                                 borderRadius: BorderRadius.circular(AppTheme.cardRadius),
                               ),
                               child: const Center(
@@ -109,12 +109,12 @@ class ResultScreen extends StatelessWidget {
                                   spacing: 16,
                                   runSpacing: 16,
                                   children: [
-                                    _SummaryField('Name', diagnosis.patientName),
-                                    _SummaryField('Gender', diagnosis.gender),
-                                    _SummaryField('Age', '${diagnosis.age ?? 0}'),
-                                    _SummaryField('Height', '${diagnosis.heightCm ?? 0} cm'),
-                                    _SummaryField('Weight', '${diagnosis.weightKg ?? 0} kg'),
-                                    _SummaryField(
+                                    _summaryField('Name', diagnosis.patientName),
+                                    _summaryField('Gender', diagnosis.gender),
+                                    _summaryField('Age', '${diagnosis.age ?? 0}'),
+                                    _summaryField('Height', '${diagnosis.heightCm ?? 0} cm'),
+                                    _summaryField('Weight', '${diagnosis.weightKg ?? 0} kg'),
+                                    _summaryField(
                                       'BMI',
                                       diagnosis.heightCm != null && diagnosis.weightKg != null
                                           ? ((diagnosis.weightKg! / ((diagnosis.heightCm! / 100) * (diagnosis.heightCm! / 100))).toStringAsFixed(1))
@@ -164,11 +164,11 @@ class ResultScreen extends StatelessWidget {
                                     1: FlexColumnWidth(),
                                   },
                                   children: [
-                                    _ClinicalRow('Comorbidity', diagnosis.comorbidity),
-                                    _ClinicalRow('Smoking Status', diagnosis.smoking),
-                                    _ClinicalRow('TB Contact', diagnosis.tbContact),
-                                    _ClinicalRow('Sputum (BTA)', diagnosis.bta),
-                                    _ClinicalRow('Culture', diagnosis.culture),
+                                    _clinicalRow('Comorbidity', diagnosis.comorbidity),
+                                    _clinicalRow('Smoking Status', diagnosis.smoking),
+                                    _clinicalRow('TB Contact', diagnosis.tbContact),
+                                    _clinicalRow('Sputum (BTA)', diagnosis.bta),
+                                    _clinicalRow('Culture', diagnosis.culture),
                                   ],
                                 ),
                               ],
@@ -190,8 +190,8 @@ class ResultScreen extends StatelessWidget {
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: isPositive
-                                  ? [AppTheme.error, const Color(0xFFB91C1C)]
-                                  : [AppTheme.success, const Color(0xFF15803D)],
+                                  ? [AppTheme.error, AppTheme.errorDark]
+                                  : [AppTheme.success, AppTheme.successDark],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
@@ -311,8 +311,7 @@ class ResultScreen extends StatelessWidget {
                                           ],
                                         ),
                                       ),
-                                    )
-                                    .toList(),
+                                    ),
                               ],
                             ),
                           ),
@@ -341,9 +340,9 @@ class ResultScreen extends StatelessWidget {
                                     1: FlexColumnWidth(),
                                   },
                                   children: [
-                                    _AnalysisRow('Analysis Date', DateTime.now().toString().split(' ')[0]),
-                                    _AnalysisRow('Model Version', 'TBScreen v2.1.0'),
-                                    _AnalysisRow('Processing Time', '2.8s'),
+                                    _analysisRow('Analysis Date', DateTime.now().toString().split(' ')[0]),
+                                    _analysisRow('Model Version', 'TBScreen v2.1.0'),
+                                    _analysisRow('Processing Time', '2.8s'),
                                   ],
                                 ),
                               ],
@@ -381,12 +380,12 @@ class ResultScreen extends StatelessWidget {
     );
   }
 
-  Widget _SummaryField(String label, String value) {
+  Widget _summaryField(String label, String value) {
     return Container(
       width: 160,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: AppTheme.background,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -396,7 +395,7 @@ class ResultScreen extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 12,
-              color: Colors.grey.shade600,
+              color: AppTheme.textSecondary,
             ),
           ),
           const SizedBox(height: 4),
@@ -412,7 +411,7 @@ class ResultScreen extends StatelessWidget {
     );
   }
 
-  TableRow _ClinicalRow(String label, String value) {
+  TableRow _clinicalRow(String label, String value) {
     return TableRow(
       children: [
         Padding(
@@ -421,7 +420,7 @@ class ResultScreen extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 13,
-              color: Colors.grey.shade600,
+              color: AppTheme.textSecondary,
             ),
           ),
         ),
@@ -439,7 +438,7 @@ class ResultScreen extends StatelessWidget {
     );
   }
 
-  TableRow _AnalysisRow(String label, String value) {
+  TableRow _analysisRow(String label, String value) {
     return TableRow(
       children: [
         Padding(
@@ -448,7 +447,7 @@ class ResultScreen extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 12,
-              color: Colors.grey.shade600,
+              color: AppTheme.textSecondary,
             ),
           ),
         ),
