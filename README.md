@@ -13,9 +13,10 @@ tablet-optimized interface.
 > timed delays. The app is structured so a real API can be dropped in later without
 > reworking the UI. See the [Roadmap](#-roadmap).
 
-> 📘 **New here / non-developer?** A step-by-step, printable **Setup & Run Guide**
-> (clone from GitHub → run on your own computer or tablet → view the interface) is
-> available at **[`docs/TBScreenAI-Setup-Guide.pdf`](docs/TBScreenAI-Setup-Guide.pdf)**.
+> 📘 **Baru di sini / bukan developer?** Panduan setup langkah demi langkah (siap
+> cetak) dalam **Bahasa Indonesia** — clone dari GitHub → jalankan di komputer atau
+> tablet Anda → lihat tampilannya — tersedia di
+> **[`docs/TBScreenAI-Panduan-Setup.pdf`](docs/TBScreenAI-Panduan-Setup.pdf)**.
 
 ---
 
