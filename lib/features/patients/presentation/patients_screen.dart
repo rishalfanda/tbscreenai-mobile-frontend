@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/data/mock_data.dart';
+import 'package:myapp/features/shared/presentation/widgets/widgets.dart';
 
 class PatientsScreen extends StatefulWidget {
   const PatientsScreen({super.key});
@@ -28,10 +29,15 @@ class _PatientsScreenState extends State<PatientsScreen> {
 
     return Padding(
       padding: const EdgeInsets.all(24),
-      child: Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Adaptive master width so the detail panel always has room to
+          // breathe on narrower tablet widths (portrait / split view).
+          final listWidth = constraints.maxWidth < 900 ? 300.0 : 420.0;
+          return Row(
         children: [
           SizedBox(
-            width: 420,
+            width: listWidth,
             child: Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -54,66 +60,45 @@ class _PatientsScreenState extends State<PatientsScreen> {
                         itemBuilder: (context, index) {
                           final patient = patients[index];
                           final active = _selected?.id == patient.id;
-                          return InkWell(
+                          return AppCard(
+                            selected: active,
+                            padding: const EdgeInsets.all(14),
                             onTap: () => setState(() => _selected = patient),
-                            borderRadius: BorderRadius.circular(16),
-                            child: Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: active ? AppTheme.primary : const Color(0xFFE5EDF3),
-                                  width: active ? 2 : 1,
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 4,
+                                  height: 64,
+                                  decoration: BoxDecoration(
+                                    color: active ? AppTheme.primary : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
                                 ),
-                                boxShadow: active
-                                    ? const [
-                                        BoxShadow(
-                                          color: Color(0x144FC3F7),
-                                          blurRadius: 14,
-                                          offset: Offset(0, 8),
-                                        ),
-                                      ]
-                                    : null,
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 4,
-                                    height: 64,
-                                    decoration: BoxDecoration(
-                                      color: active ? AppTheme.primary : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
+                                const SizedBox(width: 12),
+                                CircleAvatar(
+                                  radius: 24,
+                                  backgroundColor: AppTheme.primary.withValues(alpha: 0.16),
+                                  foregroundColor: AppTheme.primaryDark,
+                                  child: Text(
+                                    patient.name.split(' ').take(2).map((part) => part[0]).join(),
+                                    style: const TextStyle(fontWeight: FontWeight.w700),
                                   ),
-                                  const SizedBox(width: 12),
-                                  CircleAvatar(
-                                    radius: 24,
-                                    backgroundColor: AppTheme.primary.withValues(alpha: 0.16),
-                                    foregroundColor: AppTheme.primaryDark,
-                                    child: Text(
-                                      patient.name.split(' ').take(2).map((part) => part[0]).join(),
-                                    ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(patient.name,
+                                          style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.navy)),
+                                      const SizedBox(height: 4),
+                                      Text('${patient.age} yrs • ${patient.gender}',
+                                          style: const TextStyle(color: AppTheme.subtitleGrey, fontSize: 13)),
+                                    ],
                                   ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(patient.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                                        const SizedBox(height: 4),
-                                        Text('${patient.age} yrs • ${patient.gender}'),
-                                      ],
-                                    ),
-                                  ),
-                                  Chip(
-                                    label: Text(patient.status),
-                                    backgroundColor: patient.status == 'Positive'
-                                        ? AppTheme.error.withValues(alpha: 0.12)
-                                        : AppTheme.success.withValues(alpha: 0.12),
-                                  ),
-                                ],
-                              ),
+                                ),
+                                StatusBadge.forStatus(patient.status, dense: true),
+                              ],
                             ),
                           );
                         },
@@ -163,12 +148,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
                                     ],
                                   ),
                                 ),
-                                Chip(
-                                  label: Text(_selected!.status),
-                                  backgroundColor: _selected!.status == 'Positive'
-                                      ? AppTheme.error.withValues(alpha: 0.12)
-                                      : AppTheme.success.withValues(alpha: 0.12),
-                                ),
+                                StatusBadge.forStatus(_selected!.status),
                               ],
                             ),
                           ),
@@ -239,6 +219,8 @@ class _PatientsScreenState extends State<PatientsScreen> {
                   ),
           ),
         ],
+          );
+        },
       ),
     );
   }
@@ -277,18 +259,10 @@ class _EmptyPatientState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.person_search_rounded, size: 72, color: AppTheme.primary.withValues(alpha: 0.7)),
-          const SizedBox(height: 16),
-          Text(
-            'Select a patient',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-        ],
-      ),
+    return const EmptyState(
+      icon: Icons.person_search_rounded,
+      title: 'Select a patient',
+      message: 'Choose a patient from the list to view their profile, latest X-ray and history timeline.',
     );
   }
 }

@@ -30,13 +30,27 @@ class SyncCenterScreen extends StatelessWidget {
           ),
           const SizedBox(height: AppTheme.sp24),
           // === Section: Cards ===
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Expanded(child: _ModelUpdateCard()),
-              SizedBox(width: AppTheme.sp24),
-              Expanded(child: _DataBackupCard()),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = constraints.maxWidth < 880;
+              if (stacked) {
+                return const Column(
+                  children: [
+                    _ModelUpdateCard(),
+                    SizedBox(height: AppTheme.sp24),
+                    _DataBackupCard(),
+                  ],
+                );
+              }
+              return const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: _ModelUpdateCard()),
+                  SizedBox(width: AppTheme.sp24),
+                  Expanded(child: _DataBackupCard()),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -369,6 +383,7 @@ class _InfoRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 130,
@@ -376,8 +391,11 @@ class _InfoRow extends StatelessWidget {
                 style: const TextStyle(
                     fontSize: 13, color: AppTheme.textSecondary)),
           ),
-          Text(value,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          Expanded(
+            child: Text(value,
+                style:
+                    const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          ),
         ],
       ),
     );

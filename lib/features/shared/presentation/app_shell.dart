@@ -3,6 +3,9 @@ import 'package:go_router/go_router.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/data/validation_mock.dart';
 
+/// Persistent navigation shell shared by all primary screens (ShellRoute).
+/// A fixed left NavRail keeps top-level destinations reachable at all times —
+/// the adaptive pattern for tablet / large screens.
 class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.location, required this.child});
 
@@ -23,70 +26,97 @@ class AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selectedIndex = _items.indexWhere((item) => location.startsWith(item.route));
-    final pendingCount = mockCases.where((c) => c.status == "pending").length;
+    final pendingCount = mockCases.where((c) => c.status == 'pending').length;
 
     return Scaffold(
       body: SafeArea(
         child: Row(
           children: [
-            Container(
-              width: AppTheme.railWidth,
-              color: AppTheme.navy,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 16, bottom: 20),
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        gradient: const LinearGradient(
-                          colors: [AppTheme.primary, AppTheme.primaryDark],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Text(
-                        'TB',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView.builder(
-                      physics: const ClampingScrollPhysics(),
-                      itemCount: _items.length,
-                      itemBuilder: (context, index) {
-                        final item = _items[index];
-                        return _NavItem(
-                          icon: item.icon,
-                          label: item.label,
-                          active: (selectedIndex < 0 ? 0 : selectedIndex) == index,
-                          badgeCount: item.route == '/validation' ? pendingCount : null,
-                          onTap: () => context.go(item.route),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
+            _NavRail(
+              items: _items,
+              selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
+              pendingCount: pendingCount,
             ),
             Expanded(
-              child: SizedBox.expand(
-                child: Container(
-                  color: AppTheme.background,
-                  child: child,
-                ),
+              child: DecoratedBox(
+                decoration: const BoxDecoration(color: AppTheme.background),
+                child: child,
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _NavRail extends StatelessWidget {
+  const _NavRail({
+    required this.items,
+    required this.selectedIndex,
+    required this.pendingCount,
+  });
+
+  final List<({String route, IconData icon, String label})> items;
+  final int selectedIndex;
+  final int pendingCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: AppTheme.railWidth,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [AppTheme.navy, AppTheme.navyDark],
+        ),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 18, bottom: 22),
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                gradient: const LinearGradient(
+                  colors: [AppTheme.primary, AppTheme.primaryDark],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: AppTheme.primaryGlow(alpha: 0.4),
+              ),
+              alignment: Alignment.center,
+              child: const Text(
+                'TB',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              physics: const ClampingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return _NavItem(
+                  icon: item.icon,
+                  label: item.label,
+                  active: selectedIndex == index,
+                  badgeCount: item.route == '/validation' ? pendingCount : null,
+                  onTap: () => context.go(item.route),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -114,84 +144,85 @@ class _NavItem extends StatefulWidget {
 class _NavItemState extends State<_NavItem> {
   bool _hovered = false;
 
-  // Fix: check mounted before setState to prevent mouse_tracker assertion
+  // Guard against setState after unmount (avoids mouse_tracker assertion on web).
   void _setHovered(bool value) {
     if (mounted) setState(() => _hovered = value);
-  }
-
-  @override
-  void dispose() {
-    _hovered = false;
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final bg = widget.active
         ? AppTheme.primary
-        : (_hovered ? const Color(0xFF2D4A6A) : Colors.transparent);
-    final iconColor = widget.active ? Colors.white : AppTheme.inactiveRail;
-    final labelColor = widget.active ? Colors.white : AppTheme.inactiveRail;
+        : (_hovered ? Colors.white.withValues(alpha: 0.10) : Colors.transparent);
+    final fg = widget.active ? Colors.white : AppTheme.inactiveRail;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: MouseRegion(
-        onEnter: (_) => _setHovered(true),
-        onExit: (_) => _setHovered(false),
-        child: InkWell(
-          onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: Center(
-            child: SizedBox(
-              width: 56,
-              height: 64,
+    return Semantics(
+      button: true,
+      selected: widget.active,
+      label: widget.label,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Tooltip(
+          message: widget.label,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            onEnter: (_) => _setHovered(true),
+            onExit: (_) => _setHovered(false),
+            child: GestureDetector(
+              onTap: widget.onTap,
+              behavior: HitTestBehavior.opaque,
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                duration: AppTheme.motionBase,
+                curve: AppTheme.motionCurve,
+                height: 60,
                 decoration: BoxDecoration(
                   color: bg,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: widget.active ? AppTheme.primaryGlow(alpha: 0.35) : null,
                 ),
                 child: Stack(
                   clipBehavior: Clip.none,
+                  alignment: Alignment.center,
                   children: [
                     Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Center(child: Icon(widget.icon, size: 20, color: iconColor)),
+                        Icon(widget.icon, size: 22, color: fg),
                         const SizedBox(height: 4),
-                        Center(
-                          child: Text(
-                            widget.label,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: labelColor,
-                              fontWeight: widget.active
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                            ),
+                        Text(
+                          widget.label,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            color: fg,
+                            fontWeight:
+                                widget.active ? FontWeight.w700 : FontWeight.w500,
                           ),
                         ),
                       ],
                     ),
                     if (widget.badgeCount != null && widget.badgeCount! > 0)
                       Positioned(
-                        top: -4,
-                        right: -4,
+                        top: 4,
+                        right: 8,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 2),
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          constraints: const BoxConstraints(minWidth: 18),
                           decoration: BoxDecoration(
                             color: AppTheme.error,
                             borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppTheme.navy, width: 1.5),
                           ),
                           child: Text(
-                            widget.badgeCount.toString(),
+                            '${widget.badgeCount}',
+                            textAlign: TextAlign.center,
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 8,
-                              fontWeight: FontWeight.bold,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
