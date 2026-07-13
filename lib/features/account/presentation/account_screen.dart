@@ -86,19 +86,39 @@ class AccountScreen extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 16),
-                  const Row(
+                  Row(
                     children: [
-                      Expanded(child: TextField(decoration: InputDecoration(labelText: 'Full Name'))),
-                      SizedBox(width: 16),
-                      Expanded(child: TextField(decoration: InputDecoration(labelText: 'Email'))),
+                      Expanded(
+                        child: TextFormField(
+                          initialValue: auth.displayName,
+                          decoration: const InputDecoration(labelText: 'Full Name'),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: TextFormField(
+                          initialValue: 'doctor@tbscreen.app',
+                          decoration: const InputDecoration(labelText: 'Email'),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const Row(
+                  Row(
                     children: [
-                      Expanded(child: TextField(decoration: InputDecoration(labelText: 'Specialization'))),
-                      SizedBox(width: 16),
-                      Expanded(child: TextField(decoration: InputDecoration(labelText: 'Institution'))),
+                      Expanded(
+                        child: TextFormField(
+                          initialValue: 'Pulmonologist',
+                          decoration: const InputDecoration(labelText: 'Specialization'),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: TextFormField(
+                          initialValue: 'RS. Sardjito',
+                          decoration: const InputDecoration(labelText: 'Institution'),
+                        ),
+                      ),
                     ],
                   ),
                 ],

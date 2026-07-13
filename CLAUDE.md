@@ -27,7 +27,7 @@ Final deploy target: Android tablet, landscape orientation, 10–12 inch screen.
 
 ## Layout Rules
 - Always use LayoutBuilder; breakpoint ≥ 1024px = tablet layout
-- NavRail: 80px wide, bg #1E3A5F, fixed left via Row in AppShell
+- NavRail: 84px wide (AppTheme.railWidth), navy→navyDark vertical gradient, fixed left via Row in AppShell
 - ShellRoute wraps all screens that share NavRail (AppShell)
 - Screens WITHOUT NavRail: LoginScreen, CameraScreen
 - Max content width: 1600px — wrap with Center + ConstrainedBox
@@ -64,20 +64,22 @@ RULE: Never hardcode hex in widgets. Always use Theme.of(context) or AppColors.
 | /dashboard | DashboardScreen | Yes | 0 |
 | /patients | PatientsScreen | Yes | 1 |
 | /diagnosis | DiagnosisScreen | Yes | 2 |
-| /camera | CameraScreen | No (full screen) | - |
 | /result | ResultScreen | Yes | 3 |
-| /dataset | DatasetScreen | Yes | 4 |
-| /sync | SyncCenterScreen | Yes | 5 |
-| /account | AccountScreen | Yes | 6 |
+| /validation | ValidationScreen | Yes | 4 |
+| /dataset | DatasetScreen | Yes | 5 |
+| /sync | SyncCenterScreen | Yes | 6 |
+| /account | AccountScreen | Yes | 7 |
+| /camera | CameraScreen | No (full screen) | - |
 
-NavRail icons (in order):
-0: Icons.dashboard_rounded
-1: Icons.people_rounded
-2: Icons.medical_services_rounded
-3: Icons.analytics_rounded
-4: Icons.folder_rounded
-5: Icons.cloud_sync_rounded
-6: Icons.person_rounded
+NavRail icons (in order) — source of truth: `lib/features/shared/presentation/app_shell.dart`:
+0: Icons.space_dashboard_rounded   (Dashboard)
+1: Icons.people_alt_rounded        (Patients)
+2: Icons.biotech_rounded           (Diagnose)
+3: Icons.analytics_rounded         (Result)
+4: Icons.verified_user_rounded     (Validation, shows a pending-count badge)
+5: Icons.table_chart_rounded       (Dataset)
+6: Icons.cloud_sync_rounded        (Sync)
+7: Icons.person_rounded            (Account)
 
 ---
 
