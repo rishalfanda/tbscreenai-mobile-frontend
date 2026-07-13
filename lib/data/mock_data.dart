@@ -269,4 +269,25 @@ class MockData {
     TrendDataPoint(date: 'Apr 27', totalDiagnoses: 23, totalPatients: 17),
     TrendDataPoint(date: 'Apr 30', totalDiagnoses: 25, totalPatients: 19),
   ];
+
+  // === Section: Sync Center Mock Data ===
+
+  static const Map<String, dynamic> modelInfo = {
+    'currentVersion': 'v1.2.0',
+    'latestVersion': 'v1.3.1',
+    'fileSize': '47.2 MB',
+    'releaseDate': '10 Juni 2025',
+    'changelog': <String>[
+      'Peningkatan akurasi deteksi TB aktif sebesar 3.2%',
+      'Perbaikan false positive pada pasien pediatrik',
+      'Optimasi kecepatan inferensi pada perangkat low-end',
+    ],
+  };
+
+  static const Map<String, dynamic> syncSummary = {
+    'totalPatients': 32,
+    'totalDiagnoses': 89,
+    'totalSizeMB': 128,
+    'lastSyncDate': null,
+  };
 }

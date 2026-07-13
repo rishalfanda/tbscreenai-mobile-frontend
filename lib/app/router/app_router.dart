@@ -8,6 +8,7 @@ import 'package:myapp/features/dataset/presentation/dataset_screen.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_screen.dart';
 import 'package:myapp/features/patients/presentation/patients_screen.dart';
 import 'package:myapp/features/result/presentation/result_screen.dart';
+import 'package:myapp/features/sync/presentation/sync_center_screen.dart';
 import 'package:myapp/features/validation/presentation/validation_screen.dart';
 import 'package:myapp/features/shared/presentation/app_shell.dart';
 import 'package:myapp/state/auth_provider.dart';
@@ -62,18 +63,22 @@ class AppRouter {
               builder: (context, state) => const DatasetScreen(),
             ),
             GoRoute(
+              path: '/sync',
+              builder: (context, state) => const SyncCenterScreen(),
+            ),
+            GoRoute(
               path: '/account',
               builder: (context, state) => const AccountScreen(),
+            ),
+            GoRoute(
+              path: '/result',
+              builder: (context, state) => const ResultScreen(),
             ),
           ],
         ),
         GoRoute(
           path: '/camera',
           builder: (context, state) => const CameraScreen(),
-        ),
-        GoRoute(
-          path: '/result',
-          builder: (context, state) => const ResultScreen(),
         ),
       ],
     );

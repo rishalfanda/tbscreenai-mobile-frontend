@@ -14,7 +14,7 @@ class DatasetScreen extends StatefulWidget {
 class _DatasetScreenState extends State<DatasetScreen> {
   DatasetView _currentView = DatasetView.list;
   DatasetModel? _selectedDataset;
-  List<DatasetModel> _datasets = List.from(mockDatasets);
+  final List<DatasetModel> _datasets = List.from(mockDatasets);
   final _searchController = TextEditingController();
 
   void _navigate(DatasetView view, [DatasetModel? dataset]) {
@@ -452,7 +452,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                       ),
                       const SizedBox(height: 24),
                       DropdownButtonFormField<String>(
-                        value: selectedStatus,
+                        initialValue: selectedStatus,
                         decoration: InputDecoration(
                           labelText: "Status",
                           labelStyle: const TextStyle(color: AppTheme.subtitleGrey),
@@ -966,7 +966,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                       ),
                       const SizedBox(height: 24),
                       DropdownButtonFormField<String>(
-                        value: selectedStatus,
+                        initialValue: selectedStatus,
                         decoration: InputDecoration(
                           labelText: "Status",
                           labelStyle: const TextStyle(color: AppTheme.subtitleGrey),
@@ -1181,7 +1181,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                   ),
                   const SizedBox(height: 24),
                   DropdownButtonFormField<String>(
-                    value: selectedDiagnosis,
+                    initialValue: selectedDiagnosis,
                     decoration: InputDecoration(
                       labelText: "Diagnosis",
                       labelStyle: const TextStyle(color: AppTheme.subtitleGrey),
