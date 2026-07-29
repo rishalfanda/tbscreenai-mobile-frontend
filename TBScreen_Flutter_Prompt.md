@@ -1,6 +1,7 @@
 # TBScreen – Flutter UI Prompt for Trae AI
 
 ## Project Overview
+
 Build the **TBScreen** Flutter application — a medical AI tablet app for tuberculosis (TB) diagnosis using AI-powered chest X-ray analysis. This is a **UI-only development phase**; no backend integration yet. All data is mocked/static. Testing target is **Windows desktop** (flutter run -d windows) while the final deployment target is **Android tablet (landscape, 10–12 inch)**.
 
 ---
@@ -48,6 +49,7 @@ lib/
 ## Theme & Design System
 
 ### pubspec.yaml dependencies (minimum)
+
 ```yaml
 dependencies:
   flutter:
@@ -57,6 +59,7 @@ dependencies:
 ```
 
 ### ColorScheme (app_theme.dart)
+
 ```dart
 const primary = Color(0xFF4FC3F7);         // Light Blue 400
 const primaryDark = Color(0xFF0288D1);     // Light Blue 700
@@ -71,6 +74,7 @@ const textSecondary = Color(0xFF6B7280);   // Gray 500
 ```
 
 ### Spacing System (use as constants)
+
 ```dart
 const double sp4 = 4;
 const double sp8 = 8;
@@ -84,6 +88,7 @@ const double sp48 = 48;
 ```
 
 ### Border Radius
+
 ```dart
 const double radiusCard = 16;     // Most cards
 const double radiusInput = 12;    // Form inputs
@@ -91,6 +96,7 @@ const double radiusLarge = 24;    // Login card
 ```
 
 ### Elevation
+
 ```dart
 // Cards: elevation 2 (shadow-md equivalent)
 // Elevated cards: elevation 4 (shadow-lg)
@@ -98,6 +104,7 @@ const double radiusLarge = 24;    // Login card
 ```
 
 ### Touch Targets
+
 - Minimum touch target: **48×48 logical pixels** (use `SizedBox` or `ConstrainedBox` for enforcement)
 - Primary buttons: minimum height **56px** (`py-4` equivalent)
 - Form inputs: minimum height **48px** (`py-3` equivalent)
@@ -107,6 +114,7 @@ const double radiusLarge = 24;    // Login card
 ## Global Layout Structure
 
 ### Navigation Rail
+
 - Implement as a **custom widget** (`NavRail`) on the left side of the main scaffold
 - **Width**: 80px
 - **Background**: `Color(0xFF1E3A5F)` (Dark Navy)
@@ -130,6 +138,7 @@ const double radiusLarge = 24;    // Login card
 Use `InkWell` + `AnimatedContainer` for hover/active states on desktop.
 
 ### Main Layout Scaffold (screens with nav)
+
 ```dart
 Scaffold(
   body: Row(
@@ -333,7 +342,7 @@ Scaffold(
     children: [
       // Full-screen mock camera preview (use black Container with placeholder text
       //   or actual camera_controller if package available — mock is fine for UI phase)
-      
+    
       // Top-left close button
       Positioned(top:24, left:24,
         child: InkWell(
@@ -344,7 +353,7 @@ Scaffold(
           onTap: () => context.pop()
         )
       ),
-      
+    
       // Center overlay guide
       Center(
         child: Container(
@@ -417,7 +426,7 @@ Right column:
   2. Recommendation Card
        Positive: red alert box with checklist steps
        Negative: green box with monitoring recommendations
-       
+     
   3. Analysis Details Card
        - Analysis Date
        - Model Version: "TBScreen v2.1.0"

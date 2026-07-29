@@ -13,10 +13,14 @@ Other roles: Admin RS (web, separate repo), Super Admin (web, separate repo).
 - Material Design 3 (useMaterial3: true)
 
 ## Current Phase
-UI-ONLY. No backend, no API calls, no HTTP, no Firebase, no Supabase, no SQLite.
-All data: hardcoded mock in lib/mock/ or inline in screen.
-AI simulation: Future.delayed(Duration(seconds: 3)).
-Sync simulation: Future.delayed(Duration(seconds: 2)) with mock version data.
+REPOSITORY PATTERN + OPTIONAL BACKEND (FASE 3).
+- Domain models: lib/domain/models/ (immutable, no Flutter imports)
+- Interfaces: lib/domain/repositories/ — screens/providers depend on these only
+- Mock impl: lib/data/mock/ (default; SynchronousFuture = no loading flash)
+- Http impl: lib/data/http/ (dio; auth/patients/sync only — rest still mock)
+- Toggle: --dart-define=USE_HTTP=true (+ API_BASE_URL=...), see lib/core/config/app_config.dart
+- Backend repo: C:\Users\devel\tbscreenai-backend (FastAPI, kontrak docs/openapi.json)
+AI inference: MOCK (3s delay) — in mock repo AND backend /diagnoses/infer.
 
 ## Testing Environment
 Running on: flutter run -d chrome (web/desktop browser preview)
@@ -166,8 +170,9 @@ Sifat: opsional penuh. Data medis sensitif — perlu consent eksplisit sebelum u
 - One screen = one file. Sub-widgets boleh di file terpisah jika >100 baris.
 
 ## Packages FORBIDDEN in this phase
-http, dio, supabase, firebase_core, sqflite, hive, shared_preferences
-(Semua data = mock. Sync = simulasi Future.delayed)
+supabase, firebase_core, sqflite, hive, shared_preferences
+(dio DIIZINKAN sejak FASE 3 — hanya di lib/data/http/. Local storage
+menyusul FASE 4 lewat drift, jangan tambah paket storage lain tanpa izin.)
 
 ---
 
