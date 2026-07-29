@@ -1,36 +1,13 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart';
-
-class DiagnosisOutcome {
-  const DiagnosisOutcome({
-    required this.isPositive,
-    required this.confidence,
-    required this.processingTime,
-    required this.modelVersion,
-    required this.createdAt,
-    this.consolidation = 0,
-    this.cavity = 0,
-    this.effusion = 0,
-    this.fibrotic = 0,
-    this.calcification = 0,
-  });
-
-  final bool isPositive;
-  final int confidence;
-  final String processingTime;
-  final String modelVersion;
-  final DateTime createdAt;
-  final double consolidation;
-  final double cavity;
-  final double effusion;
-  final double fibrotic;
-  final double calcification;
-}
+import 'package:myapp/domain/models/diagnosis_outcome.dart';
+import 'package:myapp/domain/repositories/diagnosis_repository.dart';
 
 class DiagnosisProvider extends ChangeNotifier {
+  DiagnosisProvider(this._diagnosisRepository);
+
+  final DiagnosisRepository _diagnosisRepository;
+
   final Set<String> _symptoms = <String>{};
-  final math.Random _random = math.Random();
 
   String patientName = '';
   String gender = 'Female';
@@ -42,14 +19,15 @@ class DiagnosisProvider extends ChangeNotifier {
   String tbContact = 'Unknown';
   int? pediatricScore;
   String windowsPresence = 'Yes';
-  String sunlightExposure = 'Adequate';
+  String sunlightExposure = 'Yes';
   String bta = 'Negative';
   String culture = 'Negative';
   String xpert = 'Negative';
   String igra = 'Negative';
   String tbHistory = 'No';
   String tbStatus = 'Suspected';
-  String modelType = 'Standard';
+  String modelType = 'Non Disability';
+  String modelVersion = 'Version 1';
   String? imageLabel;
   DiagnosisOutcome? lastOutcome;
   bool isRunning = false;
@@ -105,6 +83,7 @@ class DiagnosisProvider extends ChangeNotifier {
     required String selectedTbHistory,
     required String selectedTbStatus,
     required String selectedModelType,
+    required String selectedModelVersion,
   }) {
     comorbidity = selectedComorbidity;
     smoking = selectedSmoking;
@@ -119,6 +98,7 @@ class DiagnosisProvider extends ChangeNotifier {
     tbHistory = selectedTbHistory;
     tbStatus = selectedTbStatus;
     modelType = selectedModelType;
+    modelVersion = selectedModelVersion;
     notifyListeners();
   }
 
@@ -139,24 +119,10 @@ class DiagnosisProvider extends ChangeNotifier {
 
     isRunning = true;
     notifyListeners();
-    await Future<void>.delayed(const Duration(seconds: 3));
 
-    final confidence = 75 + _random.nextInt(24);
-    final isPositive = _random.nextBool();
-    final processingMs = 2600 + _random.nextInt(500);
-
-    lastOutcome = DiagnosisOutcome(
-      isPositive: isPositive,
-      confidence: confidence,
-      processingTime: '${(processingMs / 1000).toStringAsFixed(1)}s',
-      modelVersion: 'TBScreen v2.1.0',
-      createdAt: DateTime.now(),
-      consolidation: isPositive ? (20 + _random.nextDouble() * 15) : (1 + _random.nextDouble() * 4),
-      cavity: isPositive ? (_random.nextDouble() * 5) : 0.0,
-      effusion: isPositive ? (3 + _random.nextDouble() * 8) : (_random.nextDouble() * 2),
-      fibrotic: _random.nextDouble() * 2,
-      calcification: _random.nextDouble() * 3,
-    );
+    // Inference simulation (3s delay + randomized outcome) lives in the
+    // repository now — the provider only orchestrates state.
+    lastOutcome = await _diagnosisRepository.runInference(imageLabel: imageLabel!);
 
     isRunning = false;
     notifyListeners();

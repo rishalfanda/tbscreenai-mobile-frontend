@@ -33,6 +33,10 @@ class AppTheme {
   static const Color subtitleGrey = Color(0xFF64748B);
   static const Color borderLight = Color(0xFFE2E8F0);
 
+  /// Backdrop behind chest X-ray images — near-black so the radiograph's own
+  /// greys stay readable. Replaces hex values that were inlined in screens.
+  static const Color xrayBackdrop = Color(0xFF0F1117);
+
   // === Section: Spacing Scale (4/8 rhythm) ===
   static const double sp4 = 4;
   static const double sp8 = 8;

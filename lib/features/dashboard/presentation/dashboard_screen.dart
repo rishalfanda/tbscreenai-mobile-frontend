@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
-import 'package:myapp/data/mock_data.dart';
+import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/state/dashboard_provider.dart';
 
 class DashboardScreen extends StatelessWidget {
@@ -23,15 +23,15 @@ class DashboardScreen extends StatelessWidget {
               if (dashboard.isLoading)
                 const Center(child: CircularProgressIndicator())
               else ...[
-                _buildStatCards(context),
+                _buildStatCards(context, dashboard),
                 const SizedBox(height: 16),
                 _buildAgreementLevelRow(context),
                 const SizedBox(height: 24),
-                _buildDiagnosisTrendsChart(context),
+                _buildDiagnosisTrendsChart(context, dashboard),
                 const SizedBox(height: 24),
                 _buildDistributionDonuts(context, dashboard),
                 const SizedBox(height: 24),
-                _buildRecentActivity(context),
+                _buildRecentActivity(context, dashboard),
               ],
             ],
           ),
@@ -129,7 +129,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStatCards(BuildContext context) {
+  Widget _buildStatCards(BuildContext context, DashboardProvider dashboard) {
     final screenWidth = MediaQuery.of(context).size.width;
     final crossAxisCount = screenWidth < 1100 ? 2 : 4;
     final aspectRatio = screenWidth < 1100 ? 1.5 : 1.3;
@@ -137,7 +137,7 @@ class DashboardScreen extends StatelessWidget {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: MockData.dashboardMetrics.length,
+      itemCount: dashboard.metrics.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         crossAxisSpacing: 16,
@@ -145,9 +145,9 @@ class DashboardScreen extends StatelessWidget {
         childAspectRatio: aspectRatio,
       ),
       itemBuilder: (context, index) {
-        final metric = MockData.dashboardMetrics[index];
+        final metric = dashboard.metrics[index];
         final isPositive = metric.change.startsWith('+');
-        
+
         final iconData = switch (metric.icon) {
           'people' => Icons.people_alt_rounded,
           'analytics' => Icons.analytics_rounded,
@@ -156,11 +156,17 @@ class DashboardScreen extends StatelessWidget {
           _ => Icons.bar_chart_rounded,
         };
 
-        final Color iconColor = metric.iconColor ?? (switch (metric.icon) {
-          'people' => AppTheme.lightBlue,
-          'analytics' => AppTheme.purple,
-          _ => AppTheme.primary,
-        });
+        // Map the semantic tone to theme colors; fall back to the per-icon
+        // accent (same visual result as the old Color-carrying model).
+        final Color iconColor = switch (metric.tone) {
+          MetricTone.success => AppTheme.success,
+          MetricTone.warning => AppTheme.warning,
+          null => switch (metric.icon) {
+            'people' => AppTheme.lightBlue,
+            'analytics' => AppTheme.purple,
+            _ => AppTheme.primary,
+          },
+        };
 
         return Card(
           shape: RoundedRectangleBorder(
@@ -325,7 +331,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDiagnosisTrendsChart(BuildContext context) {
+  Widget _buildDiagnosisTrendsChart(BuildContext context, DashboardProvider dashboard) {
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.cardRadius),
@@ -358,7 +364,7 @@ class DashboardScreen extends StatelessWidget {
               width: double.infinity,
               color: Colors.transparent,
               child: CustomPaint(
-                painter: TrendsChartPainter(MockData.trendData),
+                painter: TrendsChartPainter(dashboard.trendData),
               ),
             ),
           ],
@@ -472,7 +478,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRecentActivity(BuildContext context) {
+  Widget _buildRecentActivity(BuildContext context, DashboardProvider dashboard) {
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.cardRadius),
@@ -497,7 +503,7 @@ class DashboardScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            ...MockData.recentActivities.map(
+            ...dashboard.recentActivities.map(
               (activity) => Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(14),

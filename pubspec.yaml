@@ -11,11 +11,16 @@ dependencies:
     sdk: flutter
   go_router: ^15.1.2
   provider: ^6.1.2
+  dio: ^5.7.0
+  drift: ^2.34.2
+  drift_flutter: ^0.3.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  drift_dev: ^2.34.5
+  build_runner: ^2.15.1
 
 flutter:
   uses-material-design: true

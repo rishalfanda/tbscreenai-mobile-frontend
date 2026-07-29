@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
-import 'package:myapp/data/mock_data.dart';
+import 'package:myapp/domain/models/patient.dart';
+import 'package:myapp/domain/repositories/patient_repository.dart';
 import 'package:myapp/features/shared/presentation/widgets/widgets.dart';
 
 class PatientsScreen extends StatefulWidget {
@@ -12,7 +14,22 @@ class PatientsScreen extends StatefulWidget {
 
 class _PatientsScreenState extends State<PatientsScreen> {
   final _searchController = TextEditingController();
-  PatientSummary? _selected = MockData.patients.first;
+  List<Patient> _patients = const [];
+  Patient? _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    // Mock repository resolves synchronously — list & selection are ready
+    // before the first frame, matching the pre-refactor behavior.
+    context.read<PatientRepository>().getPatients().then((patients) {
+      if (!mounted) return;
+      setState(() {
+        _patients = patients;
+        _selected ??= patients.isNotEmpty ? patients.first : null;
+      });
+    });
+  }
 
   @override
   void dispose() {
@@ -23,7 +40,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
   @override
   Widget build(BuildContext context) {
     final query = _searchController.text.toLowerCase();
-    final patients = MockData.patients
+    final patients = _patients
         .where((patient) => patient.name.toLowerCase().contains(query) || patient.id.toLowerCase().contains(query))
         .toList();
 
@@ -176,16 +193,9 @@ class _PatientsScreenState extends State<PatientsScreen> {
                                   style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                                 ),
                                 const SizedBox(height: 16),
-                                AspectRatio(
+                                const AspectRatio(
                                   aspectRatio: 16 / 9,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF111827),
-                                      borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: const Text('Latest chest X-ray preview', style: TextStyle(color: Colors.white70)),
-                                  ),
+                                  child: XrayPreview(),
                                 ),
                               ],
                             ),

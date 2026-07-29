@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
-import 'package:myapp/data/validation_mock.dart';
-
-// TODO: Replace mock data with GET /api/validation/cases
-// TODO: Replace local state update with POST /api/validation/cases/:id/agree
+import 'package:myapp/domain/models/validation_case.dart';
+import 'package:myapp/domain/repositories/validation_repository.dart';
+import 'package:myapp/features/shared/presentation/widgets/widgets.dart';
 
 class ValidationScreen extends StatefulWidget {
   const ValidationScreen({super.key});
@@ -13,7 +13,7 @@ class ValidationScreen extends StatefulWidget {
 }
 
 class _ValidationScreenState extends State<ValidationScreen> {
-  late List<ValidationCase> _cases;
+  List<ValidationCase> _cases = [];
   String? _selectedId;
   String _activeTab = "pending";
   String _searchQuery = "";
@@ -24,8 +24,15 @@ class _ValidationScreenState extends State<ValidationScreen> {
   @override
   void initState() {
     super.initState();
-    _cases = List.from(mockCases);
-    _autoSelectFirstPending();
+    // Mock repository resolves synchronously — cases & auto-selection are
+    // ready before the first frame, matching the pre-refactor behavior.
+    context.read<ValidationRepository>().getCases().then((cases) {
+      if (!mounted) return;
+      setState(() {
+        _cases = List.of(cases);
+        _autoSelectFirstPending();
+      });
+    });
   }
 
   @override
@@ -86,10 +93,15 @@ class _ValidationScreenState extends State<ValidationScreen> {
       return;
     }
 
+    final repository = context.read<ValidationRepository>();
     setState(() => _isSubmitting = true);
 
-    // Simulate artificial delay
-    await Future.delayed(const Duration(milliseconds: 500));
+    // Repository simulates the 500ms server latency.
+    await repository.submitValidation(
+      id: _selectedId!,
+      status: newStatus,
+      note: _noteController.text.trim(),
+    );
     if (!mounted) return;
 
     setState(() {
@@ -283,21 +295,13 @@ class _ValidationScreenState extends State<ValidationScreen> {
                           style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.navy),
                         ),
                         const SizedBox(height: 12),
-                        Container(
+                        SizedBox(
                           width: double.infinity,
                           height: 360,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0F1117),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Stack(
-                            children: [
-                              const Center(
-                                child: Text(
-                                  "CHEST X-RAY VIEW",
-                                  style: TextStyle(color: Colors.white24, fontWeight: FontWeight.bold),
-                                ),
-                              ),
+                          child: XrayPreview(
+                            label: "CHEST X-RAY VIEW",
+                            overlay: Stack(
+                              children: [
                               Positioned(
                                 top: 16,
                                 left: 16,
@@ -334,7 +338,8 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                   child: Text(_isHeatmapView ? "Original View" : "Heatmap View"),
                                 ),
                               ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(height: 16),

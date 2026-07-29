@@ -15,6 +15,35 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _isSubmitting = false;
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final auth = context.read<AuthProvider>();
+    setState(() => _isSubmitting = true);
+    try {
+      // Mock resolves synchronously (no visible spinner); Http awaits the
+      // backend and surfaces failures instead of navigating blindly.
+      await auth.login(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+      if (!mounted) return;
+      context.go('/dashboard');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Login gagal — periksa email/password atau koneksi server'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -179,16 +208,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ],
                             ),
                             child: ElevatedButton(
-                              onPressed: () {
-                                if (!_formKey.currentState!.validate()) {
-                                  return;
-                                }
-
-                                context.read<AuthProvider>().login(
-                                      email: _emailController.text.trim(),
-                                    );
-                                context.go('/dashboard');
-                              },
+                              onPressed: _isSubmitting ? null : _submit,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.cyan,
                                 foregroundColor: Colors.white,
@@ -197,13 +217,22 @@ class _LoginScreenState extends State<LoginScreen> {
                                   borderRadius: BorderRadius.circular(AppTheme.inputRadius),
                                 ),
                               ),
-                              child: const Text(
-                                'Sign In',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
+                              child: _isSubmitting
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2.5,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Sign In',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
                             ),
                           ),
                           const SizedBox(height: 32),

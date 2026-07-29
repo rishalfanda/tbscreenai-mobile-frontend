@@ -3,3 +3,4 @@ export 'app_card.dart';
 export 'empty_state.dart';
 export 'section_header.dart';
 export 'status_badge.dart';
+export 'xray_preview.dart';

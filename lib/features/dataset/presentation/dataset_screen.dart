@@ -1,8 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
-import 'package:myapp/data/dataset_mock.dart';
+import 'package:myapp/domain/models/dataset.dart';
+import 'package:myapp/domain/repositories/dataset_repository.dart';
 
 enum DatasetView { list, create, detail, edit }
+
+// === Section: Dataset table column metrics ===
+// Header and rows read the same constants so the two can never drift apart.
+const int _colName = 3;
+const int _colImages = 1;
+const int _colSize = 1;
+const int _colUpdated = 2;
+const int _colStatus = 1;
+const double _colGap = 16;
+// 4 actions × 48px touch target (CLAUDE.md: min 48×48 on tablet).
+const double _actionsWidth = 192;
 
 class DatasetScreen extends StatefulWidget {
   const DatasetScreen({super.key});
@@ -14,8 +27,19 @@ class DatasetScreen extends StatefulWidget {
 class _DatasetScreenState extends State<DatasetScreen> {
   DatasetView _currentView = DatasetView.list;
   DatasetModel? _selectedDataset;
-  final List<DatasetModel> _datasets = List.from(mockDatasets);
+  List<DatasetModel> _datasets = [];
   final _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Mock repository resolves synchronously — no loading flash. The local
+    // growable copy mirrors the old List.from(mockDatasets) behavior.
+    context.read<DatasetRepository>().getDatasets().then((datasets) {
+      if (!mounted) return;
+      setState(() => _datasets = List.of(datasets));
+    });
+  }
 
   void _navigate(DatasetView view, [DatasetModel? dataset]) {
     setState(() {
@@ -132,78 +156,17 @@ class _DatasetScreenState extends State<DatasetScreen> {
                 ),
                 child: Row(
                   children: const [
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        "DATASET NAME",
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.subtitleGrey,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      flex: 1,
-                      child: Text(
-                        "TOTAL IMAGES",
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.subtitleGrey,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      flex: 1,
-                      child: Text(
-                        "SIZE",
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.subtitleGrey,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      flex: 1,
-                      child: Text(
-                        "LAST UPDATED",
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.subtitleGrey,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      flex: 1,
-                      child: Text(
-                        "STATUS",
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.subtitleGrey,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      flex: 1,
-                      child: Text(
-                        "ACTIONS",
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.subtitleGrey,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
+                    Expanded(flex: _colName, child: _HeaderLabel("DATASET NAME")),
+                    SizedBox(width: _colGap),
+                    Expanded(flex: _colImages, child: _HeaderLabel("TOTAL IMAGES")),
+                    SizedBox(width: _colGap),
+                    Expanded(flex: _colSize, child: _HeaderLabel("SIZE")),
+                    SizedBox(width: _colGap),
+                    Expanded(flex: _colUpdated, child: _HeaderLabel("LAST UPDATED")),
+                    SizedBox(width: _colGap),
+                    Expanded(flex: _colStatus, child: _HeaderLabel("STATUS")),
+                    SizedBox(width: _colGap),
+                    SizedBox(width: _actionsWidth, child: _HeaderLabel("ACTIONS")),
                   ],
                 ),
               ),
@@ -226,7 +189,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
       child: Row(
         children: [
           Expanded(
-            flex: 2,
+            flex: _colName,
             child: Row(
               children: [
                 Container(
@@ -268,8 +231,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
               ],
             ),
           ),
+          const SizedBox(width: _colGap),
           Expanded(
-            flex: 1,
+            flex: _colImages,
             child: Text(
               "${dataset.totalImages}",
               style: const TextStyle(
@@ -278,8 +242,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
               ),
             ),
           ),
+          const SizedBox(width: _colGap),
           Expanded(
-            flex: 1,
+            flex: _colSize,
             child: Text(
               dataset.size,
               style: const TextStyle(
@@ -288,8 +253,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
               ),
             ),
           ),
+          const SizedBox(width: _colGap),
           Expanded(
-            flex: 1,
+            flex: _colUpdated,
             child: Text(
               dataset.lastUpdated,
               style: const TextStyle(
@@ -298,45 +264,59 @@ class _DatasetScreenState extends State<DatasetScreen> {
               ),
             ),
           ),
+          const SizedBox(width: _colGap),
           Expanded(
-            flex: 1,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: statusColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                dataset.status,
-                style: TextStyle(
-                  color: statusColor,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 11,
+            flex: _colStatus,
+            // Align keeps the chip at its intrinsic width — inside a bare
+            // Expanded it would stretch across the whole column.
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  dataset.status,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
                 ),
               ),
             ),
           ),
-          Expanded(
-            flex: 1,
-            child: Wrap(
-              spacing: 4,
+          const SizedBox(width: _colGap),
+          SizedBox(
+            width: _actionsWidth,
+            // Fixed width + Row (not Wrap): four 48px targets always fit on one
+            // line, so the delete icon can never drop to a second row.
+            child: Row(
               children: [
-                IconButton(
-                  onPressed: () => _navigate(DatasetView.detail, dataset),
-                  icon: const Icon(Icons.visibility_outlined, color: AppTheme.primary),
+                _RowAction(
+                  icon: Icons.visibility_outlined,
+                  color: AppTheme.primary,
                   tooltip: "View",
+                  onPressed: () => _navigate(DatasetView.detail, dataset),
                 ),
-                IconButton(
-                  onPressed: () => _navigate(DatasetView.edit, dataset),
-                  icon: const Icon(Icons.edit_outlined, color: AppTheme.navy),
+                _RowAction(
+                  icon: Icons.edit_outlined,
+                  color: AppTheme.navy,
                   tooltip: "Edit",
+                  onPressed: () => _navigate(DatasetView.edit, dataset),
                 ),
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(Icons.download_outlined, color: AppTheme.subtitleGrey),
+                _RowAction(
+                  icon: Icons.download_outlined,
+                  color: AppTheme.subtitleGrey,
                   tooltip: "Download",
+                  onPressed: () {},
                 ),
-                IconButton(
+                _RowAction(
+                  icon: Icons.delete_outline_rounded,
+                  color: AppTheme.error,
+                  tooltip: "Delete",
                   onPressed: () => _showConfirmDeleteDialog(
                     dataset.name,
                     () {
@@ -345,8 +325,6 @@ class _DatasetScreenState extends State<DatasetScreen> {
                       });
                     },
                   ),
-                  icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.error),
-                  tooltip: "Delete",
                 ),
               ],
             ),
@@ -1292,6 +1270,56 @@ class _DatasetScreenState extends State<DatasetScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Column header label for the dataset table.
+class _HeaderLabel extends StatelessWidget {
+  const _HeaderLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+        color: AppTheme.subtitleGrey,
+        letterSpacing: 0.5,
+      ),
+    );
+  }
+}
+
+/// Compact row action: a 48×48 touch target with a 20px icon, so four of them
+/// stay on a single line inside the fixed-width actions column.
+class _RowAction extends StatelessWidget {
+  const _RowAction({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onPressed,
+      icon: Icon(icon, color: color, size: 20),
+      tooltip: tooltip,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+      visualDensity: VisualDensity.compact,
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
+import 'package:myapp/features/shared/presentation/widgets/widgets.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 
 // === Section: Dark palette (Result screen only) ===
@@ -19,7 +20,14 @@ class ResultScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final diagnosis = context.watch<DiagnosisProvider>();
     final result = diagnosis.lastOutcome;
-    final isPositive = result?.isPositive ?? true;
+
+    // Safety: never render a verdict when no analysis has run. Falling back to
+    // a placeholder here would show a fabricated "TB Detected 85%" to a doctor.
+    if (result == null) {
+      return const _NoResultState();
+    }
+
+    final isPositive = result.isPositive;
 
     return ColoredBox(
       color: _bg,
@@ -67,24 +75,11 @@ class ResultScreen extends StatelessWidget {
                       child: Column(
                         children: [
                           // X-ray Image Card
-                          _DarkCard(
+                          const _DarkCard(
                             padding: EdgeInsets.zero,
                             child: AspectRatio(
                               aspectRatio: 16 / 9,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: Colors.black,
-                                  borderRadius:
-                                      BorderRadius.circular(AppTheme.cardRadius),
-                                ),
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.image_rounded,
-                                    size: 64,
-                                    color: Colors.white24,
-                                  ),
-                                ),
-                              ),
+                              child: XrayPreview(label: 'Citra X-ray dada'),
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -102,11 +97,11 @@ class ResultScreen extends StatelessWidget {
                                   children: [
                                     _summaryField('Name', diagnosis.patientName),
                                     _summaryField('Gender', diagnosis.gender),
-                                    _summaryField('Age', '${diagnosis.age ?? 0}'),
+                                    _summaryField('Age', diagnosis.age?.toString() ?? '-'),
                                     _summaryField(
-                                        'Height', '${diagnosis.heightCm ?? 0} cm'),
+                                        'Height', diagnosis.heightCm != null ? '${diagnosis.heightCm} cm' : '-'),
                                     _summaryField(
-                                        'Weight', '${diagnosis.weightKg ?? 0} kg'),
+                                        'Weight', diagnosis.weightKg != null ? '${diagnosis.weightKg} kg' : '-'),
                                     _summaryField(
                                       'BMI',
                                       diagnosis.bmi != null
@@ -240,7 +235,7 @@ class ResultScreen extends StatelessWidget {
                                     child: Column(
                                       children: [
                                         Text(
-                                          '${result?.confidence ?? 85}%',
+                                          '${result.confidence}%',
                                           style: const TextStyle(
                                             fontSize: 40,
                                             fontWeight: FontWeight.w800,
@@ -345,14 +340,14 @@ class ResultScreen extends StatelessWidget {
                                   children: [
                                     _analysisRow(
                                       'Analysis Date',
-                                      (result?.createdAt ?? DateTime.now())
+                                      result.createdAt
                                           .toString()
                                           .split(' ')[0],
                                     ),
                                     _analysisRow('Model Version',
-                                        result?.modelVersion ?? 'TBScreen v2.1.0'),
+                                        result.modelVersion),
                                     _analysisRow('Processing Time',
-                                        result?.processingTime ?? '2.8s'),
+                                        result.processingTime),
                                   ],
                                 ),
                               ],
@@ -477,6 +472,62 @@ class ResultScreen extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Shown when no analysis has been run yet. A medical screening app must not
+/// display a verdict it did not compute.
+class _NoResultState extends StatelessWidget {
+  const _NoResultState();
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: _bg,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.analytics_outlined, size: 72, color: _textLo),
+              const SizedBox(height: 24),
+              const Text(
+                'Belum ada hasil diagnosis',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: _textHi,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Unggah atau ambil citra X-ray dada, lalu jalankan analisis AI '
+                'untuk melihat hasilnya di sini.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 15, color: _textLo, height: 1.5),
+              ),
+              const SizedBox(height: 32),
+              FilledButton.icon(
+                onPressed: () => context.go('/diagnosis'),
+                icon: const Icon(Icons.biotech_rounded, size: 20),
+                label: const Text('Mulai Diagnosis'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 28, vertical: 18),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

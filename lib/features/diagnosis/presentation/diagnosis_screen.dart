@@ -31,6 +31,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
   String _tbHistory = 'History of TB';
   String _tbStatus = 'TB Status';
   String _modelType = 'Model Type';
+  String _modelVersion = 'Model Version';
 
   final List<String> _symptoms = [
     'Fever', 'Cough', 'Fatigue', 'Hemoptysis', 
@@ -87,7 +88,10 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
                       child: Form(
                         key: _formKey,
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          // stretch (not start): cards whose content is narrow —
+                          // Bacteriology, Other Tests — would otherwise shrink to
+                          // their content and look ragged next to the full-width ones.
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             _SectionCard(
                               title: 'Basic Information',
@@ -165,7 +169,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
                                       Expanded(
                                         child: _CustomDropdown(
                                           value: _comorbidity,
-                                          items: const ['Comorbidity', 'None', 'Diabetes', 'HIV', 'COPD'],
+                                          items: const ['Comorbidity', 'None', 'Diabetes Mellitus', 'HIV/AIDS', 'Other Immunocompromised Conditions'],
                                           onChanged: (v) => setState(() => _comorbidity = v!),
                                         ),
                                       ),
@@ -173,7 +177,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
                                       Expanded(
                                         child: _CustomDropdown(
                                           value: _smoking,
-                                          items: const ['Smoking Status', 'No', 'Former', 'Current'],
+                                          items: const ['Smoking Status', 'Never', 'Former', 'Current'],
                                           onChanged: (v) => setState(() => _smoking = v!),
                                         ),
                                       ),
@@ -204,7 +208,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
                                   Expanded(
                                     child: _CustomDropdown(
                                       value: _sunlightExposure,
-                                      items: const ['Direct Sunlight Exposure', 'Adequate', 'Limited', 'None'],
+                                      items: const ['Direct Sunlight Exposure', 'Yes', 'No'],
                                       onChanged: (v) => setState(() => _sunlightExposure = v!),
                                     ),
                                   ),
@@ -294,10 +298,24 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
                                     ],
                                   ),
                                   const SizedBox(height: 16),
-                                  _CustomDropdown(
-                                    value: _modelType,
-                                    items: const ['Model Type', 'Chest X-ray', 'Hybrid Model', 'Pediatric Model'],
-                                    onChanged: (v) => setState(() => _modelType = v!),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _CustomDropdown(
+                                          value: _modelType,
+                                          items: const ['Model Type', 'Disability', 'Non Disability'],
+                                          onChanged: (v) => setState(() => _modelType = v!),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: _CustomDropdown(
+                                          value: _modelVersion,
+                                          items: const ['Model Version', 'Version 1', 'Version 2', 'Version 3'],
+                                          onChanged: (v) => setState(() => _modelVersion = v!),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
@@ -503,6 +521,7 @@ class _CustomDropdown extends StatelessWidget {
   Widget build(BuildContext context) {
     return DropdownButtonFormField<String>(
       initialValue: value,
+      isExpanded: true,
       icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.black54),
       decoration: InputDecoration(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -515,7 +534,7 @@ class _CustomDropdown extends StatelessWidget {
           borderSide: const BorderSide(color: AppTheme.cyan, width: 1.5),
         ),
       ),
-      items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, style: TextStyle(color: s == items[0] ? AppTheme.textSecondary : AppTheme.navy, fontSize: 14)))).toList(),
+      items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: s == items[0] ? AppTheme.textSecondary : AppTheme.navy, fontSize: 14)))).toList(),
       onChanged: onChanged,
     );
   }

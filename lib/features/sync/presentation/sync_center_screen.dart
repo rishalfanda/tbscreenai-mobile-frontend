@@ -1,7 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
-import 'package:myapp/data/mock_data.dart';
+import 'package:myapp/data/offline/offline_sync_repository.dart';
+import 'package:myapp/data/sync/sync_engine.dart';
+import 'package:myapp/domain/models/model_version_info.dart';
+import 'package:myapp/domain/models/patient.dart';
+import 'package:myapp/domain/models/sync_summary.dart';
+import 'package:myapp/domain/repositories/sync_repository.dart';
 
 class SyncCenterScreen extends StatelessWidget {
   const SyncCenterScreen({super.key});
@@ -107,24 +113,41 @@ class _ModelUpdateCard extends StatefulWidget {
 class _ModelUpdateCardState extends State<_ModelUpdateCard> {
   _ModelSyncState _state = _ModelSyncState.idle;
   double _progress = 0.0;
-  String _currentVersion = MockData.modelInfo['currentVersion'] as String;
+  String _currentVersion = '';
+  ModelVersionInfo? _updateInfo;
   DateTime? _lastChecked;
-  Timer? _downloadTimer;
+  StreamSubscription<double>? _downloadSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // Mock repository resolves synchronously — version label is ready
+    // before the first frame.
+    context.read<SyncRepository>().getInstalledModelVersion().then((version) {
+      if (!mounted) return;
+      setState(() => _currentVersion = version);
+    });
+  }
 
   @override
   void dispose() {
-    _downloadTimer?.cancel();
+    _downloadSub?.cancel();
     super.dispose();
   }
 
   Future<void> _checkForUpdate() async {
+    final repository = context.read<SyncRepository>();
     setState(() {
       _state = _ModelSyncState.checking;
       _lastChecked = DateTime.now();
     });
-    await Future.delayed(const Duration(seconds: 2));
+    // Repository simulates the 2s server round-trip.
+    final info = await repository.checkForUpdate();
     if (!mounted) return;
-    setState(() => _state = _ModelSyncState.updateAvailable);
+    setState(() {
+      _updateInfo = info;
+      _state = _ModelSyncState.updateAvailable;
+    });
   }
 
   void _startDownload() {
@@ -132,22 +155,18 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       _state = _ModelSyncState.downloading;
       _progress = 0.0;
     });
-    _downloadTimer = Timer.periodic(const Duration(milliseconds: 300), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      setState(() => _progress += 0.05);
-      if (_progress >= 1.0) {
-        timer.cancel();
-        _onDownloadDone();
-      }
-    });
+    _downloadSub = context.read<SyncRepository>().downloadModel().listen(
+      (progress) {
+        if (!mounted) return;
+        setState(() => _progress = progress);
+      },
+      onDone: _onDownloadDone,
+    );
   }
 
   void _onDownloadDone() {
     if (!mounted) return;
-    final newVersion = MockData.modelInfo['latestVersion'] as String;
+    final newVersion = _updateInfo?.latestVersion ?? _currentVersion;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Model berhasil diperbarui ke $newVersion')),
     );
@@ -272,8 +291,9 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
   }
 
   Widget _buildUpdateAvailable(BuildContext context) {
-    final info = MockData.modelInfo;
-    final changelog = info['changelog'] as List<String>;
+    final info = _updateInfo;
+    if (info == null) return const SizedBox.shrink();
+    final changelog = info.changelog;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -287,9 +307,9 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         const SizedBox(height: AppTheme.sp16),
         // Info table
         _InfoRow('Versi Saat Ini', _currentVersion),
-        _InfoRow('Versi Baru', info['latestVersion'] as String),
-        _InfoRow('Ukuran File', info['fileSize'] as String),
-        _InfoRow('Tanggal Rilis', info['releaseDate'] as String),
+        _InfoRow('Versi Baru', info.latestVersion),
+        _InfoRow('Ukuran File', info.fileSize),
+        _InfoRow('Tanggal Rilis', info.releaseDate),
         const SizedBox(height: AppTheme.sp8),
         ExpansionTile(
           tilePadding: EdgeInsets.zero,
@@ -331,9 +351,9 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
   }
 
   Widget _buildDownloading() {
-    final fileSizeMB = double.tryParse(
-            (MockData.modelInfo['fileSize'] as String).replaceAll(' MB', '')) ??
-        47.2;
+    final fileSizeLabel = _updateInfo?.fileSize ?? '';
+    final fileSizeMB =
+        double.tryParse(fileSizeLabel.replaceAll(' MB', '')) ?? 47.2;
     final downloaded = (_progress * fileSizeMB).toStringAsFixed(1);
     final percent = (_progress * 100).toInt();
 
@@ -344,7 +364,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         const SizedBox(height: AppTheme.sp12),
         LinearProgressIndicator(value: _progress),
         const SizedBox(height: AppTheme.sp8),
-        Text('$percent% · $downloaded MB / ${MockData.modelInfo['fileSize']}',
+        Text('$percent% · $downloaded MB / $fileSizeLabel',
             style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
       ],
     );
@@ -418,11 +438,30 @@ class _DataBackupCardState extends State<_DataBackupCard> {
   final Set<String> _selectedIds = {};
   int _uploadedCount = 0;
   DateTime? _lastSyncDate;
-  Timer? _uploadTimer;
+  SyncSummary? _summary;
+  List<Patient> _backupCandidates = const [];
+  SyncReport? _report;
+  StreamSubscription<int>? _uploadSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // Mock repository resolves synchronously — summary & candidate list are
+    // ready before the first frame.
+    final repository = context.read<SyncRepository>();
+    repository.getSyncSummary().then((summary) {
+      if (!mounted) return;
+      setState(() => _summary = summary);
+    });
+    repository.getBackupCandidates().then((patients) {
+      if (!mounted) return;
+      setState(() => _backupCandidates = patients);
+    });
+  }
 
   @override
   void dispose() {
-    _uploadTimer?.cancel();
+    _uploadSub?.cancel();
     super.dispose();
   }
 
@@ -485,25 +524,29 @@ class _DataBackupCardState extends State<_DataBackupCard> {
   }
 
   void _startUpload() {
+    final repository = context.read<SyncRepository>();
     setState(() {
       _state = _DataSyncState.uploading;
       _uploadedCount = 0;
     });
-    _uploadTimer = Timer.periodic(const Duration(milliseconds: 800), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      setState(() => _uploadedCount++);
-      if (_uploadedCount >= _selectedIds.length) {
-        timer.cancel();
+    _uploadSub = repository.uploadPatients(_selectedIds.toList()).listen(
+      (count) {
         if (!mounted) return;
+        setState(() => _uploadedCount = count);
+      },
+      onDone: () {
+        if (!mounted) return;
+        // Offline repository reports the per-record verdict from the server;
+        // the mock has none, so the UI falls back to "all uploaded".
+        final report =
+            repository is OfflineSyncRepository ? repository.lastReport : null;
         setState(() {
           _state = _DataSyncState.done;
+          _report = report;
           _lastSyncDate = DateTime.now();
         });
-      }
-    });
+      },
+    );
   }
 
   String _formatDate(DateTime? dt) {
@@ -554,7 +597,8 @@ class _DataBackupCardState extends State<_DataBackupCard> {
   }
 
   Widget _buildIdle(BuildContext context) {
-    final summary = MockData.syncSummary;
+    final summary = _summary ??
+        const SyncSummary(totalPatients: 0, totalDiagnoses: 0, totalSizeMB: 0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -567,7 +611,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
         ),
         const SizedBox(height: AppTheme.sp12),
         Text(
-          '${summary['totalPatients']} Pasien · ${summary['totalDiagnoses']} Diagnosis · ~${summary['totalSizeMB']} MB',
+          '${summary.totalPatients} Pasien · ${summary.totalDiagnoses} Diagnosis · ~${summary.totalSizeMB} MB',
           style: const TextStyle(color: AppTheme.textSecondary),
         ),
         const SizedBox(height: AppTheme.sp4),
@@ -586,7 +630,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
   }
 
   Widget _buildSelection(BuildContext context) {
-    final patients = MockData.patients;
+    final patients = _backupCandidates;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -677,27 +721,81 @@ class _DataBackupCardState extends State<_DataBackupCard> {
   }
 
   Widget _buildDone(BuildContext context) {
+    final report = _report;
+    final hasProblems = report?.hasProblems ?? false;
+    final succeeded = report != null
+        ? report.applied + report.skipped
+        : _uploadedCount;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Row(
+        Row(
           children: [
-            Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 28),
-            SizedBox(width: AppTheme.sp8),
-            Text('Sinkronisasi selesai',
-                style: TextStyle(
-                    color: AppTheme.success, fontWeight: FontWeight.w700, fontSize: 15)),
+            Icon(
+              hasProblems
+                  ? Icons.warning_amber_rounded
+                  : Icons.check_circle_rounded,
+              color: hasProblems ? AppTheme.warning : AppTheme.success,
+              size: 28,
+            ),
+            const SizedBox(width: AppTheme.sp8),
+            Text(
+              hasProblems ? 'Sinkronisasi selesai sebagian' : 'Sinkronisasi selesai',
+              style: TextStyle(
+                color: hasProblems ? AppTheme.warning : AppTheme.success,
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: AppTheme.sp8),
-        Text('$_uploadedCount pasien berhasil diunggah',
+        Text('$succeeded pasien berhasil diunggah',
             style: const TextStyle(color: AppTheme.textSecondary)),
+        if (report != null && report.conflicts > 0) ...[
+          const SizedBox(height: AppTheme.sp12),
+          // Conflicts are never auto-resolved: the server holds a newer version
+          // of medical data, so a doctor must decide which one is correct.
+          Container(
+            padding: const EdgeInsets.all(AppTheme.sp12),
+            decoration: BoxDecoration(
+              color: AppTheme.warning.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.warning.withValues(alpha: 0.5)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.merge_type_rounded,
+                    color: AppTheme.warning, size: 20),
+                const SizedBox(width: AppTheme.sp8),
+                Expanded(
+                  child: Text(
+                    '${report.conflicts} data konflik — versi di server lebih baru. '
+                    'Data TIDAK ditimpa; perlu ditinjau manual oleh dokter.',
+                    style: const TextStyle(fontSize: 13, color: AppTheme.navy),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        if (report != null && report.failed > 0) ...[
+          const SizedBox(height: AppTheme.sp8),
+          Text(
+            '${report.failed} gagal terkirim — tetap tersimpan di antrean, '
+            'akan dicoba lagi saat sinkronisasi berikutnya.',
+            style: const TextStyle(fontSize: 13, color: AppTheme.error),
+          ),
+        ],
         const SizedBox(height: AppTheme.sp16),
         TextButton(
           onPressed: () => setState(() {
             _state = _DataSyncState.idle;
             _selectedIds.clear();
             _uploadedCount = 0;
+            _report = null;
           }),
           child: const Text('Selesai'),
         ),

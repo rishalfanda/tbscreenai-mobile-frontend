@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
-import 'package:myapp/data/validation_mock.dart';
+import 'package:myapp/domain/repositories/validation_repository.dart';
 
 /// Persistent navigation shell shared by all primary screens (ShellRoute).
 /// A fixed left NavRail keeps top-level destinations reachable at all times —
 /// the adaptive pattern for tablet / large screens.
-class AppShell extends StatelessWidget {
+class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.location, required this.child});
 
   final String location;
@@ -24,23 +25,42 @@ class AppShell extends StatelessWidget {
   ];
 
   @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  int _pendingCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Mock repository resolves synchronously, so the badge is correct on the
+    // very first frame — same as reading the static list pre-refactor.
+    context.read<ValidationRepository>().getCases().then((cases) {
+      final count = cases.where((c) => c.status == 'pending').length;
+      if (!mounted) return;
+      setState(() => _pendingCount = count);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final selectedIndex = _items.indexWhere((item) => location.startsWith(item.route));
-    final pendingCount = mockCases.where((c) => c.status == 'pending').length;
+    final selectedIndex =
+        AppShell._items.indexWhere((item) => widget.location.startsWith(item.route));
 
     return Scaffold(
       body: SafeArea(
         child: Row(
           children: [
             _NavRail(
-              items: _items,
+              items: AppShell._items,
               selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
-              pendingCount: pendingCount,
+              pendingCount: _pendingCount,
             ),
             Expanded(
               child: DecoratedBox(
                 decoration: const BoxDecoration(color: AppTheme.background),
-                child: child,
+                child: widget.child,
               ),
             ),
           ],
