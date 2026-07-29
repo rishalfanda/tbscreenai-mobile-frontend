@@ -5,6 +5,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:myapp/data/mock/mock_repositories.dart';
+import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/domain/repositories/auth_repository.dart';
 import 'package:myapp/domain/repositories/dataset_repository.dart';
 import 'package:myapp/domain/repositories/diagnosis_repository.dart';
@@ -59,7 +60,7 @@ void main() {
     });
 
     test('inference returns an in-range, self-consistent outcome', () async {
-      final outcome = await repo.runInference(imageLabel: 'xray.png');
+      final outcome = await repo.runInference(image: XrayImage.placeholder());
 
       expect(outcome.confidence, inInclusiveRange(0, 100));
       expect(outcome.processingTime, isNotEmpty);

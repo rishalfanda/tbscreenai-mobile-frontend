@@ -9,4 +9,5 @@ export 'sync_summary.dart';
 export 'system_status.dart';
 export 'trend_data_point.dart';
 export 'user_profile.dart';
+export 'xray_image.dart';
 export 'validation_case.dart';

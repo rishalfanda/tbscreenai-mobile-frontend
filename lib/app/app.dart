@@ -38,8 +38,8 @@ class TBScreenApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Toggle Mock ↔ Http/Offline per repository via --dart-define=USE_HTTP=true.
-    // Dashboard/Diagnosis/Validation/Dataset stay mock — their backend
-    // endpoints don't exist yet.
+    // Dashboard/Validation/Dataset stay mock — those backend endpoints do not
+    // exist yet. Diagnosis no longer does: /diagnoses/infer is live.
     const useHttp = AppConfig.useHttp;
     final db = database ?? AppDatabase();
 
@@ -89,7 +89,11 @@ class TBScreenApp extends StatelessWidget {
               : MockSyncRepository(),
         ),
         Provider<DashboardRepository>(create: (_) => MockDashboardRepository()),
-        Provider<DiagnosisRepository>(create: (_) => MockDiagnosisRepository()),
+        Provider<DiagnosisRepository>(
+          create: (c) => useHttp
+              ? HttpDiagnosisRepository(c.read<ApiClient>())
+              : MockDiagnosisRepository(),
+        ),
         Provider<ValidationRepository>(create: (_) => MockValidationRepository()),
         Provider<DatasetRepository>(create: (_) => MockDatasetRepository()),
         // === Section: State providers (depend on interfaces only) ===

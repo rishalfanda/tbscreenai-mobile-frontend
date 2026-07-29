@@ -382,7 +382,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
                                   children: [
                                     Expanded(
                                       child: OutlinedButton.icon(
-                                        onPressed: () => diagnosis.attachMockImage('uploaded_xray.png'),
+                                        onPressed: () => diagnosis.attachPlaceholderImage('uploaded_xray.png'),
                                         icon: const Icon(Icons.upload_file_rounded, size: 18),
                                         label: const Text('Upload X-ray Image'),
                                         style: OutlinedButton.styleFrom(

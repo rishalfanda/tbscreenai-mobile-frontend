@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:myapp/data/mock/mock_seed_data.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
+import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/domain/repositories/diagnosis_repository.dart';
 
 /// Mock AI inference — identical simulation to the old DiagnosisProvider:
@@ -15,7 +16,7 @@ class MockDiagnosisRepository implements DiagnosisRepository {
       SynchronousFuture(List.unmodifiable(MockSeedData.symptomOptions));
 
   @override
-  Future<DiagnosisOutcome> runInference({required String imageLabel}) async {
+  Future<DiagnosisOutcome> runInference({required XrayImage image}) async {
     // AI simulation per CLAUDE.md: Future.delayed(Duration(seconds: 3)).
     await Future<void>.delayed(const Duration(seconds: 3));
 

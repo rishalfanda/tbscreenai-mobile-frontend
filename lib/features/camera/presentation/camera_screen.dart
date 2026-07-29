@@ -155,7 +155,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   const SizedBox(width: 16),
                   FilledButton(
                     onPressed: () {
-                      context.read<DiagnosisProvider>().attachMockImage('captured_xray.png');
+                      context.read<DiagnosisProvider>().attachPlaceholderImage('captured_xray.png');
                       context.pop();
                     },
                     style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),

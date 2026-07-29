@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
+import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/domain/repositories/diagnosis_repository.dart';
 
 class DiagnosisProvider extends ChangeNotifier {
@@ -28,12 +29,21 @@ class DiagnosisProvider extends ChangeNotifier {
   String tbStatus = 'Suspected';
   String modelType = 'Non Disability';
   String modelVersion = 'Version 1';
-  String? imageLabel;
+  /// The attached X-ray, bytes and all — inference needs the image itself,
+  /// not a label describing one.
+  XrayImage? image;
   DiagnosisOutcome? lastOutcome;
   bool isRunning = false;
 
+  /// Set when the last inference attempt failed, so the UI can say what went
+  /// wrong instead of silently showing an empty Result screen.
+  String? lastError;
+
   Set<String> get symptoms => _symptoms;
-  bool get hasImage => imageLabel != null && imageLabel!.isNotEmpty;
+  bool get hasImage => image != null && !image!.isEmpty;
+
+  /// Filename of the attached image, for display.
+  String? get imageLabel => image?.filename;
   bool get requiresPediatricScore => age != null && age! < 18;
 
   double? get bmi {
@@ -102,35 +112,50 @@ class DiagnosisProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void attachMockImage(String label) {
-    imageLabel = label;
+  void attachImage(XrayImage attached) {
+    image = attached;
+    lastError = null;
     notifyListeners();
   }
 
+  /// Attaches a stand-in image so the flow is exercisable before a capture
+  /// plugin exists. The bytes are a real PNG, so the request the server sees
+  /// is the same shape a genuine capture will produce.
+  void attachPlaceholderImage(String filename) =>
+      attachImage(XrayImage.placeholder(filename));
+
   void clearImage() {
-    imageLabel = null;
+    image = null;
     notifyListeners();
   }
 
   Future<void> runDiagnosis() async {
-    if (!hasImage) {
+    final attached = image;
+    if (attached == null || attached.isEmpty) {
       return;
     }
 
     isRunning = true;
+    lastError = null;
     notifyListeners();
 
-    // Inference simulation (3s delay + randomized outcome) lives in the
-    // repository now — the provider only orchestrates state.
-    lastOutcome = await _diagnosisRepository.runInference(imageLabel: imageLabel!);
-
-    isRunning = false;
-    notifyListeners();
+    try {
+      lastOutcome = await _diagnosisRepository.runInference(image: attached);
+    } catch (error) {
+      // A failed inference must not leave the previous patient's result on
+      // screen — that is a misread waiting to happen.
+      lastOutcome = null;
+      lastError = 'Analisis gagal: periksa koneksi ke server dan coba lagi.';
+    } finally {
+      isRunning = false;
+      notifyListeners();
+    }
   }
 
   void resetForNewDiagnosis() {
-    imageLabel = null;
+    image = null;
     lastOutcome = null;
+    lastError = null;
     isRunning = false;
     notifyListeners();
   }
