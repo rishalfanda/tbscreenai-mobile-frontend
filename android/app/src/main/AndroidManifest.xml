@@ -1,4 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The app talks to the FastAPI backend for login, inference and sync, so
+         it needs this in every build type. Flutter's template declares INTERNET
+         only in src/debug and src/profile, where it exists for the tooling's own
+         hot-reload channel — which meant release builds shipped without network
+         access at all, and nothing caught it: `flutter test` and `flutter run`
+         are both debug. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
         android:label="myapp"
         android:name="${applicationName}"
