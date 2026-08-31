@@ -26,5 +26,5 @@ void main() {
       find.byType(DiagnosisScreen),
       matchesGoldenFile('goldens/diagnosis_form_1900x982.png'),
     );
-  });
+  }, tags: ['golden']);
 }

@@ -1,0 +1,3 @@
+# Golden pixels are platform-specific; CI compares them on Windows.
+tags:
+  golden:

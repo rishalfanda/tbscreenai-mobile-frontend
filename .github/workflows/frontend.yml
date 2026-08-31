@@ -34,4 +34,32 @@ jobs:
           git diff --exit-code -- lib/data/local/app_database.g.dart
 
       - name: Test
-        run: flutter test
+        # Pixel baselines were reviewed on Windows. Functional coverage stays
+        # on Linux; the golden job below is a separate, non-optional gate.
+        run: flutter test --exclude-tags golden
+
+  golden:
+    name: Windows golden tests
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.7"
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Compare reviewed Windows baselines
+        # Never regenerate baselines or relax the comparator in CI.
+        run: flutter test --tags golden
+
+      - name: Preserve golden failure images
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-golden-failures
+          path: test/failures/
+          if-no-files-found: ignore
