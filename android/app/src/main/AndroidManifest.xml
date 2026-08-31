@@ -6,17 +6,26 @@
          access at all, and nothing caught it: `flutter test` and `flutter run`
          are both debug. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
 
     <application
         android:label="myapp"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- The diagnosis workspace is landscape-first and its camera preview
+             already handles sizing/rotation. Prevent Android's large-screen
+             camera compatibility treatment from rotating the whole activity. -->
+        <property
+            android:name="android.window.PROPERTY_CAMERA_COMPAT_ALLOW_FORCE_ROTATION"
+            android:value="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
+            android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">

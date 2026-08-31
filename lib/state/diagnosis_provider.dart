@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:myapp/domain/models/diagnosis_draft.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/domain/repositories/diagnosis_repository.dart';
@@ -8,52 +9,65 @@ class DiagnosisProvider extends ChangeNotifier {
 
   final DiagnosisRepository _diagnosisRepository;
 
-  final Set<String> _symptoms = <String>{};
-
-  String patientName = '';
-  String gender = 'Female';
-  int? age;
-  double? heightCm;
-  double? weightKg;
-  String comorbidity = 'None';
-  String smoking = 'No';
-  String tbContact = 'Unknown';
-  int? pediatricScore;
-  String windowsPresence = 'Yes';
-  String sunlightExposure = 'Yes';
-  String bta = 'Negative';
-  String culture = 'Negative';
-  String xpert = 'Negative';
-  String igra = 'Negative';
-  String tbHistory = 'No';
-  String tbStatus = 'Suspected';
-  String modelType = 'Non Disability';
-  String modelVersion = 'Version 1';
-  /// The attached X-ray, bytes and all — inference needs the image itself,
-  /// not a label describing one.
-  XrayImage? image;
+  DiagnosisDraft _draft = const DiagnosisDraft();
   DiagnosisOutcome? lastOutcome;
   bool isRunning = false;
-
-  /// Set when the last inference attempt failed, so the UI can say what went
-  /// wrong instead of silently showing an empty Result screen.
   String? lastError;
 
-  Set<String> get symptoms => _symptoms;
+  DiagnosisDraft get draft => _draft;
+  Set<String> get symptoms => _draft.symptoms;
+  String get patientName => _draft.patientName;
+  String get gender => _draft.gender ?? 'Not provided';
+  int? get age => _draft.age;
+  double? get heightCm => _draft.heightCm;
+  double? get weightKg => _draft.weightKg;
+  String get comorbidity => _draft.comorbidity ?? 'Not provided';
+  String get smoking => _draft.smoking ?? 'Not provided';
+  String get tbContact => _draft.tbContact ?? 'Not provided';
+  int? get pediatricScore => _draft.pediatricScore;
+  String get windowsPresence => _draft.windowsPresence ?? 'Not provided';
+  String get sunlightExposure => _draft.sunlightExposure ?? 'Not provided';
+  String get bta => _draft.bta ?? 'Not provided';
+  String get culture => _draft.culture ?? 'Not provided';
+  String get xpert => _draft.xpert ?? 'Not provided';
+  String get igra => _draft.igra ?? 'Not provided';
+  String get tbHistory => _draft.tbHistory ?? 'Not provided';
+  String get tbStatus => _draft.tbStatus ?? 'Not provided';
+  String get modelType => _draft.modelType ?? 'Not provided';
+  String get modelVersion => lastOutcome?.modelVersion ?? 'Not available';
+  XrayImage? get image => _draft.image;
   bool get hasImage => image != null && !image!.isEmpty;
-
-  /// Filename of the attached image, for display.
   String? get imageLabel => image?.filename;
-  bool get requiresPediatricScore => age != null && age! < 18;
+  bool get requiresPediatricScore => _draft.requiresPediatricScore;
+  bool get canAnalyze => _draft.canAnalyze && !isRunning;
 
   double? get bmi {
-    if (heightCm == null || weightKg == null || heightCm == 0) {
-      return null;
-    }
-
+    if (heightCm == null || weightKg == null || heightCm == 0) return null;
     final heightM = heightCm! / 100;
     return weightKg! / (heightM * heightM);
   }
+
+  void updatePatientName(String value) =>
+      _replace(_draft.copyWith(patientName: value));
+
+  void updateGender(String? value) => _replace(_draft.copyWith(gender: value));
+
+  void updateAge(int? value) {
+    _replace(
+      _draft.copyWith(
+        age: value,
+        pediatricScore: value != null && value < 18
+            ? _draft.pediatricScore
+            : null,
+      ),
+    );
+  }
+
+  void updateHeight(double? value) =>
+      _replace(_draft.copyWith(heightCm: value));
+
+  void updateWeight(double? value) =>
+      _replace(_draft.copyWith(weightKg: value));
 
   void updateBasicInfo({
     required String name,
@@ -62,22 +76,49 @@ class DiagnosisProvider extends ChangeNotifier {
     required double? selectedHeight,
     required double? selectedWeight,
   }) {
-    patientName = name;
-    gender = selectedGender;
-    age = selectedAge;
-    heightCm = selectedHeight;
-    weightKg = selectedWeight;
-    notifyListeners();
+    _replace(
+      _draft.copyWith(
+        patientName: name,
+        gender: selectedGender,
+        age: selectedAge,
+        heightCm: selectedHeight,
+        weightKg: selectedWeight,
+        pediatricScore: selectedAge != null && selectedAge < 18
+            ? _draft.pediatricScore
+            : null,
+      ),
+    );
   }
 
   void toggleSymptom(String symptom, bool enabled) {
-    if (enabled) {
-      _symptoms.add(symptom);
-    } else {
-      _symptoms.remove(symptom);
-    }
-    notifyListeners();
+    final updated = Set<String>.of(_draft.symptoms);
+    enabled ? updated.add(symptom) : updated.remove(symptom);
+    _replace(_draft.copyWith(symptoms: updated));
   }
+
+  void updateComorbidity(String? value) =>
+      _replace(_draft.copyWith(comorbidity: value));
+  void updateSmoking(String? value) =>
+      _replace(_draft.copyWith(smoking: value));
+  void updateTbContact(String? value) =>
+      _replace(_draft.copyWith(tbContact: value));
+  void updatePediatricScore(int? value) =>
+      _replace(_draft.copyWith(pediatricScore: value));
+  void updateWindowsPresence(String? value) =>
+      _replace(_draft.copyWith(windowsPresence: value));
+  void updateSunlightExposure(String? value) =>
+      _replace(_draft.copyWith(sunlightExposure: value));
+  void updateBta(String? value) => _replace(_draft.copyWith(bta: value));
+  void updateCulture(String? value) =>
+      _replace(_draft.copyWith(culture: value));
+  void updateXpert(String? value) => _replace(_draft.copyWith(xpert: value));
+  void updateIgra(String? value) => _replace(_draft.copyWith(igra: value));
+  void updateTbHistory(String? value) =>
+      _replace(_draft.copyWith(tbHistory: value));
+  void updateTbStatus(String? value) =>
+      _replace(_draft.copyWith(tbStatus: value));
+  void updateModelType(String? value) =>
+      _replace(_draft.copyWith(modelType: value));
 
   void updateClinical({
     required String selectedComorbidity,
@@ -95,44 +136,42 @@ class DiagnosisProvider extends ChangeNotifier {
     required String selectedModelType,
     required String selectedModelVersion,
   }) {
-    comorbidity = selectedComorbidity;
-    smoking = selectedSmoking;
-    tbContact = selectedTbContact;
-    pediatricScore = selectedPediatricScore;
-    windowsPresence = selectedWindowsPresence;
-    sunlightExposure = selectedSunlightExposure;
-    bta = selectedBta;
-    culture = selectedCulture;
-    xpert = selectedXpert;
-    igra = selectedIgra;
-    tbHistory = selectedTbHistory;
-    tbStatus = selectedTbStatus;
-    modelType = selectedModelType;
-    modelVersion = selectedModelVersion;
-    notifyListeners();
+    _replace(
+      _draft.copyWith(
+        comorbidity: selectedComorbidity,
+        smoking: selectedSmoking,
+        tbContact: selectedTbContact,
+        pediatricScore: selectedPediatricScore,
+        windowsPresence: selectedWindowsPresence,
+        sunlightExposure: selectedSunlightExposure,
+        bta: selectedBta,
+        culture: selectedCulture,
+        xpert: selectedXpert,
+        igra: selectedIgra,
+        tbHistory: selectedTbHistory,
+        tbStatus: selectedTbStatus,
+        modelType: selectedModelType,
+      ),
+    );
   }
 
   void attachImage(XrayImage attached) {
-    image = attached;
     lastError = null;
-    notifyListeners();
+    _replace(_draft.copyWith(image: attached));
   }
 
-  /// Attaches a stand-in image so the flow is exercisable before a capture
-  /// plugin exists. The bytes are a real PNG, so the request the server sees
-  /// is the same shape a genuine capture will produce.
+  /// Demo-only helper kept for mock-flow tests. Production UI never calls it.
   void attachPlaceholderImage(String filename) =>
       attachImage(XrayImage.placeholder(filename));
 
-  void clearImage() {
-    image = null;
-    notifyListeners();
-  }
+  void clearImage() => _replace(_draft.copyWith(image: null));
 
-  Future<void> runDiagnosis() async {
+  Future<bool> runDiagnosis() async {
     final attached = image;
     if (attached == null || attached.isEmpty) {
-      return;
+      lastError = 'Select or capture a chest X-ray before analysis.';
+      notifyListeners();
+      return false;
     }
 
     isRunning = true;
@@ -141,11 +180,11 @@ class DiagnosisProvider extends ChangeNotifier {
 
     try {
       lastOutcome = await _diagnosisRepository.runInference(image: attached);
-    } catch (error) {
-      // A failed inference must not leave the previous patient's result on
-      // screen — that is a misread waiting to happen.
+      return true;
+    } catch (_) {
       lastOutcome = null;
-      lastError = 'Analisis gagal: periksa koneksi ke server dan coba lagi.';
+      lastError = 'Analysis failed. Check the server connection and try again.';
+      return false;
     } finally {
       isRunning = false;
       notifyListeners();
@@ -153,10 +192,15 @@ class DiagnosisProvider extends ChangeNotifier {
   }
 
   void resetForNewDiagnosis() {
-    image = null;
+    _draft = const DiagnosisDraft();
     lastOutcome = null;
     lastError = null;
     isRunning = false;
+    notifyListeners();
+  }
+
+  void _replace(DiagnosisDraft value) {
+    _draft = value;
     notifyListeners();
   }
 }

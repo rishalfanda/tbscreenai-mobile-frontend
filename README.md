@@ -8,10 +8,13 @@ X-ray, run an (simulated) AI analysis, review the result, validate the AI's
 prediction, manage training datasets, and sync the model — all from a single
 tablet-optimized interface.
 
-> **Project status: UI / Front-end only.** There is **no backend yet** — every
-> screen runs on hardcoded mock data, and AI / sync operations are simulated with
-> timed delays. The app is structured so a real API can be dropped in later without
-> reworking the UI. See the [Roadmap](#-roadmap).
+> **Current status (31 August 2026): technical demo with partial backend integration,
+> not a clinical release.** Default builds use mock repositories. With
+> `USE_HTTP=true`, auth and inference use HTTP while patients/sync use offline
+> repositories; dashboard, validation and datasets still use mocks.
+> See the [current handoff status](docs/handoff/STATUS_2026-08-31.md) for verified
+> changes and remaining limitations. Historical UI descriptions below are not
+> evidence of end-to-end persistence or clinical readiness.
 
 > 📘 **New here / non-developer?** A step-by-step, printable **Setup & Run Guide**
 > (clone from GitHub → run on your own computer or tablet → view the interface) is
@@ -49,7 +52,9 @@ tablet-optimized interface.
 - **[go_router](https://pub.dev/packages/go_router)** `^15.1.2` — routing via a `ShellRoute` that keeps the nav rail persistent
 - **[provider](https://pub.dev/packages/provider)** `^6.1.2` — state management (auth, dashboard filters, diagnosis flow)
 
-No networking, database, or cloud packages are used in this phase (see [Roadmap](#-roadmap)).
+- **Dio** — HTTP API client; **Drift / drift_flutter** — local database and offline queue.
+- **camera / image_picker** — real camera capture and gallery selection.
+- **crypto** — SHA-256 image checksum. Exact resolved versions are in `pubspec.lock`.
 
 ---
 
@@ -65,7 +70,7 @@ No networking, database, or cloud packages are used in this phase (see [Roadmap]
 
 ### Prerequisites
 
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) **3.x** (Dart `^3.11.4`)
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) **3.44.7** (the CI-pinned version; current dependencies require Dart >=3.12)
 - A browser (Chrome recommended) for the quickest preview, **or** an Android tablet / emulator
 
 Verify your setup:
@@ -78,8 +83,8 @@ flutter doctor
 ### Install
 
 ```bash
-git clone <your-repo-url>
-cd myapp
+git clone https://github.com/rishalfanda/tbscreenai-mobile-frontend.git
+cd tbscreenai-mobile-frontend
 flutter pub get
 ```
 
@@ -102,11 +107,23 @@ flutter devices          # find your device id
 flutter run -d <device>
 ```
 
-### Build a release
+**HTTP mode on Android emulator (requires a running local backend):**
+
+```bash
+flutter run -d emulator-5554 --dart-define=USE_HTTP=true --dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1
+```
+
+These are build-time settings, not remote config. HTTP mode does not remove all
+mock screens and is not sufficient to make a production-safe build.
+
+### Build a demo artifact
 
 ```bash
 flutter build web       # or: flutter build apk / appbundle
 ```
+
+Without explicit configuration these commands retain mock mode, even in release.
+Do not distribute them for clinical use; production flavor and safety gates remain open.
 
 ### Lint / analyze
 
@@ -134,9 +151,12 @@ the `AppShell` (persistent navigation rail).
 | `/account` | AccountScreen | ✅ | 7 |
 | `/camera` | CameraScreen | — (full screen) | — |
 
-**Primary flow:** `Login → Dashboard → Diagnosis → (Camera) → Result`, with
+**Primary flow:** `Login → Dashboard → Screening → (Camera) → Result`, with
 `Patients`, `Validation`, `Dataset`, `Sync`, and `Account` reachable any time from
 the rail.
+
+Internal route/class/API identifiers retain `diagnosis` for compatibility;
+user-facing terminology is screening.
 
 ---
 
@@ -151,10 +171,13 @@ lib/
 ├── core/
 │   ├── theme/app_theme.dart     # Colors, spacing, typography, component themes
 │   └── config/scroll_behavior.dart
-├── data/                        # Mock data (no backend in this phase)
-│   ├── mock_data.dart
-│   ├── dataset_mock.dart
-│   └── validation_mock.dart
+├── data/                        # Repository implementations
+│   ├── mock/
+│   ├── http/
+│   ├── local/
+│   ├── offline/
+│   └── sync/
+├── domain/                      # Models and repository contracts
 ├── state/                       # Provider ChangeNotifiers
 │   ├── auth_provider.dart
 │   ├── dashboard_provider.dart
@@ -179,30 +202,32 @@ lib/
 - **One screen = one file** under its feature's `presentation/` folder.
 - **Never hardcode hex** in a widget — use `AppTheme.*` tokens or `Theme.of(context)`.
 - Prefer `const` constructors; extract sub-widgets that grow beyond ~100 lines.
-- All mock data lives in `lib/data/` — swap these for API calls later.
+- Repository binding is configured in `lib/app/app.dart`; mock data lives in `lib/data/mock/`.
 
 ---
 
 ## 🧩 How the "AI" & "Sync" work today
 
-Because this is the UI phase, long-running operations are **simulated**:
+Default mock mode simulates long-running operations:
 
-- **AI diagnosis** → `Future.delayed(3s)` then a randomized mock outcome (`DiagnosisProvider`).
+- **AI screening** → a randomized outcome from `MockDiagnosisRepository`; this is not a clinical model result.
 - **Model update / data backup** → timed progress with mock version data (`SyncCenterScreen`).
 
-Each of these is isolated behind a provider or local state, so replacing the
-simulation with a real HTTP call is a localized change.
+In HTTP mode `HttpDiagnosisRepository` sends image bytes to `/diagnoses/infer`.
+Clinical form metadata is not yet submitted by that inference call. Camera and
+gallery supply real bytes; a real image alone does not make mock inference real.
 
 ---
 
 ## 🛣️ Roadmap
 
-- [ ] **Backend integration** — replace `lib/data/` mocks with a REST/GraphQL client.
-- [ ] Real chest X-ray AI inference endpoint.
-- [ ] Real authentication & session handling.
-- [ ] Persistent local storage / offline cache for true offline-first sync.
-- [ ] Real camera capture pipeline (the `camera` package) on device.
-- [ ] Automated widget/integration tests.
+- [x] Partial HTTP backend integration: auth, image inference, patient/sync repositories.
+- [x] Drift local storage and offline queue foundation.
+- [x] Real camera capture and gallery input.
+- [x] Unit/widget/golden tests (50 passing on 31 August 2026).
+- [ ] Non-mock clinical inference and full durable screening/validation flow verified end to end.
+- [ ] Production-safe auth/session/cache handling and reliable offline recovery.
+- [ ] Device integration tests and production flavor/release safety gates.
 
 > The two **companion roles** — *Admin RS* and *Super Admin* — are **separate web
 > repositories** and are not part of this app.

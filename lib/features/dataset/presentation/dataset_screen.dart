@@ -69,9 +69,13 @@ class _DatasetScreenState extends State<DatasetScreen> {
   }
 
   Widget _buildListView() {
-    final filtered = _datasets.where((d) =>
-      d.name.toLowerCase().contains(_searchController.text.toLowerCase())
-    ).toList();
+    final filtered = _datasets
+        .where(
+          (d) => d.name.toLowerCase().contains(
+            _searchController.text.toLowerCase(),
+          ),
+        )
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -92,9 +96,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
                 const SizedBox(height: 4),
                 Text(
                   "Manage and organize your training datasets",
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: AppTheme.subtitleGrey,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(color: AppTheme.subtitleGrey),
                 ),
               ],
             ),
@@ -148,25 +152,44 @@ class _DatasetScreenState extends State<DatasetScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.grey.shade50,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.cardRadius)),
-                  border: Border(bottom: BorderSide(color: AppTheme.borderLight)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(AppTheme.cardRadius),
+                  ),
+                  border: Border(
+                    bottom: BorderSide(color: AppTheme.borderLight),
+                  ),
                 ),
                 child: Row(
                   children: const [
-                    Expanded(flex: _colName, child: _HeaderLabel("DATASET NAME")),
+                    Expanded(
+                      flex: _colName,
+                      child: _HeaderLabel("DATASET NAME"),
+                    ),
                     SizedBox(width: _colGap),
-                    Expanded(flex: _colImages, child: _HeaderLabel("TOTAL IMAGES")),
+                    Expanded(
+                      flex: _colImages,
+                      child: _HeaderLabel("TOTAL IMAGES"),
+                    ),
                     SizedBox(width: _colGap),
                     Expanded(flex: _colSize, child: _HeaderLabel("SIZE")),
                     SizedBox(width: _colGap),
-                    Expanded(flex: _colUpdated, child: _HeaderLabel("LAST UPDATED")),
+                    Expanded(
+                      flex: _colUpdated,
+                      child: _HeaderLabel("LAST UPDATED"),
+                    ),
                     SizedBox(width: _colGap),
                     Expanded(flex: _colStatus, child: _HeaderLabel("STATUS")),
                     SizedBox(width: _colGap),
-                    SizedBox(width: _actionsWidth, child: _HeaderLabel("ACTIONS")),
+                    SizedBox(
+                      width: _actionsWidth,
+                      child: _HeaderLabel("ACTIONS"),
+                    ),
                   ],
                 ),
               ),
@@ -179,7 +202,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
   }
 
   Widget _buildDatasetRow(DatasetModel dataset) {
-    final statusColor = dataset.status == "ACTIVE" ? AppTheme.success : AppTheme.subtitleGrey;
+    final statusColor = dataset.status == "ACTIVE"
+        ? AppTheme.success
+        : AppTheme.subtitleGrey;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
@@ -199,7 +224,11 @@ class _DatasetScreenState extends State<DatasetScreen> {
                     color: AppTheme.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(Icons.folder_rounded, color: AppTheme.primary, size: 20),
+                  child: Icon(
+                    Icons.folder_rounded,
+                    color: AppTheme.primary,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -272,7 +301,10 @@ class _DatasetScreenState extends State<DatasetScreen> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(999),
@@ -317,14 +349,11 @@ class _DatasetScreenState extends State<DatasetScreen> {
                   icon: Icons.delete_outline_rounded,
                   color: AppTheme.error,
                   tooltip: "Delete",
-                  onPressed: () => _showConfirmDeleteDialog(
-                    dataset.name,
-                    () {
-                      setState(() {
-                        _datasets.removeWhere((d) => d.id == dataset.id);
-                      });
-                    },
-                  ),
+                  onPressed: () => _showConfirmDeleteDialog(dataset.name, () {
+                    setState(() {
+                      _datasets.removeWhere((d) => d.id == dataset.id);
+                    });
+                  }),
                 ),
               ],
             ),
@@ -357,7 +386,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
                       side: const BorderSide(color: AppTheme.borderLight),
                       foregroundColor: AppTheme.navy,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.inputRadius,
+                        ),
                       ),
                     ),
                   ),
@@ -386,23 +417,39 @@ class _DatasetScreenState extends State<DatasetScreen> {
                         controller: nameController,
                         decoration: InputDecoration(
                           labelText: "Dataset Name",
-                          labelStyle: const TextStyle(color: AppTheme.subtitleGrey),
+                          labelStyle: const TextStyle(
+                            color: AppTheme.subtitleGrey,
+                          ),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.borderLight),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.borderLight,
+                            ),
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.borderLight),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.borderLight,
+                            ),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.primary,
+                              width: 2,
+                            ),
                           ),
                         ),
-                        validator: (value) => value?.isEmpty == true ? "Required" : null,
+                        validator: (value) =>
+                            value?.isEmpty == true ? "Required" : null,
                       ),
                       const SizedBox(height: 24),
                       TextFormField(
@@ -411,20 +458,35 @@ class _DatasetScreenState extends State<DatasetScreen> {
                         decoration: InputDecoration(
                           labelText: "Description",
                           alignLabelWithHint: true,
-                          labelStyle: const TextStyle(color: AppTheme.subtitleGrey),
+                          labelStyle: const TextStyle(
+                            color: AppTheme.subtitleGrey,
+                          ),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.borderLight),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.borderLight,
+                            ),
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.borderLight),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.borderLight,
+                            ),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.primary,
+                              width: 2,
+                            ),
                           ),
                         ),
                       ),
@@ -433,26 +495,44 @@ class _DatasetScreenState extends State<DatasetScreen> {
                         initialValue: selectedStatus,
                         decoration: InputDecoration(
                           labelText: "Status",
-                          labelStyle: const TextStyle(color: AppTheme.subtitleGrey),
+                          labelStyle: const TextStyle(
+                            color: AppTheme.subtitleGrey,
+                          ),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.borderLight),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.borderLight,
+                            ),
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.borderLight),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.borderLight,
+                            ),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.primary,
+                              width: 2,
+                            ),
                           ),
                         ),
                         items: const ["ACTIVE", "ARCHIVED"]
-                            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                            .map(
+                              (e) => DropdownMenuItem(value: e, child: Text(e)),
+                            )
                             .toList(),
-                        onChanged: (value) => setFormState(() => selectedStatus = value!),
+                        onChanged: (value) =>
+                            setFormState(() => selectedStatus = value!),
                       ),
                       const SizedBox(height: 32),
                       Row(
@@ -461,10 +541,14 @@ class _DatasetScreenState extends State<DatasetScreen> {
                           OutlinedButton(
                             onPressed: () => _navigate(DatasetView.list),
                             style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: AppTheme.borderLight),
+                              side: const BorderSide(
+                                color: AppTheme.borderLight,
+                              ),
                               foregroundColor: AppTheme.navy,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.inputRadius,
+                                ),
                               ),
                             ),
                             child: const Text("Cancel"),
@@ -479,7 +563,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
                                   description: descController.text,
                                   totalImages: 0,
                                   size: "0 B",
-                                  lastUpdated: DateTime.now().toString().split(' ')[0],
+                                  lastUpdated: DateTime.now().toString().split(
+                                    ' ',
+                                  )[0],
                                   status: selectedStatus,
                                   images: const [],
                                 );
@@ -493,7 +579,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
                               backgroundColor: AppTheme.primary,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.inputRadius,
+                                ),
                               ),
                             ),
                             child: const Text("Create Dataset"),
@@ -514,7 +602,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
   Widget _buildDetailView() {
     if (_selectedDataset == null) return const SizedBox.shrink();
     final dataset = _selectedDataset!;
-    final statusColor = dataset.status == "ACTIVE" ? AppTheme.success : AppTheme.subtitleGrey;
+    final statusColor = dataset.status == "ACTIVE"
+        ? AppTheme.success
+        : AppTheme.subtitleGrey;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -588,7 +678,11 @@ class _DatasetScreenState extends State<DatasetScreen> {
                             color: AppTheme.primary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Icon(Icons.folder_rounded, color: AppTheme.primary, size: 24),
+                          child: Icon(
+                            Icons.folder_rounded,
+                            color: AppTheme.primary,
+                            size: 24,
+                          ),
                         ),
                         const SizedBox(width: 16),
                         Column(
@@ -598,14 +692,20 @@ class _DatasetScreenState extends State<DatasetScreen> {
                               children: [
                                 Text(
                                   dataset.name,
-                                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    color: AppTheme.navy,
-                                  ),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineMedium
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        color: AppTheme.navy,
+                                      ),
                                 ),
                                 const SizedBox(width: 12),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: statusColor.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(999),
@@ -740,7 +840,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
           itemCount: dataset.images.length,
           itemBuilder: (context, index) {
             final image = dataset.images[index];
-            final diagColor = image.diagnosis == "Positive / TBC" ? AppTheme.error : AppTheme.success;
+            final diagColor = image.diagnosis == "Positive / TBC"
+                ? AppTheme.error
+                : AppTheme.success;
             return Card(
               elevation: 0,
               shape: RoundedRectangleBorder(
@@ -756,9 +858,15 @@ class _DatasetScreenState extends State<DatasetScreen> {
                         child: Container(
                           decoration: BoxDecoration(
                             color: Colors.grey.shade100,
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(16),
+                            ),
                           ),
-                          child: const Icon(Icons.image_outlined, size: 48, color: AppTheme.subtitleGrey),
+                          child: const Icon(
+                            Icons.image_outlined,
+                            size: 48,
+                            color: AppTheme.subtitleGrey,
+                          ),
                         ),
                       ),
                       Padding(
@@ -790,7 +898,10 @@ class _DatasetScreenState extends State<DatasetScreen> {
                     bottom: 80,
                     left: 12,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: diagColor,
                         borderRadius: BorderRadius.circular(8),
@@ -809,32 +920,38 @@ class _DatasetScreenState extends State<DatasetScreen> {
                     top: 8,
                     right: 8,
                     child: IconButton(
-                      icon: const Icon(Icons.close_rounded, color: Colors.white),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                      ),
                       style: IconButton.styleFrom(
                         backgroundColor: AppTheme.error,
                       ),
-                      onPressed: () => _showConfirmDeleteDialog(
-                        image.code,
-                        () {
-                          setState(() {
-                            final index = _datasets.indexWhere((d) => d.id == dataset.id);
-                            if (index != -1) {
-                              final updated = _datasets[index].images.where((i) => i.code != image.code).toList();
-                              _datasets[index] = DatasetModel(
-                                id: _datasets[index].id,
-                                name: _datasets[index].name,
-                                description: _datasets[index].description,
-                                totalImages: updated.length,
-                                size: _datasets[index].size,
-                                lastUpdated: DateTime.now().toString().split(' ')[0],
-                                status: _datasets[index].status,
-                                images: updated,
-                              );
-                              _selectedDataset = _datasets[index];
-                            }
-                          });
-                        },
-                      ),
+                      onPressed: () => _showConfirmDeleteDialog(image.code, () {
+                        setState(() {
+                          final index = _datasets.indexWhere(
+                            (d) => d.id == dataset.id,
+                          );
+                          if (index != -1) {
+                            final updated = _datasets[index].images
+                                .where((i) => i.code != image.code)
+                                .toList();
+                            _datasets[index] = DatasetModel(
+                              id: _datasets[index].id,
+                              name: _datasets[index].name,
+                              description: _datasets[index].description,
+                              totalImages: updated.length,
+                              size: _datasets[index].size,
+                              lastUpdated: DateTime.now().toString().split(
+                                ' ',
+                              )[0],
+                              status: _datasets[index].status,
+                              images: updated,
+                            );
+                            _selectedDataset = _datasets[index];
+                          }
+                        });
+                      }),
                     ),
                   ),
                 ],
@@ -871,7 +988,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
                       side: const BorderSide(color: AppTheme.borderLight),
                       foregroundColor: AppTheme.navy,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.inputRadius,
+                        ),
                       ),
                     ),
                   ),
@@ -900,23 +1019,39 @@ class _DatasetScreenState extends State<DatasetScreen> {
                         controller: nameController,
                         decoration: InputDecoration(
                           labelText: "Dataset Name",
-                          labelStyle: const TextStyle(color: AppTheme.subtitleGrey),
+                          labelStyle: const TextStyle(
+                            color: AppTheme.subtitleGrey,
+                          ),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.borderLight),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.borderLight,
+                            ),
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.borderLight),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.borderLight,
+                            ),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.primary,
+                              width: 2,
+                            ),
                           ),
                         ),
-                        validator: (value) => value?.isEmpty == true ? "Required" : null,
+                        validator: (value) =>
+                            value?.isEmpty == true ? "Required" : null,
                       ),
                       const SizedBox(height: 24),
                       TextFormField(
@@ -925,20 +1060,35 @@ class _DatasetScreenState extends State<DatasetScreen> {
                         decoration: InputDecoration(
                           labelText: "Description",
                           alignLabelWithHint: true,
-                          labelStyle: const TextStyle(color: AppTheme.subtitleGrey),
+                          labelStyle: const TextStyle(
+                            color: AppTheme.subtitleGrey,
+                          ),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.borderLight),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.borderLight,
+                            ),
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.borderLight),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.borderLight,
+                            ),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.primary,
+                              width: 2,
+                            ),
                           ),
                         ),
                       ),
@@ -947,38 +1097,61 @@ class _DatasetScreenState extends State<DatasetScreen> {
                         initialValue: selectedStatus,
                         decoration: InputDecoration(
                           labelText: "Status",
-                          labelStyle: const TextStyle(color: AppTheme.subtitleGrey),
+                          labelStyle: const TextStyle(
+                            color: AppTheme.subtitleGrey,
+                          ),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.borderLight),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.borderLight,
+                            ),
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.borderLight),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.borderLight,
+                            ),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                            borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.inputRadius,
+                            ),
+                            borderSide: const BorderSide(
+                              color: AppTheme.primary,
+                              width: 2,
+                            ),
                           ),
                         ),
                         items: const ["ACTIVE", "ARCHIVED"]
-                            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                            .map(
+                              (e) => DropdownMenuItem(value: e, child: Text(e)),
+                            )
                             .toList(),
-                        onChanged: (value) => setFormState(() => selectedStatus = value!),
+                        onChanged: (value) =>
+                            setFormState(() => selectedStatus = value!),
                       ),
                       const SizedBox(height: 32),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           OutlinedButton(
-                            onPressed: () => _navigate(DatasetView.detail, dataset),
+                            onPressed: () =>
+                                _navigate(DatasetView.detail, dataset),
                             style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: AppTheme.borderLight),
+                              side: const BorderSide(
+                                color: AppTheme.borderLight,
+                              ),
                               foregroundColor: AppTheme.navy,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.inputRadius,
+                                ),
                               ),
                             ),
                             child: const Text("Cancel"),
@@ -987,7 +1160,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
                           FilledButton(
                             onPressed: () {
                               if (formKey.currentState!.validate()) {
-                                final index = _datasets.indexWhere((d) => d.id == dataset.id);
+                                final index = _datasets.indexWhere(
+                                  (d) => d.id == dataset.id,
+                                );
                                 if (index != -1) {
                                   setState(() {
                                     _datasets[index] = DatasetModel(
@@ -996,13 +1171,18 @@ class _DatasetScreenState extends State<DatasetScreen> {
                                       description: descController.text,
                                       totalImages: dataset.totalImages,
                                       size: dataset.size,
-                                      lastUpdated: DateTime.now().toString().split(' ')[0],
+                                      lastUpdated: DateTime.now()
+                                          .toString()
+                                          .split(' ')[0],
                                       status: selectedStatus,
                                       images: dataset.images,
                                     );
                                     _selectedDataset = _datasets[index];
                                   });
-                                  _navigate(DatasetView.detail, _datasets[index]);
+                                  _navigate(
+                                    DatasetView.detail,
+                                    _datasets[index],
+                                  );
                                 }
                               }
                             },
@@ -1010,7 +1190,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
                               backgroundColor: AppTheme.primary,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.inputRadius,
+                                ),
                               ),
                             ),
                             child: const Text("Save Changes"),
@@ -1045,7 +1227,11 @@ class _DatasetScreenState extends State<DatasetScreen> {
                   color: AppTheme.error.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: const Icon(Icons.delete_outline_rounded, size: 40, color: AppTheme.error),
+                child: const Icon(
+                  Icons.delete_outline_rounded,
+                  size: 40,
+                  color: AppTheme.error,
+                ),
               ),
               const SizedBox(height: 24),
               Text(
@@ -1059,10 +1245,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
               const SizedBox(height: 12),
               Text(
                 "Apakah Anda yakin ingin menghapus $itemName? Tindakan ini tidak dapat dibatalkan.",
-                style: TextStyle(
-                  color: AppTheme.subtitleGrey,
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: AppTheme.subtitleGrey, fontSize: 14),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
@@ -1075,7 +1258,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
                         side: const BorderSide(color: AppTheme.borderLight),
                         foregroundColor: AppTheme.navy,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.inputRadius,
+                          ),
                         ),
                       ),
                       child: const Text("Tidak"),
@@ -1092,7 +1277,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
                         backgroundColor: AppTheme.error,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.inputRadius,
+                          ),
                         ),
                       ),
                       child: const Text("Ya, Hapus"),
@@ -1117,7 +1304,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           title: const Center(child: Text("Upload Image")),
           content: Padding(
             padding: const EdgeInsets.all(24),
@@ -1130,14 +1319,22 @@ class _DatasetScreenState extends State<DatasetScreen> {
                     width: double.infinity,
                     height: 200,
                     decoration: BoxDecoration(
-                      border: Border.all(color: AppTheme.borderLight, width: 2, style: BorderStyle.solid),
+                      border: Border.all(
+                        color: AppTheme.borderLight,
+                        width: 2,
+                        style: BorderStyle.solid,
+                      ),
                       borderRadius: BorderRadius.circular(16),
                       color: Colors.grey.shade50,
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.cloud_upload_outlined, size: 64, color: AppTheme.subtitleGrey),
+                        Icon(
+                          Icons.cloud_upload_outlined,
+                          size: 64,
+                          color: AppTheme.subtitleGrey,
+                        ),
                         const SizedBox(height: 16),
                         Text(
                           "Click to upload or drag and drop",
@@ -1161,27 +1358,41 @@ class _DatasetScreenState extends State<DatasetScreen> {
                   DropdownButtonFormField<String>(
                     initialValue: selectedDiagnosis,
                     decoration: InputDecoration(
-                      labelText: "Diagnosis",
+                      labelText: "Screening Result",
                       labelStyle: const TextStyle(color: AppTheme.subtitleGrey),
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                        borderSide: const BorderSide(color: AppTheme.borderLight),
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.inputRadius,
+                        ),
+                        borderSide: const BorderSide(
+                          color: AppTheme.borderLight,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                        borderSide: const BorderSide(color: AppTheme.borderLight),
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.inputRadius,
+                        ),
+                        borderSide: const BorderSide(
+                          color: AppTheme.borderLight,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                        borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.inputRadius,
+                        ),
+                        borderSide: const BorderSide(
+                          color: AppTheme.primary,
+                          width: 2,
+                        ),
                       ),
                     ),
                     items: const ["Positive / TBC", "Negative / Normal"]
                         .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                         .toList(),
-                    onChanged: (value) => setDialogState(() => selectedDiagnosis = value!),
+                    onChanged: (value) =>
+                        setDialogState(() => selectedDiagnosis = value!),
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
@@ -1193,19 +1404,33 @@ class _DatasetScreenState extends State<DatasetScreen> {
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                        borderSide: const BorderSide(color: AppTheme.borderLight),
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.inputRadius,
+                        ),
+                        borderSide: const BorderSide(
+                          color: AppTheme.borderLight,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                        borderSide: const BorderSide(color: AppTheme.borderLight),
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.inputRadius,
+                        ),
+                        borderSide: const BorderSide(
+                          color: AppTheme.borderLight,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                        borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.inputRadius,
+                        ),
+                        borderSide: const BorderSide(
+                          color: AppTheme.primary,
+                          width: 2,
+                        ),
                       ),
                     ),
-                    validator: (value) => value?.isEmpty == true ? "Required" : null,
+                    validator: (value) =>
+                        value?.isEmpty == true ? "Required" : null,
                   ),
                   const SizedBox(height: 32),
                   Row(
@@ -1217,7 +1442,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
                             side: const BorderSide(color: AppTheme.borderLight),
                             foregroundColor: AppTheme.navy,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                              borderRadius: BorderRadius.circular(
+                                AppTheme.inputRadius,
+                              ),
                             ),
                           ),
                           child: const Text("Cancel"),
@@ -1230,21 +1457,31 @@ class _DatasetScreenState extends State<DatasetScreen> {
                             if (formKey.currentState!.validate()) {
                               final newImage = DatasetImage(
                                 code: codeController.text,
-                                addedDate: DateTime.now().toString().split(' ')[0],
+                                addedDate: DateTime.now().toString().split(
+                                  ' ',
+                                )[0],
                                 diagnosis: selectedDiagnosis,
                               );
-                              final index = _datasets.indexWhere((d) => d.id == _selectedDataset!.id);
+                              final index = _datasets.indexWhere(
+                                (d) => d.id == _selectedDataset!.id,
+                              );
                               if (index != -1) {
                                 setState(() {
                                   _datasets[index] = DatasetModel(
                                     id: _datasets[index].id,
                                     name: _datasets[index].name,
                                     description: _datasets[index].description,
-                                    totalImages: _datasets[index].totalImages + 1,
+                                    totalImages:
+                                        _datasets[index].totalImages + 1,
                                     size: _datasets[index].size,
-                                    lastUpdated: DateTime.now().toString().split(' ')[0],
+                                    lastUpdated: DateTime.now()
+                                        .toString()
+                                        .split(' ')[0],
                                     status: _datasets[index].status,
-                                    images: [..._datasets[index].images, newImage],
+                                    images: [
+                                      ..._datasets[index].images,
+                                      newImage,
+                                    ],
                                   );
                                   _selectedDataset = _datasets[index];
                                 });
@@ -1256,7 +1493,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
                             backgroundColor: AppTheme.primary,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                              borderRadius: BorderRadius.circular(
+                                AppTheme.inputRadius,
+                              ),
                             ),
                           ),
                           child: const Text("Upload Image"),

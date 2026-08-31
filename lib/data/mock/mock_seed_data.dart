@@ -17,7 +17,7 @@ class MockSeedData {
       icon: 'people',
     ),
     DashboardMetric(
-      title: 'Total Diagnoses',
+      title: 'Total Screenings',
       value: '3,567',
       change: '+8%',
       icon: 'analytics',
@@ -116,7 +116,11 @@ class MockSeedData {
       status: 'Positive',
       confidence: 96,
       lastVisit: '2026-04-14',
-      history: ['Initial screening completed', 'Xpert positive', 'Follow-up scheduled'],
+      history: [
+        'Initial screening completed',
+        'Xpert positive',
+        'Follow-up scheduled',
+      ],
     ),
     Patient(
       id: 'TB000002',
@@ -193,28 +197,75 @@ class MockSeedData {
   // === Section: Dataset ===
 
   static const datasetRecords = <DatasetRecord>[
-    DatasetRecord(date: '2026-04-15', patientId: 'TB000001', image: 'xray_001.png', status: 'Labeled'),
-    DatasetRecord(date: '2026-04-15', patientId: 'TB000002', image: 'xray_002.png', status: 'Pending'),
-    DatasetRecord(date: '2026-04-14', patientId: 'TB000003', image: 'xray_003.png', status: 'Reviewed'),
-    DatasetRecord(date: '2026-04-14', patientId: 'TB000004', image: 'xray_004.png', status: 'Labeled'),
-    DatasetRecord(date: '2026-04-13', patientId: 'TB000005', image: 'xray_005.png', status: 'Pending'),
-    DatasetRecord(date: '2026-04-12', patientId: 'TB000006', image: 'xray_006.png', status: 'Reviewed'),
+    DatasetRecord(
+      date: '2026-04-15',
+      patientId: 'TB000001',
+      image: 'xray_001.png',
+      status: 'Labeled',
+    ),
+    DatasetRecord(
+      date: '2026-04-15',
+      patientId: 'TB000002',
+      image: 'xray_002.png',
+      status: 'Pending',
+    ),
+    DatasetRecord(
+      date: '2026-04-14',
+      patientId: 'TB000003',
+      image: 'xray_003.png',
+      status: 'Reviewed',
+    ),
+    DatasetRecord(
+      date: '2026-04-14',
+      patientId: 'TB000004',
+      image: 'xray_004.png',
+      status: 'Labeled',
+    ),
+    DatasetRecord(
+      date: '2026-04-13',
+      patientId: 'TB000005',
+      image: 'xray_005.png',
+      status: 'Pending',
+    ),
+    DatasetRecord(
+      date: '2026-04-12',
+      patientId: 'TB000006',
+      image: 'xray_006.png',
+      status: 'Reviewed',
+    ),
   ];
 
   static const datasets = <DatasetModel>[
     DatasetModel(
       id: 'DS001',
       name: 'TB_Screening_Adults_2026',
-      description: 'Primary dataset for adult TB screening containing verified X-rays.',
+      description:
+          'Primary dataset for adult TB screening containing verified X-rays.',
       totalImages: 1247,
       size: '1.2 GB',
       lastUpdated: '2026-04-15',
       status: 'ACTIVE',
       images: [
-        DatasetImage(code: 'XRAY-7721', addedDate: '2026-04-01', diagnosis: 'Positive / TBC'),
-        DatasetImage(code: 'XRAY-7722', addedDate: '2026-04-02', diagnosis: 'Negative / Normal'),
-        DatasetImage(code: 'XRAY-7723', addedDate: '2026-04-03', diagnosis: 'Positive / TBC'),
-        DatasetImage(code: 'XRAY-7724', addedDate: '2026-04-04', diagnosis: 'Negative / Normal'),
+        DatasetImage(
+          code: 'XRAY-7721',
+          addedDate: '2026-04-01',
+          diagnosis: 'Positive / TBC',
+        ),
+        DatasetImage(
+          code: 'XRAY-7722',
+          addedDate: '2026-04-02',
+          diagnosis: 'Negative / Normal',
+        ),
+        DatasetImage(
+          code: 'XRAY-7723',
+          addedDate: '2026-04-03',
+          diagnosis: 'Positive / TBC',
+        ),
+        DatasetImage(
+          code: 'XRAY-7724',
+          addedDate: '2026-04-04',
+          diagnosis: 'Negative / Normal',
+        ),
       ],
     ),
     DatasetModel(
@@ -226,8 +277,16 @@ class MockSeedData {
       lastUpdated: '2025-11-20',
       status: 'ACTIVE',
       images: [
-        DatasetImage(code: 'XRAY-5501', addedDate: '2025-11-15', diagnosis: 'Negative / Normal'),
-        DatasetImage(code: 'XRAY-5502', addedDate: '2025-11-16', diagnosis: 'Positive / TBC'),
+        DatasetImage(
+          code: 'XRAY-5501',
+          addedDate: '2025-11-15',
+          diagnosis: 'Negative / Normal',
+        ),
+        DatasetImage(
+          code: 'XRAY-5502',
+          addedDate: '2025-11-16',
+          diagnosis: 'Positive / TBC',
+        ),
       ],
     ),
     DatasetModel(
@@ -239,7 +298,11 @@ class MockSeedData {
       lastUpdated: '2026-01-10',
       status: 'ARCHIVED',
       images: [
-        DatasetImage(code: 'XRAY-3301', addedDate: '2024-12-01', diagnosis: 'Positive / TBC'),
+        DatasetImage(
+          code: 'XRAY-3301',
+          addedDate: '2024-12-01',
+          diagnosis: 'Positive / TBC',
+        ),
       ],
     ),
   ];
@@ -307,7 +370,8 @@ class MockSeedData {
       aiScore: 87,
       diagnosisDate: 'Apr 23, 2026',
       status: 'agreed',
-      doctorNote: 'Confirmed positive. Consolidation pattern consistent with TB.',
+      doctorNote:
+          'Confirmed positive. Consolidation pattern consistent with TB.',
       findings: ValidationFindings(
         consolidation: 38.50,
         cavity: 4.20,
@@ -325,7 +389,8 @@ class MockSeedData {
       aiScore: 22,
       diagnosisDate: 'Apr 20, 2026',
       status: 'disagreed',
-      doctorNote: 'Patient has old scarring from previous pneumonia, not active TB.',
+      doctorNote:
+          'Patient has old scarring from previous pneumonia, not active TB.',
       findings: ValidationFindings(
         consolidation: 8.00,
         cavity: 0,

@@ -21,10 +21,11 @@ class ResultScreen extends StatelessWidget {
     final diagnosis = context.watch<DiagnosisProvider>();
     final result = diagnosis.lastOutcome;
 
-    // Safety: never render a verdict when no analysis has run. Falling back to
-    // a placeholder here would show a fabricated "TB Detected 85%" to a doctor.
+    // The direct Result route is useful during stakeholder demos. Keep the
+    // sample unmistakably labelled as dummy data; a real inference outcome
+    // always replaces it.
     if (result == null) {
-      return const _NoResultState();
+      return const _DummyScreeningResultState();
     }
 
     final isPositive = result.isPositive;
@@ -45,7 +46,7 @@ class ResultScreen extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      'Diagnosis Result',
+                      'Screening Result',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w800,
@@ -56,7 +57,10 @@ class ResultScreen extends StatelessWidget {
                       children: [
                         _headerButton(Icons.save_rounded, 'Save'),
                         const SizedBox(width: 12),
-                        _headerButton(Icons.picture_as_pdf_rounded, 'Export PDF'),
+                        _headerButton(
+                          Icons.picture_as_pdf_rounded,
+                          'Export PDF',
+                        ),
                         const SizedBox(width: 12),
                         _headerButton(Icons.print_rounded, 'Print'),
                       ],
@@ -95,13 +99,27 @@ class ResultScreen extends StatelessWidget {
                                   spacing: 16,
                                   runSpacing: 16,
                                   children: [
-                                    _summaryField('Name', diagnosis.patientName),
+                                    _summaryField(
+                                      'Name',
+                                      diagnosis.patientName,
+                                    ),
                                     _summaryField('Gender', diagnosis.gender),
-                                    _summaryField('Age', diagnosis.age?.toString() ?? '-'),
                                     _summaryField(
-                                        'Height', diagnosis.heightCm != null ? '${diagnosis.heightCm} cm' : '-'),
+                                      'Age',
+                                      diagnosis.age?.toString() ?? '-',
+                                    ),
                                     _summaryField(
-                                        'Weight', diagnosis.weightKg != null ? '${diagnosis.weightKg} kg' : '-'),
+                                      'Height',
+                                      diagnosis.heightCm != null
+                                          ? '${diagnosis.heightCm} cm'
+                                          : '-',
+                                    ),
+                                    _summaryField(
+                                      'Weight',
+                                      diagnosis.weightKg != null
+                                          ? '${diagnosis.weightKg} kg'
+                                          : '-',
+                                    ),
                                     _summaryField(
                                       'BMI',
                                       diagnosis.bmi != null
@@ -130,7 +148,9 @@ class ResultScreen extends StatelessWidget {
                                         .map(
                                           (s) => Container(
                                             padding: const EdgeInsets.symmetric(
-                                                horizontal: 12, vertical: 6),
+                                              horizontal: 12,
+                                              vertical: 6,
+                                            ),
                                             decoration: BoxDecoration(
                                               color: AppTheme.primary
                                                   .withValues(alpha: 0.18),
@@ -160,9 +180,18 @@ class ResultScreen extends StatelessWidget {
                                     1: FlexColumnWidth(),
                                   },
                                   children: [
-                                    _clinicalRow('Comorbidity', diagnosis.comorbidity),
-                                    _clinicalRow('Smoking Status', diagnosis.smoking),
-                                    _clinicalRow('TB Contact', diagnosis.tbContact),
+                                    _clinicalRow(
+                                      'Comorbidity',
+                                      diagnosis.comorbidity,
+                                    ),
+                                    _clinicalRow(
+                                      'Smoking Status',
+                                      diagnosis.smoking,
+                                    ),
+                                    _clinicalRow(
+                                      'TB Contact',
+                                      diagnosis.tbContact,
+                                    ),
                                     _clinicalRow('Sputum (BTA)', diagnosis.bta),
                                     _clinicalRow('Culture', diagnosis.culture),
                                   ],
@@ -190,14 +219,16 @@ class ResultScreen extends StatelessWidget {
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               ),
-                              borderRadius:
-                                  BorderRadius.circular(AppTheme.cardRadius),
+                              borderRadius: BorderRadius.circular(
+                                AppTheme.cardRadius,
+                              ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: (isPositive
-                                          ? AppTheme.error
-                                          : AppTheme.success)
-                                      .withValues(alpha: 0.35),
+                                  color:
+                                      (isPositive
+                                              ? AppTheme.error
+                                              : AppTheme.success)
+                                          .withValues(alpha: 0.35),
                                   blurRadius: 24,
                                   offset: const Offset(0, 12),
                                 ),
@@ -227,9 +258,13 @@ class ResultScreen extends StatelessWidget {
                                   Container(
                                     width: double.infinity,
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 12),
+                                      horizontal: 16,
+                                      vertical: 12,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.2),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.2,
+                                      ),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Column(
@@ -278,7 +313,7 @@ class ResultScreen extends StatelessWidget {
                                         ? [
                                             'Refer to pulmonologist immediately',
                                             'Start contact tracing',
-                                            'Order additional diagnostic tests',
+                                            'Order additional screening tests',
                                           ]
                                         : [
                                             'Monitor symptoms',
@@ -288,14 +323,16 @@ class ResultScreen extends StatelessWidget {
                                     .map(
                                       (item) => Padding(
                                         padding: const EdgeInsets.symmetric(
-                                            vertical: 4),
+                                          vertical: 4,
+                                        ),
                                         child: Row(
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
                                             Padding(
-                                              padding:
-                                                  const EdgeInsets.only(top: 4),
+                                              padding: const EdgeInsets.only(
+                                                top: 4,
+                                              ),
                                               child: Icon(
                                                 isPositive
                                                     ? Icons.circle
@@ -340,14 +377,16 @@ class ResultScreen extends StatelessWidget {
                                   children: [
                                     _analysisRow(
                                       'Analysis Date',
-                                      result.createdAt
-                                          .toString()
-                                          .split(' ')[0],
+                                      result.createdAt.toString().split(' ')[0],
                                     ),
-                                    _analysisRow('Model Version',
-                                        result.modelVersion),
-                                    _analysisRow('Processing Time',
-                                        result.processingTime),
+                                    _analysisRow(
+                                      'Model Version',
+                                      result.modelVersion,
+                                    ),
+                                    _analysisRow(
+                                      'Processing Time',
+                                      result.processingTime,
+                                    ),
                                   ],
                                 ),
                               ],
@@ -355,7 +394,7 @@ class ResultScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 16),
 
-                          // New Diagnosis Button
+                          // New Screening Button
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton.icon(
@@ -364,12 +403,13 @@ class ResultScreen extends StatelessWidget {
                                 context.go('/diagnosis');
                               },
                               icon: const Icon(Icons.add_rounded),
-                              label: const Text('New Diagnosis'),
+                              label: const Text('New Screening'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.primary,
                                 foregroundColor: Colors.white,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 16),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
                               ),
                             ),
                           ),
@@ -411,10 +451,7 @@ class ResultScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12, color: _textLo),
-          ),
+          Text(label, style: const TextStyle(fontSize: 12, color: _textLo)),
           const SizedBox(height: 4),
           Text(
             value.isEmpty ? '-' : value,
@@ -434,8 +471,10 @@ class ResultScreen extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Text(label,
-              style: const TextStyle(fontSize: 13, color: _textLo)),
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 13, color: _textLo),
+          ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -457,8 +496,10 @@ class ResultScreen extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Text(label,
-              style: const TextStyle(fontSize: 12, color: _textLo)),
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 12, color: _textLo),
+          ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
@@ -476,10 +517,10 @@ class ResultScreen extends StatelessWidget {
   }
 }
 
-/// Shown when no analysis has been run yet. A medical screening app must not
-/// display a verdict it did not compute.
-class _NoResultState extends StatelessWidget {
-  const _NoResultState();
+/// Stakeholder-demo sample shown only when no analysis outcome exists.
+/// Every clinical-looking value is visibly marked as dummy data.
+class _DummyScreeningResultState extends StatelessWidget {
+  const _DummyScreeningResultState();
 
   @override
   Widget build(BuildContext context) {
@@ -487,38 +528,103 @@ class _NoResultState extends StatelessWidget {
       color: _bg,
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
+          constraints: const BoxConstraints(maxWidth: 720),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.analytics_outlined, size: 72, color: _textLo),
-              const SizedBox(height: 24),
-              const Text(
-                'Belum ada hasil diagnosis',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: _textHi,
+              Container(
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(
+                  color: _surface,
+                  borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+                  border: Border.all(color: AppTheme.warning, width: 2),
                 ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Unggah atau ambil citra X-ray dada, lalu jalankan analisis AI '
-                'untuk melihat hasilnya di sini.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 15, color: _textLo, height: 1.5),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.warning.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'DUMMY / DEMO — BUKAN HASIL KLINIS',
+                        style: TextStyle(
+                          color: AppTheme.warning,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Screening Result (Dummy)',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: _textHi,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: AppTheme.warning,
+                          size: 38,
+                        ),
+                        SizedBox(width: 14),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'TB Suspected',
+                              style: TextStyle(
+                                color: _textHi,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              'Confidence 78% · Demo Model v0.1',
+                              style: TextStyle(color: _textLo, fontSize: 14),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Contoh ini hanya untuk mempresentasikan layout halaman. '
+                      'Hasil nyata hanya muncul setelah X-ray dianalisis dan '
+                      'wajib dikonfirmasi tenaga medis.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: _textLo,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 32),
               FilledButton.icon(
                 onPressed: () => context.go('/diagnosis'),
                 icon: const Icon(Icons.biotech_rounded, size: 20),
-                label: const Text('Mulai Diagnosis'),
+                label: const Text('Mulai Screening'),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppTheme.primary,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 28, vertical: 18),
+                    horizontal: 28,
+                    vertical: 18,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(AppTheme.inputRadius),
                   ),

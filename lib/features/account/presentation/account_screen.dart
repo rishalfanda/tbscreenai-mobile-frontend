@@ -20,9 +20,9 @@ class AccountScreen extends StatelessWidget {
           Text(
             'Account',
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.navy,
-                ),
+              fontWeight: FontWeight.w800,
+              color: AppTheme.navy,
+            ),
           ),
           const SizedBox(height: 24),
           Card(
@@ -35,8 +35,13 @@ class AccountScreen extends StatelessWidget {
                     backgroundColor: AppTheme.primary.withValues(alpha: 0.16),
                     foregroundColor: AppTheme.primaryDark,
                     child: Text(
-                      auth.displayName.isEmpty ? 'DR' : auth.displayName.substring(0, 2).toUpperCase(),
-                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
+                      auth.displayName.isEmpty
+                          ? 'DR'
+                          : auth.displayName.substring(0, 2).toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -46,7 +51,8 @@ class AccountScreen extends StatelessWidget {
                       children: [
                         Text(
                           auth.displayName,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(height: 6),
                         const Text('doctor@tbscreen.app'),
@@ -69,7 +75,7 @@ class AccountScreen extends StatelessWidget {
             spacing: 16,
             runSpacing: 16,
             children: const [
-              _AccountStat(label: 'Total Diagnoses', value: '326'),
+              _AccountStat(label: 'Total Screenings', value: '326'),
               _AccountStat(label: 'Accuracy', value: '94.2%'),
               _AccountStat(label: 'Positive Cases', value: '84'),
             ],
@@ -83,7 +89,9 @@ class AccountScreen extends StatelessWidget {
                 children: [
                   Text(
                     'Profile Details',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -91,7 +99,9 @@ class AccountScreen extends StatelessWidget {
                       Expanded(
                         child: TextFormField(
                           initialValue: auth.displayName,
-                          decoration: const InputDecoration(labelText: 'Full Name'),
+                          decoration: const InputDecoration(
+                            labelText: 'Full Name',
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -109,14 +119,18 @@ class AccountScreen extends StatelessWidget {
                       Expanded(
                         child: TextFormField(
                           initialValue: 'Pulmonologist',
-                          decoration: const InputDecoration(labelText: 'Specialization'),
+                          decoration: const InputDecoration(
+                            labelText: 'Specialization',
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: TextFormField(
                           initialValue: 'RS. Sardjito',
-                          decoration: const InputDecoration(labelText: 'Institution'),
+                          decoration: const InputDecoration(
+                            labelText: 'Institution',
+                          ),
                         ),
                       ),
                     ],
@@ -134,7 +148,9 @@ class AccountScreen extends StatelessWidget {
                 children: [
                   Text(
                     'Security',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   OutlinedButton.icon(
@@ -162,14 +178,16 @@ class AccountScreen extends StatelessWidget {
                 children: [
                   Text(
                     'Notifications',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     value: true,
                     onChanged: (_) {},
-                    title: const Text('Diagnosis Complete'),
+                    title: const Text('Screening Complete'),
                   ),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
@@ -221,7 +239,10 @@ class _AccountStat extends StatelessWidget {
         children: [
           Text(label, style: const TextStyle(color: AppTheme.textSecondary)),
           const SizedBox(height: 8),
-          Text(value, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+          ),
         ],
       ),
     );

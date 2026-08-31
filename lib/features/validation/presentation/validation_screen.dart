@@ -49,7 +49,8 @@ class _ValidationScreenState extends State<ValidationScreen> {
     } catch (e) {
       _selectedId = _cases.isNotEmpty ? _cases.first.id : null;
       if (_selectedId != null) {
-        _noteController.text = _cases.firstWhere((c) => c.id == _selectedId).doctorNote ?? "";
+        _noteController.text =
+            _cases.firstWhere((c) => c.id == _selectedId).doctorNote ?? "";
       }
     }
   }
@@ -57,7 +58,8 @@ class _ValidationScreenState extends State<ValidationScreen> {
   List<ValidationCase> get _filteredCases {
     return _cases.where((c) {
       final matchesTab = _activeTab == "all" || c.status == _activeTab;
-      final matchesSearch = c.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+      final matchesSearch =
+          c.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           c.id.toLowerCase().contains(_searchQuery.toLowerCase());
       return matchesTab && matchesSearch;
     }).toList();
@@ -116,7 +118,9 @@ class _ValidationScreenState extends State<ValidationScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(newStatus == "agreed" ? "Marked as Agreed" : "Marked as Disagreed"),
+          content: Text(
+            newStatus == "agreed" ? "Marked as Agreed" : "Marked as Disagreed",
+          ),
           backgroundColor: AppTheme.success,
         ),
       );
@@ -145,7 +149,9 @@ class _ValidationScreenState extends State<ValidationScreen> {
   Widget build(BuildContext context) {
     final counts = _summaryCounts;
     final filtered = _filteredCases;
-    final selectedCase = _selectedId != null ? _cases.firstWhere((c) => c.id == _selectedId) : null;
+    final selectedCase = _selectedId != null
+        ? _cases.firstWhere((c) => c.id == _selectedId)
+        : null;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -168,20 +174,43 @@ class _ValidationScreenState extends State<ValidationScreen> {
                     children: [
                       const Text(
                         "Doctor Review",
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.navy),
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.navy,
+                        ),
                       ),
                       const Text(
-                        "Validate AI diagnosis results",
-                        style: TextStyle(fontSize: 13, color: AppTheme.subtitleGrey),
+                        "Validate AI screening results",
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppTheme.subtitleGrey,
+                        ),
                       ),
                       const SizedBox(height: 16),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          _SummaryItem(label: "Total", count: counts["total"]!, color: AppTheme.subtitleGrey),
-                          _SummaryItem(label: "Pending", count: counts["pending"]!, color: AppTheme.warning),
-                          _SummaryItem(label: "Agreed", count: counts["agreed"]!, color: AppTheme.success),
-                          _SummaryItem(label: "Disagreed", count: counts["disagreed"]!, color: AppTheme.error),
+                          _SummaryItem(
+                            label: "Total",
+                            count: counts["total"]!,
+                            color: AppTheme.subtitleGrey,
+                          ),
+                          _SummaryItem(
+                            label: "Pending",
+                            count: counts["pending"]!,
+                            color: AppTheme.warning,
+                          ),
+                          _SummaryItem(
+                            label: "Agreed",
+                            count: counts["agreed"]!,
+                            color: AppTheme.success,
+                          ),
+                          _SummaryItem(
+                            label: "Disagreed",
+                            count: counts["disagreed"]!,
+                            color: AppTheme.error,
+                          ),
                         ],
                       ),
                     ],
@@ -208,15 +237,27 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
                     children: [
-                      _TabItem(label: "All", active: _activeTab == "all", onTap: () => setState(() => _activeTab = "all")),
+                      _TabItem(
+                        label: "All",
+                        active: _activeTab == "all",
+                        onTap: () => setState(() => _activeTab = "all"),
+                      ),
                       _TabItem(
                         label: "Pending",
                         active: _activeTab == "pending",
                         count: counts["pending"],
                         onTap: () => setState(() => _activeTab = "pending"),
                       ),
-                      _TabItem(label: "Agreed", active: _activeTab == "agreed", onTap: () => setState(() => _activeTab = "agreed")),
-                      _TabItem(label: "Disagreed", active: _activeTab == "disagreed", onTap: () => setState(() => _activeTab = "disagreed")),
+                      _TabItem(
+                        label: "Agreed",
+                        active: _activeTab == "agreed",
+                        onTap: () => setState(() => _activeTab = "agreed"),
+                      ),
+                      _TabItem(
+                        label: "Disagreed",
+                        active: _activeTab == "disagreed",
+                        onTap: () => setState(() => _activeTab = "disagreed"),
+                      ),
                     ],
                   ),
                 ),
@@ -253,10 +294,15 @@ class _ValidationScreenState extends State<ValidationScreen> {
                           children: [
                             CircleAvatar(
                               radius: 24,
-                              backgroundColor: _getStatusColor(selectedCase.status).withValues(alpha: 0.1),
+                              backgroundColor: _getStatusColor(
+                                selectedCase.status,
+                              ).withValues(alpha: 0.1),
                               child: Text(
                                 selectedCase.initials,
-                                style: TextStyle(color: _getStatusColor(selectedCase.status), fontWeight: FontWeight.bold),
+                                style: TextStyle(
+                                  color: _getStatusColor(selectedCase.status),
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 16),
@@ -265,11 +311,18 @@ class _ValidationScreenState extends State<ValidationScreen> {
                               children: [
                                 Text(
                                   selectedCase.name,
-                                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.navy),
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.navy,
+                                  ),
                                 ),
                                 Text(
                                   "Patient ID: #${selectedCase.id}",
-                                  style: const TextStyle(fontSize: 13, color: AppTheme.subtitleGrey),
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: AppTheme.subtitleGrey,
+                                  ),
                                 ),
                               ],
                             ),
@@ -279,20 +332,35 @@ class _ValidationScreenState extends State<ValidationScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            _MetaField(label: "Age", value: "${selectedCase.age} yrs"),
-                            _MetaField(label: "Gender", value: selectedCase.gender),
+                            _MetaField(
+                              label: "Age",
+                              value: "${selectedCase.age} yrs",
+                            ),
+                            _MetaField(
+                              label: "Gender",
+                              value: selectedCase.gender,
+                            ),
                             _MetaField(
                               label: "AI Score",
                               value: "TBC ${selectedCase.aiScore}%",
-                              valueColor: _getAiScoreColor(selectedCase.aiScore),
+                              valueColor: _getAiScoreColor(
+                                selectedCase.aiScore,
+                              ),
                             ),
-                            _MetaField(label: "Diagnosis Date", value: selectedCase.diagnosisDate),
+                            _MetaField(
+                              label: "Screening Date",
+                              value: selectedCase.diagnosisDate,
+                            ),
                           ],
                         ),
                         const SizedBox(height: 32),
                         const Text(
-                          "AI Diagnosis Result",
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.navy),
+                          "AI Screening Result",
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.navy,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         SizedBox(
@@ -302,42 +370,63 @@ class _ValidationScreenState extends State<ValidationScreen> {
                             label: "CHEST X-RAY VIEW",
                             overlay: Stack(
                               children: [
-                              Positioned(
-                                top: 16,
-                                left: 16,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFEF9F27).withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    "TBC ${selectedCase.aiScore}%",
-                                    style: const TextStyle(color: Color(0xFFEF9F27), fontWeight: FontWeight.bold),
+                                Positioned(
+                                  top: 16,
+                                  left: 16,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(
+                                        0xFFEF9F27,
+                                      ).withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      "TBC ${selectedCase.aiScore}%",
+                                      style: const TextStyle(
+                                        color: Color(0xFFEF9F27),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
-                              Positioned(
-                                bottom: 16,
-                                left: 16,
-                                child: ElevatedButton(
-                                  onPressed: () {
-                                    if (selectedCase.heatmapUrl == null) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text("Heatmap not available for this case")),
-                                      );
-                                    } else {
-                                      setState(() => _isHeatmapView = !_isHeatmapView);
-                                    }
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.white10,
-                                    foregroundColor: Colors.white,
-                                    elevation: 0,
+                                Positioned(
+                                  bottom: 16,
+                                  left: 16,
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      if (selectedCase.heatmapUrl == null) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              "Heatmap not available for this case",
+                                            ),
+                                          ),
+                                        );
+                                      } else {
+                                        setState(
+                                          () =>
+                                              _isHeatmapView = !_isHeatmapView,
+                                        );
+                                      }
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.white10,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                    ),
+                                    child: Text(
+                                      _isHeatmapView
+                                          ? "Original View"
+                                          : "Heatmap View",
+                                    ),
                                   ),
-                                  child: Text(_isHeatmapView ? "Original View" : "Heatmap View"),
                                 ),
-                              ),
                               ],
                             ),
                           ),
@@ -347,7 +436,11 @@ class _ValidationScreenState extends State<ValidationScreen> {
                         const SizedBox(height: 32),
                         const Text(
                           "Doctor's Note",
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.navy),
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.navy,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         TextField(
@@ -356,16 +449,21 @@ class _ValidationScreenState extends State<ValidationScreen> {
                           maxLength: 500,
                           readOnly: selectedCase.status != "pending",
                           decoration: InputDecoration(
-                            hintText: "Add clinical notes or correction reason...",
+                            hintText:
+                                "Add clinical notes or correction reason...",
                             fillColor: Colors.white,
                             filled: true,
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: Colors.grey.shade200),
+                              borderSide: BorderSide(
+                                color: Colors.grey.shade200,
+                              ),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: AppTheme.cyan),
+                              borderSide: const BorderSide(
+                                color: AppTheme.cyan,
+                              ),
                             ),
                           ),
                         ),
@@ -375,11 +473,17 @@ class _ValidationScreenState extends State<ValidationScreen> {
                             children: [
                               Expanded(
                                 child: OutlinedButton(
-                                  onPressed: _isSubmitting ? null : () => _handleValidation("disagreed"),
+                                  onPressed: _isSubmitting
+                                      ? null
+                                      : () => _handleValidation("disagreed"),
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: AppTheme.error,
-                                    side: const BorderSide(color: AppTheme.error),
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    side: const BorderSide(
+                                      color: AppTheme.error,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 16,
+                                    ),
                                   ),
                                   child: const Text("Disagree"),
                                 ),
@@ -387,14 +491,25 @@ class _ValidationScreenState extends State<ValidationScreen> {
                               const SizedBox(width: 16),
                               Expanded(
                                 child: ElevatedButton(
-                                  onPressed: _isSubmitting ? null : () => _handleValidation("agreed"),
+                                  onPressed: _isSubmitting
+                                      ? null
+                                      : () => _handleValidation("agreed"),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF3B6EE8),
                                     foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 16,
+                                    ),
                                   ),
                                   child: _isSubmitting
-                                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
+                                        )
                                       : const Text("Agree with AI Result"),
                                 ),
                               ),
@@ -407,20 +522,32 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: (selectedCase.status == "agreed" ? AppTheme.success : AppTheme.error).withValues(alpha: 0.1),
+                                  color:
+                                      (selectedCase.status == "agreed"
+                                              ? AppTheme.success
+                                              : AppTheme.error)
+                                          .withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Row(
                                   children: [
                                     Icon(
-                                      selectedCase.status == "agreed" ? Icons.check_circle : Icons.cancel,
-                                      color: selectedCase.status == "agreed" ? AppTheme.success : AppTheme.error,
+                                      selectedCase.status == "agreed"
+                                          ? Icons.check_circle
+                                          : Icons.cancel,
+                                      color: selectedCase.status == "agreed"
+                                          ? AppTheme.success
+                                          : AppTheme.error,
                                     ),
                                     const SizedBox(width: 12),
                                     Text(
-                                      selectedCase.status == "agreed" ? "You agreed with the AI result" : "You disagreed with the AI result",
+                                      selectedCase.status == "agreed"
+                                          ? "You agreed with the AI result"
+                                          : "You disagreed with the AI result",
                                       style: TextStyle(
-                                        color: selectedCase.status == "agreed" ? AppTheme.success : AppTheme.error,
+                                        color: selectedCase.status == "agreed"
+                                            ? AppTheme.success
+                                            : AppTheme.error,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
@@ -429,7 +556,13 @@ class _ValidationScreenState extends State<ValidationScreen> {
                               ),
                               TextButton(
                                 onPressed: _resetStatus,
-                                child: const Text("Re-validate", style: TextStyle(color: AppTheme.cyan, decoration: TextDecoration.underline)),
+                                child: const Text(
+                                  "Re-validate",
+                                  style: TextStyle(
+                                    color: AppTheme.cyan,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -465,14 +598,28 @@ class _SummaryItem extends StatelessWidget {
   final int count;
   final Color color;
 
-  const _SummaryItem({required this.label, required this.count, required this.color});
+  const _SummaryItem({
+    required this.label,
+    required this.count,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(count.toString(), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
-        Text(label, style: const TextStyle(fontSize: 11, color: AppTheme.subtitleGrey)),
+        Text(
+          count.toString(),
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: AppTheme.subtitleGrey),
+        ),
       ],
     );
   }
@@ -484,7 +631,12 @@ class _TabItem extends StatelessWidget {
   final int? count;
   final VoidCallback onTap;
 
-  const _TabItem({required this.label, required this.active, this.count, required this.onTap});
+  const _TabItem({
+    required this.label,
+    required this.active,
+    this.count,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -494,7 +646,9 @@ class _TabItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         margin: const EdgeInsets.only(right: 8),
         decoration: BoxDecoration(
-          color: active ? AppTheme.cyan.withValues(alpha: 0.1) : Colors.transparent,
+          color: active
+              ? AppTheme.cyan.withValues(alpha: 0.1)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -510,8 +664,14 @@ class _TabItem extends StatelessWidget {
               const SizedBox(width: 4),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: AppTheme.error, borderRadius: BorderRadius.circular(10)),
-                child: Text(count.toString(), style: const TextStyle(color: Colors.white, fontSize: 10)),
+                decoration: BoxDecoration(
+                  color: AppTheme.error,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  count.toString(),
+                  style: const TextStyle(color: Colors.white, fontSize: 10),
+                ),
               ),
             ],
           ],
@@ -526,7 +686,11 @@ class _PatientItem extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _PatientItem({required this.c, required this.isSelected, required this.onTap});
+  const _PatientItem({
+    required this.c,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -536,7 +700,9 @@ class _PatientItem extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected ? AppTheme.cyan.withValues(alpha: 0.05) : Colors.transparent,
+          color: isSelected
+              ? AppTheme.cyan.withValues(alpha: 0.05)
+              : Colors.transparent,
           border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
         ),
         child: Row(
@@ -544,15 +710,35 @@ class _PatientItem extends StatelessWidget {
             CircleAvatar(
               radius: 18,
               backgroundColor: statusColor.withValues(alpha: 0.1),
-              child: Text(c.initials, style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.bold)),
+              child: Text(
+                c.initials,
+                style: TextStyle(
+                  color: statusColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(c.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.navy)),
-                  Text("TBC ${c.aiScore}% · ${c.diagnosisDate}", style: const TextStyle(fontSize: 12, color: AppTheme.subtitleGrey)),
+                  Text(
+                    c.name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.navy,
+                    ),
+                  ),
+                  Text(
+                    "TBC ${c.aiScore}% · ${c.diagnosisDate}",
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.subtitleGrey,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -564,11 +750,19 @@ class _PatientItem extends StatelessWidget {
               ),
               child: Text(
                 c.status[0].toUpperCase() + c.status.substring(1),
-                style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: statusColor,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right, size: 16, color: AppTheme.subtitleGrey),
+            const Icon(
+              Icons.chevron_right,
+              size: 16,
+              color: AppTheme.subtitleGrey,
+            ),
           ],
         ),
       ),
@@ -599,9 +793,19 @@ class _MetaField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.subtitleGrey)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: AppTheme.subtitleGrey),
+        ),
         const SizedBox(height: 4),
-        Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: valueColor ?? AppTheme.navy)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            color: valueColor ?? AppTheme.navy,
+          ),
+        ),
       ],
     );
   }
@@ -633,7 +837,12 @@ class _FindingsRow extends StatelessWidget {
     );
   }
 
-  Widget _divider() => Container(height: 24, width: 1, color: Colors.grey.shade200, margin: const EdgeInsets.symmetric(horizontal: 12));
+  Widget _divider() => Container(
+    height: 24,
+    width: 1,
+    color: Colors.grey.shade200,
+    margin: const EdgeInsets.symmetric(horizontal: 12),
+  );
 }
 
 class _FindingItem extends StatelessWidget {
@@ -653,8 +862,18 @@ class _FindingItem extends StatelessWidget {
 
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: AppTheme.subtitleGrey)),
-        Text("${value.toStringAsFixed(1)}%", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: AppTheme.subtitleGrey),
+        ),
+        Text(
+          "${value.toStringAsFixed(1)}%",
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
       ],
     );
   }
@@ -672,7 +891,7 @@ class _EmptyState extends StatelessWidget {
           Icon(Icons.person_search_outlined, size: 64, color: Colors.grey),
           SizedBox(height: 16),
           Text(
-            "Select a patient from the list to review\nthe AI diagnosis result",
+            "Select a patient from the list to review\nthe AI screening result",
             textAlign: TextAlign.center,
             style: TextStyle(color: AppTheme.subtitleGrey),
           ),

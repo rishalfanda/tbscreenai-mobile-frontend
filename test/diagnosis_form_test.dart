@@ -29,9 +29,12 @@ void main() {
     addTearDown(tester.view.reset);
 
     await tester.pumpWidget(_wrap());
-    await tester.scrollUntilVisible(find.text('Direct Sunlight Exposure'), 300,
-        scrollable: find.byType(Scrollable).first);
-    await tester.tap(find.text('Direct Sunlight Exposure'));
+    await tester.scrollUntilVisible(
+      find.text('Direct Sunlight'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('sunlight-dropdown')));
     await tester.pumpAndSettle();
 
     expect(find.text('Yes').hitTestable(), findsOneWidget);
@@ -40,28 +43,25 @@ void main() {
     expect(find.text('Limited'), findsNothing);
   });
 
-  testWidgets('model type offers Disability/Non Disability; model version 1-3',
-      (tester) async {
+  testWidgets('model type offers Disability/Non Disability only', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
     await tester.pumpWidget(_wrap());
 
-    await tester.scrollUntilVisible(find.text('Model Type'), 300,
-        scrollable: find.byType(Scrollable).first);
-    await tester.tap(find.text('Model Type'));
+    await tester.scrollUntilVisible(
+      find.text('Model Type'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('model-type-dropdown')));
     await tester.pumpAndSettle();
     expect(find.text('Disability').hitTestable(), findsOneWidget);
     expect(find.text('Non Disability').hitTestable(), findsOneWidget);
     expect(find.text('Pediatric Model'), findsNothing);
-    await tester.tap(find.text('Non Disability').hitTestable());
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Model Version'));
-    await tester.pumpAndSettle();
-    expect(find.text('Version 1').hitTestable(), findsOneWidget);
-    expect(find.text('Version 2').hitTestable(), findsOneWidget);
-    expect(find.text('Version 3').hitTestable(), findsOneWidget);
+    expect(find.text('Model Version'), findsNothing);
   });
 }

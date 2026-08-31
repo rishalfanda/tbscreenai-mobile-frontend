@@ -19,16 +19,21 @@ Widget _wrap(DiagnosisProvider provider) {
 }
 
 void main() {
-  testWidgets('shows empty state — never a fabricated verdict — before any run',
-      (tester) async {
+  testWidgets('shows a clearly labelled dummy result before any run', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(_wrap(DiagnosisProvider(MockDiagnosisRepository())));
+    await tester.pumpWidget(
+      _wrap(DiagnosisProvider(MockDiagnosisRepository())),
+    );
     await tester.pump();
 
-    expect(find.text('Belum ada hasil diagnosis'), findsOneWidget);
+    expect(find.text('Screening Result (Dummy)'), findsOneWidget);
+    expect(find.text('DUMMY / DEMO — BUKAN HASIL KLINIS'), findsOneWidget);
+    expect(find.text('TB Suspected'), findsOneWidget);
     expect(find.text('TB Detected'), findsNothing);
     expect(find.text('85%'), findsNothing);
   });
@@ -52,7 +57,7 @@ void main() {
     await tester.pumpWidget(_wrap(provider));
     await tester.pump();
 
-    expect(find.text('Belum ada hasil diagnosis'), findsNothing);
+    expect(find.text('Screening Result (Dummy)'), findsNothing);
     // 73 comes from the outcome; the old code would have shown a hardcoded 85.
     expect(find.text('73%'), findsOneWidget);
     expect(find.text('85%'), findsNothing);

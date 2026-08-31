@@ -14,11 +14,19 @@ class AppShell extends StatefulWidget {
   final Widget child;
 
   static const _items = <({String route, IconData icon, String label})>[
-    (route: '/dashboard', icon: Icons.space_dashboard_rounded, label: 'Dashboard'),
+    (
+      route: '/dashboard',
+      icon: Icons.space_dashboard_rounded,
+      label: 'Dashboard',
+    ),
     (route: '/patients', icon: Icons.people_alt_rounded, label: 'Patients'),
-    (route: '/diagnosis', icon: Icons.biotech_rounded, label: 'Diagnose'),
+    (route: '/diagnosis', icon: Icons.biotech_rounded, label: 'Screening'),
     (route: '/result', icon: Icons.analytics_rounded, label: 'Result'),
-    (route: '/validation', icon: Icons.verified_user_rounded, label: 'Validation'),
+    (
+      route: '/validation',
+      icon: Icons.verified_user_rounded,
+      label: 'Validation',
+    ),
     (route: '/dataset', icon: Icons.table_chart_rounded, label: 'Dataset'),
     (route: '/sync', icon: Icons.cloud_sync_rounded, label: 'Sync'),
     (route: '/account', icon: Icons.person_rounded, label: 'Account'),
@@ -45,8 +53,9 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedIndex =
-        AppShell._items.indexWhere((item) => widget.location.startsWith(item.route));
+    final selectedIndex = AppShell._items.indexWhere(
+      (item) => widget.location.startsWith(item.route),
+    );
 
     return Scaffold(
       body: SafeArea(
@@ -173,7 +182,9 @@ class _NavItemState extends State<_NavItem> {
   Widget build(BuildContext context) {
     final bg = widget.active
         ? AppTheme.primary
-        : (_hovered ? Colors.white.withValues(alpha: 0.10) : Colors.transparent);
+        : (_hovered
+              ? Colors.white.withValues(alpha: 0.10)
+              : Colors.transparent);
     final fg = widget.active ? Colors.white : AppTheme.inactiveRail;
 
     return Semantics(
@@ -198,7 +209,9 @@ class _NavItemState extends State<_NavItem> {
                 decoration: BoxDecoration(
                   color: bg,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: widget.active ? AppTheme.primaryGlow(alpha: 0.35) : null,
+                  boxShadow: widget.active
+                      ? AppTheme.primaryGlow(alpha: 0.35)
+                      : null,
                 ),
                 child: Stack(
                   clipBehavior: Clip.none,
@@ -217,8 +230,9 @@ class _NavItemState extends State<_NavItem> {
                           style: TextStyle(
                             fontSize: 9.5,
                             color: fg,
-                            fontWeight:
-                                widget.active ? FontWeight.w700 : FontWeight.w500,
+                            fontWeight: widget.active
+                                ? FontWeight.w700
+                                : FontWeight.w500,
                           ),
                         ),
                       ],
@@ -228,13 +242,18 @@ class _NavItemState extends State<_NavItem> {
                         top: 4,
                         right: 8,
                         child: Container(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 2,
+                          ),
                           constraints: const BoxConstraints(minWidth: 18),
                           decoration: BoxDecoration(
                             color: AppTheme.error,
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppTheme.navy, width: 1.5),
+                            border: Border.all(
+                              color: AppTheme.navy,
+                              width: 1.5,
+                            ),
                           ),
                           child: Text(
                             '${widget.badgeCount}',

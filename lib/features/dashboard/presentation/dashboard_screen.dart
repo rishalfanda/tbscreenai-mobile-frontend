@@ -56,14 +56,16 @@ class DashboardScreen extends StatelessWidget {
             Text(
               'Dashboard',
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.navy,
-                  ),
+                fontWeight: FontWeight.w800,
+                color: AppTheme.navy,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
               'Welcome back, Dr. Anderson',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: AppTheme.subtitleGrey),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyLarge?.copyWith(color: AppTheme.subtitleGrey),
             ),
           ],
         ),
@@ -87,11 +89,14 @@ class DashboardScreen extends StatelessWidget {
             FilledButton.icon(
               onPressed: () => context.go('/diagnosis'),
               icon: const Icon(Icons.add_rounded),
-              label: const Text('New Diagnosis'),
+              label: const Text('New Screening'),
               style: FilledButton.styleFrom(
                 backgroundColor: AppTheme.primary,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppTheme.inputRadius),
                 ),
@@ -121,8 +126,18 @@ class DashboardScreen extends StatelessWidget {
         child: DropdownButton<String>(
           value: value,
           isExpanded: true,
-          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.subtitleGrey),
-          items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 14)))).toList(),
+          icon: const Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: AppTheme.subtitleGrey,
+          ),
+          items: items
+              .map(
+                (s) => DropdownMenuItem(
+                  value: s,
+                  child: Text(s, style: const TextStyle(fontSize: 14)),
+                ),
+              )
+              .toList(),
           onChanged: onChanged,
         ),
       ),
@@ -190,7 +205,9 @@ class DashboardScreen extends StatelessWidget {
                 const Spacer(),
                 Text(
                   metric.title,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTheme.subtitleGrey),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppTheme.subtitleGrey,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Row(
@@ -203,7 +220,8 @@ class DashboardScreen extends StatelessWidget {
                           Text(
                             metric.value,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                            style: Theme.of(context).textTheme.headlineMedium
+                                ?.copyWith(
                                   fontWeight: FontWeight.w800,
                                   color: AppTheme.navy,
                                   fontSize: 22,
@@ -212,15 +230,22 @@ class DashboardScreen extends StatelessWidget {
                           if (metric.subtext != null)
                             Text(
                               metric.subtext!,
-                              style: const TextStyle(color: AppTheme.subtitleGrey, fontSize: 11),
+                              style: const TextStyle(
+                                color: AppTheme.subtitleGrey,
+                                fontSize: 11,
+                              ),
                             ),
                         ],
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: (isPositive ? AppTheme.success : AppTheme.error).withValues(alpha: 0.1),
+                        color: (isPositive ? AppTheme.success : AppTheme.error)
+                            .withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
@@ -262,20 +287,27 @@ class DashboardScreen extends StatelessWidget {
                   children: [
                     Text(
                       'Agreement Level',
-                      style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.navy, fontSize: 18),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.navy,
+                        fontSize: 18,
+                      ),
                     ),
                     Text(
-                      'Consistency between AI diagnosis and doctor diagnosis',
-                      style: TextStyle(color: AppTheme.subtitleGrey, fontSize: 13),
+                      'Consistency between AI screening and doctor review',
+                      style: TextStyle(
+                        color: AppTheme.subtitleGrey,
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 ),
                 Text(
                   '$agreementPct%',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.navy,
-                      ),
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.navy,
+                  ),
                 ),
               ],
             ),
@@ -288,7 +320,9 @@ class DashboardScreen extends StatelessWidget {
                     height: 12,
                     decoration: const BoxDecoration(
                       color: AppTheme.success,
-                      borderRadius: BorderRadius.horizontal(left: Radius.circular(6)),
+                      borderRadius: BorderRadius.horizontal(
+                        left: Radius.circular(6),
+                      ),
                     ),
                   ),
                 ),
@@ -298,7 +332,9 @@ class DashboardScreen extends StatelessWidget {
                     height: 12,
                     decoration: const BoxDecoration(
                       color: AppTheme.error,
-                      borderRadius: BorderRadius.horizontal(right: Radius.circular(6)),
+                      borderRadius: BorderRadius.horizontal(
+                        right: Radius.circular(6),
+                      ),
                     ),
                   ),
                 ),
@@ -312,11 +348,23 @@ class DashboardScreen extends StatelessWidget {
                   children: [
                     Icon(Icons.circle, color: AppTheme.success, size: 10),
                     SizedBox(width: 4),
-                    Text('Agreed', style: TextStyle(fontSize: 12, color: AppTheme.subtitleGrey)),
+                    Text(
+                      'Agreed',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.subtitleGrey,
+                      ),
+                    ),
                     SizedBox(width: 16),
                     Icon(Icons.circle, color: AppTheme.error, size: 10),
                     SizedBox(width: 4),
-                    Text('Disagreed', style: TextStyle(fontSize: 12, color: AppTheme.subtitleGrey)),
+                    Text(
+                      'Disagreed',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.subtitleGrey,
+                      ),
+                    ),
                   ],
                 ),
                 Text(
@@ -331,7 +379,10 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDiagnosisTrendsChart(BuildContext context, DashboardProvider dashboard) {
+  Widget _buildDiagnosisTrendsChart(
+    BuildContext context,
+    DashboardProvider dashboard,
+  ) {
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.cardRadius),
@@ -346,12 +397,16 @@ class DashboardScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
-                  'Diagnosis Trends Over Time',
-                  style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.navy, fontSize: 18),
+                  'Screening Trends Over Time',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.navy,
+                    fontSize: 18,
+                  ),
                 ),
                 Row(
                   children: [
-                    _buildLegendItem('Total Diagnoses', AppTheme.primary),
+                    _buildLegendItem('Total Screenings', AppTheme.primary),
                     const SizedBox(width: 16),
                     _buildLegendItem('Total Patients', AppTheme.lightBlue),
                   ],
@@ -378,12 +433,18 @@ class DashboardScreen extends StatelessWidget {
       children: [
         Icon(Icons.circle, color: color, size: 10),
         const SizedBox(width: 4),
-        Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.subtitleGrey)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: AppTheme.subtitleGrey),
+        ),
       ],
     );
   }
 
-  Widget _buildDistributionDonuts(BuildContext context, DashboardProvider dashboard) {
+  Widget _buildDistributionDonuts(
+    BuildContext context,
+    DashboardProvider dashboard,
+  ) {
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.cardRadius),
@@ -399,7 +460,11 @@ class DashboardScreen extends StatelessWidget {
               children: [
                 const Text(
                   'TB Case Distribution',
-                  style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.navy, fontSize: 18),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.navy,
+                    fontSize: 18,
+                  ),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -411,11 +476,21 @@ class DashboardScreen extends StatelessWidget {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       value: dashboard.selectedDistributionFilter,
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.subtitleGrey),
-                      items: dashboard.distributionFilters.map((s) => DropdownMenuItem(
-                        value: s,
-                        child: Text(s, style: const TextStyle(fontSize: 14)),
-                      )).toList(),
+                      icon: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: AppTheme.subtitleGrey,
+                      ),
+                      items: dashboard.distributionFilters
+                          .map(
+                            (s) => DropdownMenuItem(
+                              value: s,
+                              child: Text(
+                                s,
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                            ),
+                          )
+                          .toList(),
                       onChanged: (v) => dashboard.setDistributionFilter(v!),
                     ),
                   ),
@@ -425,15 +500,31 @@ class DashboardScreen extends StatelessWidget {
             const SizedBox(height: 24),
             Row(
               children: [
-                Expanded(child: _buildDonut('TB Case Distribution by AI', 65, '428 cases')),
+                Expanded(
+                  child: _buildDonut(
+                    'TB Case Distribution by AI',
+                    65,
+                    '428 cases',
+                  ),
+                ),
                 const SizedBox(width: 24),
-                Expanded(child: _buildDonut('TB Case Distribution by Doctor', 58, '247 validated')),
+                Expanded(
+                  child: _buildDonut(
+                    'TB Case Distribution by Doctor',
+                    58,
+                    '247 validated',
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 16),
             const Text(
               'Doctor distribution only includes validated cases.',
-              style: TextStyle(color: AppTheme.subtitleGrey, fontSize: 12, fontStyle: FontStyle.italic),
+              style: TextStyle(
+                color: AppTheme.subtitleGrey,
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+              ),
             ),
           ],
         ),
@@ -444,7 +535,14 @@ class DashboardScreen extends StatelessWidget {
   Widget _buildDonut(String title, int positivePct, String totalLabel) {
     return Column(
       children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.navy, fontSize: 16)),
+        Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            color: AppTheme.navy,
+            fontSize: 16,
+          ),
+        ),
         const SizedBox(height: 24),
         SizedBox(
           width: 160,
@@ -465,20 +563,42 @@ class DashboardScreen extends StatelessWidget {
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('$positivePct%', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 24, color: AppTheme.navy)),
-                  const Text('Positive', style: TextStyle(fontSize: 12, color: AppTheme.subtitleGrey)),
+                  Text(
+                    '$positivePct%',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 24,
+                      color: AppTheme.navy,
+                    ),
+                  ),
+                  const Text(
+                    'Positive',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.subtitleGrey,
+                    ),
+                  ),
                 ],
               ),
             ],
           ),
         ),
         const SizedBox(height: 16),
-        Text(totalLabel, style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.navy)),
+        Text(
+          totalLabel,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            color: AppTheme.navy,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildRecentActivity(BuildContext context, DashboardProvider dashboard) {
+  Widget _buildRecentActivity(
+    BuildContext context,
+    DashboardProvider dashboard,
+  ) {
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.cardRadius),
@@ -494,11 +614,18 @@ class DashboardScreen extends StatelessWidget {
               children: [
                 const Text(
                   'Recent Activity',
-                  style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.navy, fontSize: 18),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.navy,
+                    fontSize: 18,
+                  ),
                 ),
                 TextButton(
                   onPressed: () {},
-                  child: const Text('View All', style: TextStyle(color: AppTheme.primary)),
+                  child: const Text(
+                    'View All',
+                    style: TextStyle(color: AppTheme.primary),
+                  ),
                 ),
               ],
             ),
@@ -518,7 +645,12 @@ class DashboardScreen extends StatelessWidget {
                       backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
                       foregroundColor: AppTheme.primaryDark,
                       child: Text(
-                        activity.name.split(' ').where((part) => part.isNotEmpty).take(2).map((part) => part[0]).join(),
+                        activity.name
+                            .split(' ')
+                            .where((part) => part.isNotEmpty)
+                            .take(2)
+                            .map((part) => part[0])
+                            .join(),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -526,11 +658,20 @@ class DashboardScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(activity.name, style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.navy)),
+                          Text(
+                            activity.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.navy,
+                            ),
+                          ),
                           const SizedBox(height: 2),
                           Text(
                             '${activity.timestamp} · ${activity.institution}',
-                            style: const TextStyle(color: AppTheme.subtitleGrey, fontSize: 12),
+                            style: const TextStyle(
+                              color: AppTheme.subtitleGrey,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
@@ -539,15 +680,22 @@ class DashboardScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
-                            color: activity.result == 'Positive' ? AppTheme.red.withValues(alpha: 0.1) : AppTheme.green.withValues(alpha: 0.1),
+                            color: activity.result == 'Positive'
+                                ? AppTheme.red.withValues(alpha: 0.1)
+                                : AppTheme.green.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
                             activity.result,
                             style: TextStyle(
-                              color: activity.result == 'Positive' ? AppTheme.red : AppTheme.green,
+                              color: activity.result == 'Positive'
+                                  ? AppTheme.red
+                                  : AppTheme.green,
                               fontWeight: FontWeight.w700,
                               fontSize: 12,
                             ),
@@ -556,7 +704,10 @@ class DashboardScreen extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           '${activity.confidence}% confidence',
-                          style: const TextStyle(color: AppTheme.subtitleGrey, fontSize: 12),
+                          style: const TextStyle(
+                            color: AppTheme.subtitleGrey,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
@@ -605,8 +756,12 @@ class TrendsChartPainter extends CustomPainter {
     // Draw Grid Lines & Labels (Y-Axis)
     for (int i = 0; i <= 4; i++) {
       double y = padding + (chartHeight - (i * chartHeight / 4));
-      canvas.drawLine(Offset(padding, y), Offset(padding + chartWidth, y), gridPaint);
-      
+      canvas.drawLine(
+        Offset(padding, y),
+        Offset(padding + chartWidth, y),
+        gridPaint,
+      );
+
       // Y-Axis Labels
       final textSpan = TextSpan(
         text: '${(i * yStep).toInt()}',
@@ -623,28 +778,52 @@ class TrendsChartPainter extends CustomPainter {
     // X-Axis Labels
     for (int i = 0; i < data.length; i++) {
       double x = padding + (i * chartWidth / (data.length - 1));
-      
-      final textSpan = TextSpan(
-        text: data[i].date,
-        style: labelStyle,
-      );
+
+      final textSpan = TextSpan(text: data[i].date, style: labelStyle);
       final textPainter = TextPainter(
         text: textSpan,
         textDirection: TextDirection.ltr,
       );
       textPainter.layout();
-      textPainter.paint(canvas, Offset(x - textPainter.width / 2, padding + chartHeight + 10));
+      textPainter.paint(
+        canvas,
+        Offset(x - textPainter.width / 2, padding + chartHeight + 10),
+      );
     }
 
     // Normalize data
     final diagnosesData = data.map((d) => d.totalDiagnoses / maxValue).toList();
     final patientsData = data.map((d) => d.totalPatients / maxValue).toList();
 
-    _drawLine(canvas, chartWidth, chartHeight, padding, diagnosesData, AppTheme.primary, false);
-    _drawLine(canvas, chartWidth, chartHeight, padding, patientsData, AppTheme.lightBlue, false);
+    _drawLine(
+      canvas,
+      chartWidth,
+      chartHeight,
+      padding,
+      diagnosesData,
+      AppTheme.primary,
+      false,
+    );
+    _drawLine(
+      canvas,
+      chartWidth,
+      chartHeight,
+      padding,
+      patientsData,
+      AppTheme.lightBlue,
+      false,
+    );
   }
 
-  void _drawLine(Canvas canvas, double width, double height, double padding, List<double> data, Color color, bool showArea) {
+  void _drawLine(
+    Canvas canvas,
+    double width,
+    double height,
+    double padding,
+    List<double> data,
+    Color color,
+    bool showArea,
+  ) {
     final paint = Paint()
       ..color = color
       ..strokeWidth = 3
@@ -665,17 +844,23 @@ class TrendsChartPainter extends CustomPainter {
       } else {
         double prevX = padding + ((i - 1) * width / (data.length - 1));
         double prevY = padding + (height - (data[i - 1] * height));
-        
+
         // Use cubic bezier for smooth curves
         path.cubicTo(
-          prevX + (x - prevX) / 2, prevY,
-          prevX + (x - prevX) / 2, y,
-          x, y
+          prevX + (x - prevX) / 2,
+          prevY,
+          prevX + (x - prevX) / 2,
+          y,
+          x,
+          y,
         );
         areaPath.cubicTo(
-          prevX + (x - prevX) / 2, prevY,
-          prevX + (x - prevX) / 2, y,
-          x, y
+          prevX + (x - prevX) / 2,
+          prevY,
+          prevX + (x - prevX) / 2,
+          y,
+          x,
+          y,
         );
       }
 
@@ -688,11 +873,22 @@ class TrendsChartPainter extends CustomPainter {
     // Draw area with gradient
     if (showArea) {
       final areaPaint = Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [color.withValues(alpha: 0.3), color.withValues(alpha: 0.0)],
-        ).createShader(Rect.fromLTRB(padding, padding, padding + width, padding + height))
+        ..shader =
+            LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                color.withValues(alpha: 0.3),
+                color.withValues(alpha: 0.0),
+              ],
+            ).createShader(
+              Rect.fromLTRB(
+                padding,
+                padding,
+                padding + width,
+                padding + height,
+              ),
+            )
         ..style = PaintingStyle.fill;
       canvas.drawPath(areaPath, areaPaint);
     }

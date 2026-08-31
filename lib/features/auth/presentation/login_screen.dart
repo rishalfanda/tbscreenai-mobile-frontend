@@ -38,7 +38,9 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _isSubmitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Login gagal — periksa email/password atau koneksi server'),
+          content: Text(
+            'Login gagal — periksa email/password atau koneksi server',
+          ),
           backgroundColor: AppTheme.error,
         ),
       );
@@ -68,10 +70,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   color: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppTheme.loginCardRadius),
+                    borderRadius: BorderRadius.circular(
+                      AppTheme.loginCardRadius,
+                    ),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 56),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 48,
+                      vertical: 56,
+                    ),
                     child: Form(
                       key: _formKey,
                       child: Column(
@@ -86,11 +93,18 @@ class _LoginScreenState extends State<LoginScreen> {
                               return Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.health_and_safety, size: 40, color: AppTheme.navy),
+                                  const Icon(
+                                    Icons.health_and_safety,
+                                    size: 40,
+                                    color: AppTheme.navy,
+                                  ),
                                   const SizedBox(width: 8),
                                   Text(
                                     'TBScreen.AI',
-                                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineMedium
+                                        ?.copyWith(
                                           color: AppTheme.navy,
                                           fontWeight: FontWeight.w900,
                                         ),
@@ -103,14 +117,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           Text(
                             'Welcome Back',
                             textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(
                                   color: AppTheme.navy,
                                   fontWeight: FontWeight.w800,
                                 ),
                           ),
                           const SizedBox(height: 8),
                           const Text(
-                            'AI-Powered TB Diagnosis',
+                            'AI-Powered TB Screening',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: AppTheme.subtitleGrey,
@@ -134,16 +149,31 @@ class _LoginScreenState extends State<LoginScreen> {
                             keyboardType: TextInputType.emailAddress,
                             decoration: InputDecoration(
                               hintText: 'Enter your email',
-                              hintStyle: const TextStyle(color: AppTheme.textSecondary),
-                              prefixIcon: const Icon(Icons.mail_outline_rounded, color: AppTheme.textSecondary),
+                              hintStyle: const TextStyle(
+                                color: AppTheme.textSecondary,
+                              ),
+                              prefixIcon: const Icon(
+                                Icons.mail_outline_rounded,
+                                color: AppTheme.textSecondary,
+                              ),
                               fillColor: Colors.white,
                               enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                                borderSide: const BorderSide(color: AppTheme.borderLight, width: 1.5),
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.inputRadius,
+                                ),
+                                borderSide: const BorderSide(
+                                  color: AppTheme.borderLight,
+                                  width: 1.5,
+                                ),
                               ),
                               focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                                borderSide: const BorderSide(color: AppTheme.cyan, width: 1.5),
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.inputRadius,
+                                ),
+                                borderSide: const BorderSide(
+                                  color: AppTheme.cyan,
+                                  width: 1.5,
+                                ),
                               ),
                             ),
                             validator: (value) {
@@ -173,16 +203,31 @@ class _LoginScreenState extends State<LoginScreen> {
                             obscureText: true,
                             decoration: InputDecoration(
                               hintText: 'Enter your password',
-                              hintStyle: const TextStyle(color: AppTheme.textSecondary),
-                              prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppTheme.textSecondary),
+                              hintStyle: const TextStyle(
+                                color: AppTheme.textSecondary,
+                              ),
+                              prefixIcon: const Icon(
+                                Icons.lock_outline_rounded,
+                                color: AppTheme.textSecondary,
+                              ),
                               fillColor: Colors.white,
                               enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                                borderSide: const BorderSide(color: AppTheme.borderLight, width: 1.5),
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.inputRadius,
+                                ),
+                                borderSide: const BorderSide(
+                                  color: AppTheme.borderLight,
+                                  width: 1.5,
+                                ),
                               ),
                               focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                                borderSide: const BorderSide(color: AppTheme.cyan, width: 1.5),
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.inputRadius,
+                                ),
+                                borderSide: const BorderSide(
+                                  color: AppTheme.cyan,
+                                  width: 1.5,
+                                ),
                               ),
                             ),
                             validator: (value) {
@@ -198,7 +243,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           Container(
                             height: 56,
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                              borderRadius: BorderRadius.circular(
+                                AppTheme.inputRadius,
+                              ),
                               boxShadow: [
                                 BoxShadow(
                                   color: AppTheme.cyan.withValues(alpha: 0.3),
@@ -214,7 +261,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 foregroundColor: Colors.white,
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                                  borderRadius: BorderRadius.circular(
+                                    AppTheme.inputRadius,
+                                  ),
                                 ),
                               ),
                               child: _isSubmitting
