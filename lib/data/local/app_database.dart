@@ -25,24 +25,62 @@ const String kUserEmail = 'user_email';
 @DriftDatabase(tables: [LocalPatients, LocalDiagnoses, SyncQueue, AppSettings])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
-      : super(executor ?? driftDatabase(
-          name: 'tbscreen_local',
-          web: kIsWeb
-              ? DriftWebOptions(
-                  sqlite3Wasm: Uri.parse('sqlite3.wasm'),
-                  driftWorker: Uri.parse('drift_worker.js'),
-                )
-              : null,
-        ));
+    : super(
+        executor ??
+            driftDatabase(
+              name: 'tbscreen_local',
+              web: kIsWeb
+                  ? DriftWebOptions(
+                      sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+                      driftWorker: Uri.parse('drift_worker.js'),
+                    )
+                  : null,
+            ),
+      );
 
   @override
   int get schemaVersion => 1;
 
+  int _sessionGeneration = 0;
+  int get sessionGeneration => _sessionGeneration;
+  void invalidateSession() => _sessionGeneration++;
+
+  /// Authenticate first, then replace a different account's cache atomically.
+  /// A failed login must not destroy the current owner's offline work.
+  Future<void> activateOwner(
+    int generation,
+    String owner,
+    Future<void> Function() persist,
+  ) {
+    return writeForSession(generation, () async {
+      if (await getSetting('session_owner') != owner) {
+        await batch((b) {
+          b.deleteWhere(localPatients, (_) => const Constant(true));
+          b.deleteWhere(localDiagnoses, (_) => const Constant(true));
+          b.deleteWhere(syncQueue, (_) => const Constant(true));
+          b.deleteWhere(appSettings, (_) => const Constant(true));
+        });
+      }
+      await persist();
+      await putSetting('session_owner', owner);
+    });
+  }
+
+  /// Serialize writes with logout. A response from an earlier session cannot
+  /// refill the single-owner cache after it has been cleared.
+  Future<void> writeForSession(int generation, Future<void> Function() write) {
+    return transaction(() async {
+      if (generation != _sessionGeneration) return;
+      await write();
+    });
+  }
+
   // === Section: Settings ===
 
   Future<String?> getSetting(String key) async {
-    final row = await (select(appSettings)..where((t) => t.key.equals(key)))
-        .getSingleOrNull();
+    final row = await (select(
+      appSettings,
+    )..where((t) => t.key.equals(key))).getSingleOrNull();
     return row?.value;
   }
 
@@ -59,14 +97,15 @@ class AppDatabase extends _$AppDatabase {
   // === Section: Patients cache ===
 
   Future<List<LocalPatient>> allPatients() {
-    return (select(localPatients)
-          ..orderBy([(t) => OrderingTerm.desc(t.lastVisit)]))
-        .get();
+    return (select(
+      localPatients,
+    )..orderBy([(t) => OrderingTerm.desc(t.lastVisit)])).get();
   }
 
   Future<LocalPatient?> findPatient(String id) {
-    return (select(localPatients)..where((t) => t.id.equals(id)))
-        .getSingleOrNull();
+    return (select(
+      localPatients,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
   }
 
   Future<void> upsertPatient(LocalPatientsCompanion row) {
@@ -84,23 +123,25 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> markPatientConflict(String id, bool value) {
-    return (update(localPatients)..where((t) => t.id.equals(id)))
-        .write(LocalPatientsCompanion(hasConflict: Value(value)));
+    return (update(localPatients)..where((t) => t.id.equals(id))).write(
+      LocalPatientsCompanion(hasConflict: Value(value)),
+    );
   }
 
   Future<int> countPatients() async {
     final count = countAll();
-    final row = await (selectOnly(localPatients)..addColumns([count]))
-        .getSingle();
+    final row = await (selectOnly(
+      localPatients,
+    )..addColumns([count])).getSingle();
     return row.read(count) ?? 0;
   }
 
   // === Section: Diagnoses cache ===
 
   Future<List<LocalDiagnose>> allDiagnoses() {
-    return (select(localDiagnoses)
-          ..orderBy([(t) => OrderingTerm.desc(t.diagnosedAt)]))
-        .get();
+    return (select(
+      localDiagnoses,
+    )..orderBy([(t) => OrderingTerm.desc(t.diagnosedAt)])).get();
   }
 
   Future<void> upsertDiagnosis(LocalDiagnosesCompanion row) {
@@ -117,8 +158,9 @@ class AppDatabase extends _$AppDatabase {
 
   Future<int> countDiagnoses() async {
     final count = countAll();
-    final row = await (selectOnly(localDiagnoses)..addColumns([count]))
-        .getSingle();
+    final row = await (selectOnly(
+      localDiagnoses,
+    )..addColumns([count])).getSingle();
     return row.read(count) ?? 0;
   }
 
@@ -140,39 +182,49 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<List<String>> pendingEntityIds(String entityType) async {
-    final rows = await (select(syncQueue)
-          ..where((t) =>
-              t.status.equals(syncPending) & t.entityType.equals(entityType)))
-        .get();
+    final rows =
+        await (select(syncQueue)..where(
+              (t) =>
+                  t.status.equals(syncPending) &
+                  t.entityType.equals(entityType),
+            ))
+            .get();
     return rows.map((r) => r.entityId).toList();
   }
 
   Future<void> markOp(String clientOpId, String status, {String? detail}) {
-    return (update(syncQueue)..where((t) => t.clientOpId.equals(clientOpId)))
-        .write(SyncQueueCompanion(
-      status: Value(status),
-      detail: Value(detail),
-      syncedAt: Value(status == syncSynced ? DateTime.now() : null),
-    ));
+    return (update(
+      syncQueue,
+    )..where((t) => t.clientOpId.equals(clientOpId))).write(
+      SyncQueueCompanion(
+        status: Value(status),
+        detail: Value(detail),
+        syncedAt: Value(status == syncSynced ? DateTime.now() : null),
+      ),
+    );
   }
 
   Future<int> countPending() async {
     final count = countAll();
-    final row = await (selectOnly(syncQueue)
-          ..addColumns([count])
-          ..where(syncQueue.status.equals(syncPending)))
-        .getSingle();
+    final row =
+        await (selectOnly(syncQueue)
+              ..addColumns([count])
+              ..where(syncQueue.status.equals(syncPending)))
+            .getSingle();
     return row.read(count) ?? 0;
   }
 
   /// Wipes cached medical data on logout. Queue and settings are cleared too —
   /// nothing belonging to the previous user may stay on the device.
   Future<void> clearAll() async {
-    await batch((b) {
-      b.deleteWhere(localPatients, (_) => const Constant(true));
-      b.deleteWhere(localDiagnoses, (_) => const Constant(true));
-      b.deleteWhere(syncQueue, (_) => const Constant(true));
-      b.deleteWhere(appSettings, (_) => const Constant(true));
-    });
+    _sessionGeneration++;
+    await transaction(
+      () => batch((b) {
+        b.deleteWhere(localPatients, (_) => const Constant(true));
+        b.deleteWhere(localDiagnoses, (_) => const Constant(true));
+        b.deleteWhere(syncQueue, (_) => const Constant(true));
+        b.deleteWhere(appSettings, (_) => const Constant(true));
+      }),
+    );
   }
 }

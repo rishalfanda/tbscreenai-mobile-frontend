@@ -11,6 +11,7 @@ class TokenStore {
 
   String? accessToken;
   String? refreshToken;
+  int generation = 0;
 
   bool get hasSession => accessToken != null;
 
@@ -29,6 +30,7 @@ class TokenStore {
   }
 
   Future<void> clear() async {
+    generation++;
     accessToken = null;
     refreshToken = null;
     await _settings?.updateTokens(accessToken: '', refreshToken: '');
@@ -44,26 +46,56 @@ class ApiClient {
     SettingsStore? settings,
     String? initialAccessToken,
     String? initialRefreshToken,
-  })  : tokens = TokenStore(settings: settings)
-          ..accessToken = initialAccessToken
-          ..refreshToken = initialRefreshToken,
-        dio = Dio(
-          BaseOptions(
-            baseUrl: baseUrl,
-            connectTimeout: const Duration(seconds: 10),
-            receiveTimeout: const Duration(seconds: 30),
-          ),
-        ) {
+  }) : tokens = TokenStore(settings: settings)
+         ..accessToken = initialAccessToken
+         ..refreshToken = initialRefreshToken,
+       dio = Dio(
+         BaseOptions(
+           baseUrl: baseUrl,
+           connectTimeout: const Duration(seconds: 10),
+           receiveTimeout: const Duration(seconds: 30),
+         ),
+       ) {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
+          options.extra.putIfAbsent(
+            'sessionGeneration',
+            () => tokens.generation,
+          );
+          if (options.extra['sessionGeneration'] != tokens.generation) {
+            return handler.reject(
+              DioException(
+                requestOptions: options,
+                type: DioExceptionType.cancel,
+                error: 'Session changed',
+              ),
+            );
+          }
           final token = tokens.accessToken;
-          if (token != null && token.isNotEmpty && !options.path.startsWith('/auth/')) {
+          if (token != null &&
+              token.isNotEmpty &&
+              !options.path.startsWith('/auth/')) {
             options.headers['Authorization'] = 'Bearer $token';
           }
           handler.next(options);
         },
+        onResponse: (response, handler) {
+          if (response.requestOptions.extra['sessionGeneration'] !=
+              tokens.generation) {
+            return handler.reject(
+              DioException(
+                requestOptions: response.requestOptions,
+                type: DioExceptionType.cancel,
+                error: 'Session changed',
+              ),
+            );
+          }
+          handler.next(response);
+        },
         onError: (error, handler) async {
+          final generation = error.requestOptions.extra['sessionGeneration'];
+          if (generation != tokens.generation) return handler.next(error);
           final isAuthPath = error.requestOptions.path.startsWith('/auth/');
           final refresh = tokens.refreshToken;
           if (error.response?.statusCode == 401 &&
@@ -78,6 +110,7 @@ class ApiClient {
                 data: {'refresh_token': refresh},
               );
               final data = response.data!;
+              if (generation != tokens.generation) return handler.next(error);
               await tokens.update(
                 access: data['access_token'] as String,
                 refresh: data['refresh_token'] as String,
@@ -87,7 +120,14 @@ class ApiClient {
               final retryResponse = await dio.fetch<dynamic>(retryOptions);
               return handler.resolve(retryResponse);
             } on DioException {
-              await tokens.clear(); // refresh failed → session is over
+              if (generation == tokens.generation) {
+                final clearing = tokens.clear();
+                final endedGeneration = tokens.generation;
+                await clearing;
+                if (endedGeneration == tokens.generation) {
+                  onSessionExpired?.call();
+                }
+              }
             }
           }
           handler.next(error);
@@ -99,4 +139,5 @@ class ApiClient {
   final String baseUrl;
   final Dio dio;
   final TokenStore tokens;
+  void Function()? onSessionExpired;
 }

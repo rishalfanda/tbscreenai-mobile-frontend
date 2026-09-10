@@ -53,7 +53,8 @@ class HttpDiagnosisRepository implements DiagnosisRepository {
 /// expects, so the rendering path is unchanged whether the outcome came from
 /// the mock repository or the server.
 DiagnosisOutcome _outcomeFromJson(Map<String, dynamic> json) {
-  final findings = (json['findings'] as Map?)?.cast<String, dynamic>() ?? const {};
+  final findings =
+      (json['findings'] as Map?)?.cast<String, dynamic>() ?? const {};
   final processingMs = (json['processing_time_ms'] as num?)?.toDouble() ?? 0;
 
   return DiagnosisOutcome(
@@ -62,6 +63,7 @@ DiagnosisOutcome _outcomeFromJson(Map<String, dynamic> json) {
     processingTime: '${(processingMs / 1000).toStringAsFixed(1)}s',
     modelVersion: json['model_version'] as String,
     createdAt: DateTime.now(),
+    isMock: json['is_mock'] != false,
     consolidation: _percent(findings['consolidation']),
     cavity: _percent(findings['cavity']),
     effusion: _percent(findings['effusion']),

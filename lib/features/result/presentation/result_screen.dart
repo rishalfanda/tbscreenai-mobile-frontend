@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
-import 'package:myapp/features/shared/presentation/widgets/widgets.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 
 // === Section: Dark palette (Result screen only) ===
@@ -20,11 +19,12 @@ class ResultScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final diagnosis = context.watch<DiagnosisProvider>();
     final result = diagnosis.lastOutcome;
+    final snapshot = diagnosis.lastResult?.draft;
 
     // The direct Result route is useful during stakeholder demos. Keep the
     // sample unmistakably labelled as dummy data; a real inference outcome
     // always replaces it.
-    if (result == null) {
+    if (result == null || snapshot == null) {
       return const _DummyScreeningResultState();
     }
 
@@ -41,6 +41,16 @@ class ResultScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (result.isMock) ...[
+                  const Text(
+                    'DUMMY / DEMO — BUKAN HASIL KLINIS',
+                    style: TextStyle(
+                      color: Colors.amber,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 // === Section: Header Row ===
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -79,11 +89,21 @@ class ResultScreen extends StatelessWidget {
                       child: Column(
                         children: [
                           // X-ray Image Card
-                          const _DarkCard(
+                          _DarkCard(
                             padding: EdgeInsets.zero,
                             child: AspectRatio(
                               aspectRatio: 16 / 9,
-                              child: XrayPreview(label: 'Citra X-ray dada'),
+                              child: snapshot.image?.canPreview == true
+                                  ? Image.memory(
+                                      snapshot.image!.bytes,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (_, _, _) => const Center(
+                                        child: Text('Image unavailable'),
+                                      ),
+                                    )
+                                  : const Center(
+                                      child: Text('Image preview unavailable'),
+                                    ),
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -99,31 +119,31 @@ class ResultScreen extends StatelessWidget {
                                   spacing: 16,
                                   runSpacing: 16,
                                   children: [
+                                    _summaryField('Name', snapshot.patientName),
                                     _summaryField(
-                                      'Name',
-                                      diagnosis.patientName,
+                                      'Gender',
+                                      snapshot.gender ?? 'Not provided',
                                     ),
-                                    _summaryField('Gender', diagnosis.gender),
                                     _summaryField(
                                       'Age',
-                                      diagnosis.age?.toString() ?? '-',
+                                      snapshot.age?.toString() ?? '-',
                                     ),
                                     _summaryField(
                                       'Height',
-                                      diagnosis.heightCm != null
-                                          ? '${diagnosis.heightCm} cm'
+                                      snapshot.heightCm != null
+                                          ? '${snapshot.heightCm} cm'
                                           : '-',
                                     ),
                                     _summaryField(
                                       'Weight',
-                                      diagnosis.weightKg != null
-                                          ? '${diagnosis.weightKg} kg'
+                                      snapshot.weightKg != null
+                                          ? '${snapshot.weightKg} kg'
                                           : '-',
                                     ),
                                     _summaryField(
                                       'BMI',
-                                      diagnosis.bmi != null
-                                          ? diagnosis.bmi!.toStringAsFixed(1)
+                                      snapshot.bmi != null
+                                          ? snapshot.bmi!.toStringAsFixed(1)
                                           : '-',
                                     ),
                                   ],
@@ -140,11 +160,11 @@ class ResultScreen extends StatelessWidget {
                               children: [
                                 const _SectionTitle('Clinical Data'),
                                 const SizedBox(height: 20),
-                                if (diagnosis.symptoms.isNotEmpty)
+                                if (snapshot.symptoms.isNotEmpty)
                                   Wrap(
                                     spacing: 8,
                                     runSpacing: 8,
-                                    children: diagnosis.symptoms
+                                    children: snapshot.symptoms
                                         .map(
                                           (s) => Container(
                                             padding: const EdgeInsets.symmetric(
@@ -182,18 +202,24 @@ class ResultScreen extends StatelessWidget {
                                   children: [
                                     _clinicalRow(
                                       'Comorbidity',
-                                      diagnosis.comorbidity,
+                                      snapshot.comorbidity ?? 'Not provided',
                                     ),
                                     _clinicalRow(
                                       'Smoking Status',
-                                      diagnosis.smoking,
+                                      snapshot.smoking ?? 'Not provided',
                                     ),
                                     _clinicalRow(
                                       'TB Contact',
-                                      diagnosis.tbContact,
+                                      snapshot.tbContact ?? 'Not provided',
                                     ),
-                                    _clinicalRow('Sputum (BTA)', diagnosis.bta),
-                                    _clinicalRow('Culture', diagnosis.culture),
+                                    _clinicalRow(
+                                      'Sputum (BTA)',
+                                      snapshot.bta ?? 'Not provided',
+                                    ),
+                                    _clinicalRow(
+                                      'Culture',
+                                      snapshot.culture ?? 'Not provided',
+                                    ),
                                   ],
                                 ),
                               ],

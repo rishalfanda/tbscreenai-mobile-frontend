@@ -30,9 +30,14 @@ class MockDiagnosisRepository implements DiagnosisRepository {
       processingTime: '${(processingMs / 1000).toStringAsFixed(1)}s',
       modelVersion: 'TBScreen v2.1.0',
       createdAt: DateTime.now(),
-      consolidation: isPositive ? (20 + _random.nextDouble() * 15) : (1 + _random.nextDouble() * 4),
+      isMock: true,
+      consolidation: isPositive
+          ? (20 + _random.nextDouble() * 15)
+          : (1 + _random.nextDouble() * 4),
       cavity: isPositive ? (_random.nextDouble() * 5) : 0.0,
-      effusion: isPositive ? (3 + _random.nextDouble() * 8) : (_random.nextDouble() * 2),
+      effusion: isPositive
+          ? (3 + _random.nextDouble() * 8)
+          : (_random.nextDouble() * 2),
       fibrotic: _random.nextDouble() * 2,
       calcification: _random.nextDouble() * 3,
     );

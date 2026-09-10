@@ -17,30 +17,35 @@ class OfflinePatientRepository implements PatientRepository {
 
   @override
   Future<List<Patient>> getPatients() async {
+    final session = _db.sessionGeneration;
     final cached = await _db.allPatients();
+    if (session != _db.sessionGeneration) return [];
 
     // Cache empty (first run) → we must wait for the server to have anything
     // to show. Otherwise serve the cache now and refresh in the background.
     if (cached.isEmpty) {
-      await _refresh();
+      await _refresh(session);
+      if (session != _db.sessionGeneration) return [];
       final fetched = await _db.allPatients();
+      if (session != _db.sessionGeneration) return [];
       return fetched.map(patientFromRow).toList();
     }
 
-    unawaited(_refresh());
+    unawaited(_refresh(session));
     return cached.map(patientFromRow).toList();
   }
 
   /// Pulls the server list into the cache. Network failure is not an error
   /// here — offline is a normal state, and the cache is still valid.
-  Future<void> _refresh() async {
+  Future<void> _refresh(int session) async {
+    if (session != _db.sessionGeneration) return;
     try {
       final response = await _client.dio.get<List<dynamic>>('/patients');
       final rows = (response.data ?? const [])
           .cast<Map<String, dynamic>>()
           .map(patientRowFromJson)
           .toList();
-      await _db.replacePatientCache(rows);
+      await _db.writeForSession(session, () => _db.replacePatientCache(rows));
     } on DioException {
       // Stay on cached data.
     }

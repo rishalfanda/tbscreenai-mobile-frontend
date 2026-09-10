@@ -19,10 +19,10 @@ class SyncReport {
   });
 
   const SyncReport.empty()
-      : applied = 0,
-        skipped = 0,
-        conflicts = 0,
-        failed = 0;
+    : applied = 0,
+      skipped = 0,
+      conflicts = 0,
+      failed = 0;
 
   final int applied;
   final int skipped;
@@ -47,9 +47,9 @@ class SyncEngine {
     required AppDatabase db,
     required ApiClient client,
     required SettingsStore settings,
-  })  : _db = db,
-        _client = client,
-        _settings = settings;
+  }) : _db = db,
+       _client = client,
+       _settings = settings;
 
   final AppDatabase _db;
   final ApiClient _client;
@@ -61,14 +61,16 @@ class SyncEngine {
   /// caller can reference the record before the server has ever seen it.
   Future<String> enqueuePatientCreate(Map<String, dynamic> payload) async {
     final entityId = uuidV4();
-    await _db.enqueue(SyncQueueCompanion.insert(
-      clientOpId: uuidV4(),
-      entityType: 'patient',
-      entityId: entityId,
-      operation: 'create',
-      payload: jsonEncode(payload),
-      createdAt: DateTime.now(),
-    ));
+    await _db.enqueue(
+      SyncQueueCompanion.insert(
+        clientOpId: uuidV4(),
+        entityType: 'patient',
+        entityId: entityId,
+        operation: 'create',
+        payload: jsonEncode(payload),
+        createdAt: DateTime.now(),
+      ),
+    );
     return entityId;
   }
 
@@ -79,15 +81,17 @@ class SyncEngine {
     Map<String, dynamic> payload, {
     DateTime? baseUpdatedAt,
   }) {
-    return _db.enqueue(SyncQueueCompanion.insert(
-      clientOpId: uuidV4(),
-      entityType: 'patient',
-      entityId: entityId,
-      operation: 'update',
-      payload: jsonEncode(payload),
-      baseUpdatedAt: Value(baseUpdatedAt),
-      createdAt: DateTime.now(),
-    ));
+    return _db.enqueue(
+      SyncQueueCompanion.insert(
+        clientOpId: uuidV4(),
+        entityType: 'patient',
+        entityId: entityId,
+        operation: 'update',
+        payload: jsonEncode(payload),
+        baseUpdatedAt: Value(baseUpdatedAt),
+        createdAt: DateTime.now(),
+      ),
+    );
   }
 
   Future<void> enqueueDiagnosisStatus(
@@ -96,15 +100,17 @@ class SyncEngine {
     String? doctorNote,
     DateTime? baseUpdatedAt,
   }) {
-    return _db.enqueue(SyncQueueCompanion.insert(
-      clientOpId: uuidV4(),
-      entityType: 'diagnosis',
-      entityId: entityId,
-      operation: 'update',
-      payload: jsonEncode({'status': status, 'doctor_note': doctorNote}),
-      baseUpdatedAt: Value(baseUpdatedAt),
-      createdAt: DateTime.now(),
-    ));
+    return _db.enqueue(
+      SyncQueueCompanion.insert(
+        clientOpId: uuidV4(),
+        entityType: 'diagnosis',
+        entityId: entityId,
+        operation: 'update',
+        payload: jsonEncode({'status': status, 'doctor_note': doctorNote}),
+        baseUpdatedAt: Value(baseUpdatedAt),
+        createdAt: DateTime.now(),
+      ),
+    );
   }
 
   Future<int> pendingCount() => _db.countPending();
@@ -117,19 +123,23 @@ class SyncEngine {
   /// failed request leaves them `pending`, so the next flush retries them;
   /// that retry is safe precisely because of the op id.
   Future<SyncReport> push() async {
+    final session = _db.sessionGeneration;
     final pending = await _db.pendingOps();
+    if (session != _db.sessionGeneration) return const SyncReport.empty();
     if (pending.isEmpty) return const SyncReport.empty();
 
     final items = pending
-        .map((op) => {
-              'client_op_id': op.clientOpId,
-              'entity_type': op.entityType,
-              'operation': op.operation,
-              'entity_id': op.entityId,
-              if (op.baseUpdatedAt != null)
-                'base_updated_at': op.baseUpdatedAt!.toUtc().toIso8601String(),
-              'payload': jsonDecode(op.payload),
-            })
+        .map(
+          (op) => {
+            'client_op_id': op.clientOpId,
+            'entity_type': op.entityType,
+            'operation': op.operation,
+            'entity_id': op.entityId,
+            if (op.baseUpdatedAt != null)
+              'base_updated_at': op.baseUpdatedAt!.toUtc().toIso8601String(),
+            'payload': jsonDecode(op.payload),
+          },
+        )
         .toList();
 
     late final Response<Map<String, dynamic>> response;
@@ -141,9 +151,17 @@ class SyncEngine {
     } on DioException catch (e) {
       // Network/server failure: leave everything pending for the next attempt.
       for (final op in pending) {
-        await _db.markOp(op.clientOpId, syncFailed, detail: _describe(e));
+        await _db.writeForSession(
+          session,
+          () => _db.markOp(op.clientOpId, syncFailed, detail: _describe(e)),
+        );
       }
-      return SyncReport(applied: 0, skipped: 0, conflicts: 0, failed: pending.length);
+      return SyncReport(
+        applied: 0,
+        skipped: 0,
+        conflicts: 0,
+        failed: pending.length,
+      );
     }
 
     var applied = 0, skipped = 0, conflicts = 0, failed = 0;
@@ -151,33 +169,39 @@ class SyncEngine {
         .cast<Map<String, dynamic>>();
 
     for (final result in results) {
+      if (session != _db.sessionGeneration) return const SyncReport.empty();
       final opId = result['client_op_id'] as String;
       final status = result['status'] as String;
       final detail = result['detail'] as String?;
       final op = pending.firstWhere((o) => o.clientOpId == opId);
 
-      switch (status) {
-        case 'applied':
-          applied++;
-          await _db.markOp(opId, syncSynced);
-        case 'skipped':
-          // Server had seen this op id before — a retry, already applied.
-          skipped++;
-          await _db.markOp(opId, syncSynced, detail: detail);
-        case 'conflict':
-          conflicts++;
-          await _db.markOp(opId, syncConflict, detail: detail);
-          if (op.entityType == 'patient') {
-            await _db.markPatientConflict(op.entityId, true);
-          }
-        default:
-          failed++;
-          await _db.markOp(opId, syncFailed, detail: detail);
-      }
+      await _db.writeForSession(session, () async {
+        switch (status) {
+          case 'applied':
+            applied++;
+            await _db.markOp(opId, syncSynced);
+          case 'skipped':
+            // Server had seen this op id before — a retry, already applied.
+            skipped++;
+            await _db.markOp(opId, syncSynced, detail: detail);
+          case 'conflict':
+            conflicts++;
+            await _db.markOp(opId, syncConflict, detail: detail);
+            if (op.entityType == 'patient') {
+              await _db.markPatientConflict(op.entityId, true);
+            }
+          default:
+            failed++;
+            await _db.markOp(opId, syncFailed, detail: detail);
+        }
+      });
     }
 
     if (applied + skipped > 0) {
-      await _settings.saveLastSyncAt(DateTime.now());
+      await _db.writeForSession(
+        session,
+        () => _settings.saveLastSyncAt(DateTime.now()),
+      );
     }
     return SyncReport(
       applied: applied,
@@ -192,6 +216,7 @@ class SyncEngine {
   /// Refreshes the local cache from the server. Rows still waiting in the
   /// queue are preserved — see [AppDatabase.replacePatientCache].
   Future<void> pull() async {
+    final session = _db.sessionGeneration;
     final response = await _client.dio.get<Map<String, dynamic>>('/sync/pull');
     final data = response.data;
     if (data == null) return;
@@ -205,9 +230,11 @@ class SyncEngine {
         .map(diagnosisRowFromJson)
         .toList();
 
-    await _db.replacePatientCache(patients);
-    await _db.replaceDiagnosisCache(diagnoses);
-    await _settings.saveLastSyncAt(DateTime.now());
+    await _db.writeForSession(session, () async {
+      await _db.replacePatientCache(patients);
+      await _db.replaceDiagnosisCache(diagnoses);
+      await _settings.saveLastSyncAt(DateTime.now());
+    });
   }
 
   String _describe(DioException e) {

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/state/auth_provider.dart';
@@ -201,9 +200,20 @@ class AccountScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: () {
-              context.read<AuthProvider>().logout();
-              context.go('/login');
+            onPressed: () async {
+              final auth = context.read<AuthProvider>();
+              try {
+                await auth.logout();
+              } catch (_) {
+                // Auth is locked immediately, even if local cleanup fails.
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Sign out cleanup failed. Please retry.'),
+                    ),
+                  );
+                }
+              }
             },
             icon: const Icon(Icons.logout_rounded),
             label: const Text('Sign Out'),

@@ -8,6 +8,7 @@ import 'package:myapp/data/local/settings_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  AppConfig.validate();
 
   // Fix: enable resampling to reduce mouse tracker assertion errors
   if (kIsWeb ||
@@ -24,13 +25,15 @@ Future<void> main() async {
   String? refreshToken;
   if (AppConfig.useHttp) {
     final settings = SettingsStore(database);
-    accessToken = await settings.readAccessToken();
-    refreshToken = await settings.readRefreshToken();
+    accessToken = await settings.readRestorableAccessToken();
+    if (accessToken != null) refreshToken = await settings.readRefreshToken();
   }
 
-  runApp(TBScreenApp(
-    database: database,
-    restoredAccessToken: accessToken,
-    restoredRefreshToken: refreshToken,
-  ));
+  runApp(
+    TBScreenApp(
+      database: database,
+      restoredAccessToken: accessToken,
+      restoredRefreshToken: refreshToken,
+    ),
+  );
 }

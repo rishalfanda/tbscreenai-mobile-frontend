@@ -54,7 +54,7 @@ class XrayImage {
     }
 
     return XrayImage._(
-      bytes: bytes,
+      bytes: Uint8List.fromList(bytes).asUnmodifiableView(),
       filename: filename.trim().isEmpty ? _fallbackFilename(format) : filename,
       mimeType: _mimeType(format),
       format: format,

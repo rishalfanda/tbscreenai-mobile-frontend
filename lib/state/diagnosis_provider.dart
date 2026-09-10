@@ -2,15 +2,34 @@ import 'package:flutter/foundation.dart';
 import 'package:myapp/domain/models/diagnosis_draft.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
 import 'package:myapp/domain/models/xray_image.dart';
+import 'package:myapp/domain/models/screening_result.dart';
 import 'package:myapp/domain/repositories/diagnosis_repository.dart';
 
 class DiagnosisProvider extends ChangeNotifier {
-  DiagnosisProvider(this._diagnosisRepository);
+  DiagnosisProvider(this._diagnosisRepository, {Listenable? session})
+    : _session = session {
+    _session?.addListener(resetForNewDiagnosis);
+  }
+
+  final Listenable? _session;
 
   final DiagnosisRepository _diagnosisRepository;
 
   DiagnosisDraft _draft = const DiagnosisDraft();
-  DiagnosisOutcome? lastOutcome;
+  ScreeningResult? _lastResult;
+  int _generation = 0;
+  bool _disposed = false;
+
+  ScreeningResult? get lastResult => _lastResult;
+  DiagnosisOutcome? get lastOutcome => _lastResult?.outcome;
+
+  @visibleForTesting
+  set lastOutcome(DiagnosisOutcome? value) {
+    _lastResult = value == null
+        ? null
+        : ScreeningResult(draft: _draft, outcome: value);
+  }
+
   bool isRunning = false;
   String? lastError;
 
@@ -167,6 +186,7 @@ class DiagnosisProvider extends ChangeNotifier {
   void clearImage() => _replace(_draft.copyWith(image: null));
 
   Future<bool> runDiagnosis() async {
+    if (_disposed || isRunning) return false;
     final attached = image;
     if (attached == null || attached.isEmpty) {
       lastError = 'Select or capture a chest X-ray before analysis.';
@@ -174,33 +194,56 @@ class DiagnosisProvider extends ChangeNotifier {
       return false;
     }
 
+    final generation = ++_generation;
+    final input = _draft.copyWith();
+    _lastResult = null;
     isRunning = true;
     lastError = null;
     notifyListeners();
 
     try {
-      lastOutcome = await _diagnosisRepository.runInference(image: attached);
+      final outcome = await _diagnosisRepository.runInference(image: attached);
+      if (_disposed || generation != _generation) return false;
+      _lastResult = ScreeningResult(draft: input, outcome: outcome);
       return true;
     } catch (_) {
-      lastOutcome = null;
+      if (_disposed || generation != _generation) return false;
+      _lastResult = null;
       lastError = 'Analysis failed. Check the server connection and try again.';
       return false;
     } finally {
-      isRunning = false;
-      notifyListeners();
+      if (!_disposed && generation == _generation) {
+        isRunning = false;
+        notifyListeners();
+      }
     }
   }
 
   void resetForNewDiagnosis() {
+    _generation++;
     _draft = const DiagnosisDraft();
-    lastOutcome = null;
+    _lastResult = null;
     lastError = null;
     isRunning = false;
     notifyListeners();
   }
 
   void _replace(DiagnosisDraft value) {
+    _generation++;
+    _lastResult = null;
+    isRunning = false;
+    lastError = null;
     _draft = value;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _session?.removeListener(resetForNewDiagnosis);
+    _disposed = true;
+    _generation++;
+    _lastResult = null;
+    _draft = const DiagnosisDraft();
+    super.dispose();
   }
 }

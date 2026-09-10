@@ -49,6 +49,12 @@ class DiagnosisDraft {
   final String? modelType;
   final XrayImage? image;
 
+  double? get bmi {
+    if (heightCm == null || weightKg == null || heightCm! <= 0) return null;
+    final meters = heightCm! / 100;
+    return weightKg! / (meters * meters);
+  }
+
   bool get requiresPediatricScore => age != null && age! < 18;
 
   bool get hasRequiredDemographics =>

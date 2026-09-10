@@ -6,6 +6,7 @@ class DiagnosisOutcome {
     required this.processingTime,
     required this.modelVersion,
     required this.createdAt,
+    this.isMock = true,
     this.consolidation = 0,
     this.cavity = 0,
     this.effusion = 0,
@@ -18,6 +19,9 @@ class DiagnosisOutcome {
   final String processingTime;
   final String modelVersion;
   final DateTime createdAt;
+
+  /// Unknown provenance is treated as demo, never implicitly clinical.
+  final bool isMock;
   final double consolidation;
   final double cavity;
   final double effusion;

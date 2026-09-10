@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/app/router/app_router.dart';
 import 'package:myapp/core/config/app_config.dart';
@@ -94,7 +95,9 @@ class TBScreenApp extends StatelessWidget {
               ? HttpDiagnosisRepository(c.read<ApiClient>())
               : MockDiagnosisRepository(),
         ),
-        Provider<ValidationRepository>(create: (_) => MockValidationRepository()),
+        Provider<ValidationRepository>(
+          create: (_) => MockValidationRepository(),
+        ),
         Provider<DatasetRepository>(create: (_) => MockDatasetRepository()),
         // === Section: State providers (depend on interfaces only) ===
         ChangeNotifierProvider(
@@ -104,26 +107,62 @@ class TBScreenApp extends StatelessWidget {
           ),
         ),
         ChangeNotifierProvider(
-          create: (context) => DiagnosisProvider(context.read<DiagnosisRepository>()),
+          create: (context) => DiagnosisProvider(
+            context.read<DiagnosisRepository>(),
+            session: context.read<AuthProvider>(),
+          ),
         ),
         ChangeNotifierProvider(
-          create: (context) => DashboardProvider(context.read<DashboardRepository>()),
+          create: (context) =>
+              DashboardProvider(context.read<DashboardRepository>()),
         ),
       ],
-      child: Builder(
-        builder: (context) {
-          final authProvider = context.watch<AuthProvider>();
-          final router = AppRouter.create(authProvider);
+      child: const _RouterView(),
+    );
+  }
+}
 
-          return MaterialApp.router(
-            title: 'TBScreen',
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.lightTheme,
-            routerConfig: router,
-            scrollBehavior: AppScrollBehavior(),
-          );
-        },
+class _RouterView extends StatefulWidget {
+  const _RouterView();
+  @override
+  State<_RouterView> createState() => _RouterViewState();
+}
+
+class _RouterViewState extends State<_RouterView> {
+  GoRouter? _router;
+  ApiClient? _client;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final auth = context.read<AuthProvider>();
+    _router ??= AppRouter.create(auth);
+    _client = context.read<ApiClient>();
+    _client!.onSessionExpired = () {
+      auth.logout().catchError((_) {});
+    };
+  }
+
+  @override
+  void dispose() {
+    _client?.onSessionExpired = null;
+    _router?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    AppConfig.validate();
+    return MaterialApp.router(
+      title: 'TBScreen',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      routerConfig: _router,
+      builder: (context, child) => Banner(
+        message: 'DEMO',
+        location: BannerLocation.topEnd,
+        child: child!,
       ),
+      scrollBehavior: AppScrollBehavior(),
     );
   }
 }

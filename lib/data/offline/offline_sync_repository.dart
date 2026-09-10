@@ -11,8 +11,18 @@ import 'package:myapp/domain/models/sync_summary.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 
 const _monthsId = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
 ];
 
 /// "2025-06-10" → "10 Juni 2025"
@@ -33,10 +43,10 @@ class OfflineSyncRepository implements SyncRepository {
     required ApiClient client,
     required SettingsStore settings,
     required SyncEngine engine,
-  })  : _db = db,
-        _client = client,
-        _settings = settings,
-        _engine = engine;
+  }) : _db = db,
+       _client = client,
+       _settings = settings,
+       _engine = engine;
 
   final AppDatabase _db;
   final ApiClient _client;
@@ -53,8 +63,9 @@ class OfflineSyncRepository implements SyncRepository {
   @override
   Future<ModelVersionInfo> checkForUpdate() async {
     final installed = await _settings.readInstalledModelVersion();
-    final response =
-        await _client.dio.get<Map<String, dynamic>?>('/sync/model-version');
+    final response = await _client.dio.get<Map<String, dynamic>?>(
+      '/sync/model-version',
+    );
     final data = response.data;
     if (data == null) {
       return ModelVersionInfo(
@@ -81,14 +92,19 @@ class OfflineSyncRepository implements SyncRepository {
   /// version persists, so the next check compares against the right baseline.
   @override
   Stream<double> downloadModel() async* {
+    final session = _db.sessionGeneration;
     final info = await checkForUpdate();
     var progress = 0.0;
     while (progress < 1.0) {
       await Future<void>.delayed(const Duration(milliseconds: 300));
+      if (session != _db.sessionGeneration) return;
       progress += 0.05;
       yield progress.clamp(0.0, 1.0);
     }
-    await _settings.saveInstalledModelVersion(info.latestVersion);
+    await _db.writeForSession(
+      session,
+      () => _settings.saveInstalledModelVersion(info.latestVersion),
+    );
   }
 
   @override
@@ -118,23 +134,28 @@ class OfflineSyncRepository implements SyncRepository {
   /// (applied / skipped / conflict / failed) lands in [lastReport].
   @override
   Stream<int> uploadPatients(List<String> patientCodes) async* {
+    final session = _db.sessionGeneration;
     lastReport = null;
     final rows = await _db.allPatients();
-    final selected =
-        rows.where((r) => patientCodes.contains(r.code)).toList();
+    final selected = rows.where((r) => patientCodes.contains(r.code)).toList();
 
     var queued = 0;
     for (final row in selected) {
-      await _engine.enqueuePatientUpdate(
-        row.id,
-        patientPayloadFromRow(row),
-        baseUpdatedAt: row.updatedAt,
+      if (session != _db.sessionGeneration) return;
+      await _db.writeForSession(
+        session,
+        () => _engine.enqueuePatientUpdate(
+          row.id,
+          patientPayloadFromRow(row),
+          baseUpdatedAt: row.updatedAt,
+        ),
       );
       queued++;
       yield queued;
     }
 
     try {
+      if (session != _db.sessionGeneration) return;
       lastReport = await _engine.push();
     } on DioException {
       lastReport = SyncReport(
