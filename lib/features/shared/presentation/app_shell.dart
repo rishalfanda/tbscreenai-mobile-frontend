@@ -108,23 +108,15 @@ class _NavRail extends StatelessWidget {
             child: Container(
               width: 48,
               height: 48,
+              padding: const EdgeInsets.all(5),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                gradient: const LinearGradient(
-                  colors: [AppTheme.primary, AppTheme.primaryDark],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: AppTheme.primaryGlow(alpha: 0.4),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
               ),
-              alignment: Alignment.center,
-              child: const Text(
-                'TB',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
+              child: Image.asset(
+                'assets/images/favicon.png',
+                fit: BoxFit.contain,
+                semanticLabel: 'TBScreen.AI',
               ),
             ),
           ),

@@ -86,32 +86,32 @@ class _LoginScreenState extends State<LoginScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           // Logo
-                          Image.asset(
-                            'assets/images/logo.png',
+                          SizedBox(
                             height: 60,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.health_and_safety,
-                                    size: 40,
-                                    color: AppTheme.navy,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'TBScreen.AI',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .headlineMedium
-                                        ?.copyWith(
-                                          color: AppTheme.navy,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                  ),
-                                ],
-                              );
-                            },
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Image.asset(
+                                  'assets/images/favicon.png',
+                                  width: 44,
+                                  height: 44,
+                                  fit: BoxFit.contain,
+                                  excludeFromSemantics: true,
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'TBScreen.AI',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineMedium
+                                      ?.copyWith(
+                                        color: AppTheme.navy,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                ),
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 32),
                           Text(
@@ -282,17 +282,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                         fontWeight: FontWeight.w800,
                                       ),
                                     ),
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          TextButton(
-                            onPressed: () {},
-                            child: const Text(
-                              'Forgot password?',
-                              style: TextStyle(
-                                color: AppTheme.cyan,
-                                fontWeight: FontWeight.w700,
-                              ),
                             ),
                           ),
                         ],
