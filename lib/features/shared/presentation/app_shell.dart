@@ -5,8 +5,7 @@ import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
 
 /// Persistent navigation shell shared by all primary screens (ShellRoute).
-/// A fixed left NavRail keeps top-level destinations reachable at all times —
-/// the adaptive pattern for tablet / large screens.
+/// Collapsible tablet rail and modal navigation on compact Android windows.
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.location, required this.child});
 
@@ -38,6 +37,8 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _pendingCount = 0;
+  bool _railVisible = true;
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -57,19 +58,99 @@ class _AppShellState extends State<AppShell> {
       (item) => widget.location.startsWith(item.route),
     );
 
+    final compact = MediaQuery.sizeOf(context).width < 840;
+    final index = selectedIndex < 0 ? 0 : selectedIndex;
+    void navigate(String route) {
+      _scaffoldKey.currentState?.closeDrawer();
+      context.go(route);
+    }
+
     return Scaffold(
+      key: _scaffoldKey,
+      drawer: compact
+          ? Drawer(
+              width: AppTheme.railWidth,
+              shape: const RoundedRectangleBorder(),
+              child: SafeArea(
+                child: _NavRail(
+                  items: AppShell._items,
+                  selectedIndex: index,
+                  pendingCount: _pendingCount,
+                  onNavigate: navigate,
+                ),
+              ),
+            )
+          : null,
       body: SafeArea(
         child: Row(
           children: [
-            _NavRail(
-              items: AppShell._items,
-              selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
-              pendingCount: _pendingCount,
+            SizedBox(
+              width: !compact && _railVisible ? AppTheme.railWidth : 0,
+              child: !compact && _railVisible
+                  ? _NavRail(
+                      items: AppShell._items,
+                      selectedIndex: index,
+                      pendingCount: _pendingCount,
+                      onNavigate: navigate,
+                    )
+                  : null,
             ),
             Expanded(
-              child: DecoratedBox(
-                decoration: const BoxDecoration(color: AppTheme.background),
-                child: widget.child,
+              child: Column(
+                children: [
+                  Material(
+                    color: AppTheme.background,
+                    child: SizedBox(
+                      height: 56,
+                      child: Row(
+                        children: [
+                          IconButton(
+                            key: const ValueKey('navigation-toggle'),
+                            constraints: const BoxConstraints.tightFor(
+                              width: 48,
+                              height: 48,
+                            ),
+                            tooltip: !compact && _railVisible
+                                ? 'Hide navigation'
+                                : 'Show navigation',
+                            icon: Icon(
+                              !compact && _railVisible
+                                  ? Icons.menu_open
+                                  : Icons.menu,
+                            ),
+                            color: AppTheme.navy,
+                            onPressed: () {
+                              if (compact) {
+                                _scaffoldKey.currentState?.openDrawer();
+                              } else {
+                                setState(() => _railVisible = !_railVisible);
+                              }
+                            },
+                          ),
+                          Expanded(
+                            child: Text(
+                              AppShell._items[index].label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppTheme.navy,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        color: AppTheme.background,
+                      ),
+                      child: widget.child,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -84,11 +165,13 @@ class _NavRail extends StatelessWidget {
     required this.items,
     required this.selectedIndex,
     required this.pendingCount,
+    required this.onNavigate,
   });
 
   final List<({String route, IconData icon, String label})> items;
   final int selectedIndex;
   final int pendingCount;
+  final ValueChanged<String> onNavigate;
 
   @override
   Widget build(BuildContext context) {
@@ -132,7 +215,7 @@ class _NavRail extends StatelessWidget {
                   label: item.label,
                   active: selectedIndex == index,
                   badgeCount: item.route == '/validation' ? pendingCount : null,
-                  onTap: () => context.go(item.route),
+                  onTap: () => onNavigate(item.route),
                 );
               },
             ),
