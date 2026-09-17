@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -9,8 +10,11 @@ import 'package:myapp/data/http/http_repositories.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/mock/mock_repositories.dart';
+import 'package:myapp/data/models_ota/model_update_pipeline.dart';
 import 'package:myapp/data/offline/offline_patient_repository.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
+import 'package:myapp/data/onnx/hybrid_diagnosis_repository.dart';
+import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/repositories/repositories.dart';
 import 'package:myapp/state/auth_provider.dart';
@@ -64,6 +68,20 @@ class TBScreenApp extends StatelessWidget {
             settings: c.read<SettingsStore>(),
           ),
         ),
+        // === Section: On-device inference ===
+        Provider<OnnxInferenceEngine>(
+          create: (_) {
+            final engine = OnnxInferenceEngine();
+            engine.init(); // fire-and-forget; hasBundle stays false until this resolves
+            return engine;
+          },
+        ),
+        Provider<ModelUpdatePipeline>(
+          create: (c) => ModelUpdatePipeline(
+            downloadDio: Dio(),
+            engine: c.read<OnnxInferenceEngine>(),
+          ),
+        ),
         // === Section: Repositories ===
         Provider<AuthRepository>(
           create: (c) => useHttp
@@ -86,14 +104,18 @@ class TBScreenApp extends StatelessWidget {
                   client: c.read<ApiClient>(),
                   settings: c.read<SettingsStore>(),
                   engine: c.read<SyncEngine>(),
+                  modelPipeline: c.read<ModelUpdatePipeline>(),
                 )
               : MockSyncRepository(),
         ),
         Provider<DashboardRepository>(create: (_) => MockDashboardRepository()),
         Provider<DiagnosisRepository>(
-          create: (c) => useHttp
-              ? HttpDiagnosisRepository(c.read<ApiClient>())
-              : MockDiagnosisRepository(),
+          create: (c) => HybridDiagnosisRepository(
+            engine: c.read<OnnxInferenceEngine>(),
+            fallback: useHttp
+                ? HttpDiagnosisRepository(c.read<ApiClient>())
+                : MockDiagnosisRepository(),
+          ),
         ),
         Provider<ValidationRepository>(
           create: (_) => MockValidationRepository(),

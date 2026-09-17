@@ -3,6 +3,7 @@ export 'activity_item.dart';
 export 'dashboard_metric.dart';
 export 'dataset.dart';
 export 'diagnosis_outcome.dart';
+export 'installed_bundle_info.dart';
 export 'model_version_info.dart';
 export 'patient.dart';
 export 'sync_summary.dart';

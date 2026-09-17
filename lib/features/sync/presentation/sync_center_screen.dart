@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
+import 'package:myapp/data/models_ota/model_update_pipeline.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/models/model_version_info.dart';
@@ -107,6 +108,7 @@ enum _ModelSyncState {
   upToDate,
   updateAvailable,
   downloading,
+  installing,
   done,
   error,
 }
@@ -124,6 +126,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
   String _currentVersion = '';
   ModelVersionInfo? _updateInfo;
   DateTime? _lastChecked;
+  String? _errorMessage;
   StreamSubscription<double>? _downloadSub;
 
   @override
@@ -163,12 +166,19 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       _state = _ModelSyncState.downloading;
       _progress = 0.0;
     });
-    _downloadSub = context.read<SyncRepository>().downloadModel().listen((
-      progress,
-    ) {
-      if (!mounted) return;
-      setState(() => _progress = progress);
-    }, onDone: _onDownloadDone);
+    _downloadSub = context.read<SyncRepository>().downloadModel().listen(
+      (progress) {
+        if (!mounted) return;
+        setState(() {
+          _progress = progress;
+          if (progress >= 1.0 && _state == _ModelSyncState.downloading) {
+            _state = _ModelSyncState.installing;
+          }
+        });
+      },
+      onDone: _onDownloadDone,
+      onError: _onDownloadError,
+    );
   }
 
   void _onDownloadDone() {
@@ -180,6 +190,28 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
     setState(() {
       _state = _ModelSyncState.idle;
       _currentVersion = newVersion;
+      _progress = 0.0;
+    });
+  }
+
+  void _onDownloadError(Object error) {
+    if (!mounted) return;
+    final message = switch (error) {
+      ModelInstallException(:final phase) => switch (phase) {
+        ModelInstallPhase.downloading =>
+          'Gagal mengunduh model — periksa koneksi internet Anda.',
+        ModelInstallPhase.verifying =>
+          'Verifikasi model gagal — berkas model rusak atau tidak sah.',
+        ModelInstallPhase.activating =>
+          'Model tidak kompatibel dengan aplikasi ini.',
+        ModelInstallPhase.smokeTesting =>
+          'Model baru gagal diuji — sistem kembali ke versi sebelumnya secara otomatis.',
+      },
+      _ => 'Gagal menghubungi server',
+    };
+    setState(() {
+      _state = _ModelSyncState.error;
+      _errorMessage = message;
       _progress = 0.0;
     });
   }
@@ -230,6 +262,8 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         return _buildUpdateAvailable(context);
       case _ModelSyncState.downloading:
         return _buildDownloading();
+      case _ModelSyncState.installing:
+        return _buildInstalling();
       case _ModelSyncState.done:
         return _buildIdle(context);
       case _ModelSyncState.error:
@@ -403,26 +437,55 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
     );
   }
 
+  Widget _buildInstalling() {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            SizedBox(width: AppTheme.sp12),
+            Expanded(child: Text('Memverifikasi dan memasang model...')),
+          ],
+        ),
+        SizedBox(height: AppTheme.sp8),
+        Text(
+          'Model sedang diverifikasi keasliannya dan diuji sebelum diaktifkan.',
+          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+        ),
+      ],
+    );
+  }
+
   Widget _buildError(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Row(
+        Row(
           children: [
-            Icon(Icons.error_rounded, color: AppTheme.error, size: 28),
-            SizedBox(width: AppTheme.sp8),
-            Text(
-              'Gagal menghubungi server',
-              style: TextStyle(
-                color: AppTheme.error,
-                fontWeight: FontWeight.w600,
+            const Icon(Icons.error_rounded, color: AppTheme.error, size: 28),
+            const SizedBox(width: AppTheme.sp8),
+            Expanded(
+              child: Text(
+                _errorMessage ?? 'Gagal menghubungi server',
+                style: const TextStyle(
+                  color: AppTheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
         ),
         const SizedBox(height: AppTheme.sp12),
         TextButton(
-          onPressed: () => setState(() => _state = _ModelSyncState.idle),
+          onPressed: () => setState(() {
+            _state = _ModelSyncState.idle;
+            _errorMessage = null;
+          }),
           child: const Text('Coba Lagi'),
         ),
       ],
