@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:myapp/core/connectivity/connectivity_service.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/data/models_ota/model_update_pipeline.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
@@ -32,7 +33,7 @@ class SyncCenterScreen extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              const _ConnectionChip(isOnline: true),
+              const _ConnectionChip(),
             ],
           ),
           const SizedBox(height: AppTheme.sp24),
@@ -67,13 +68,40 @@ class SyncCenterScreen extends StatelessWidget {
 
 // === Section: Connection Chip ===
 
-class _ConnectionChip extends StatelessWidget {
-  const _ConnectionChip({required this.isOnline});
+class _ConnectionChip extends StatefulWidget {
+  const _ConnectionChip();
 
-  final bool isOnline;
+  @override
+  State<_ConnectionChip> createState() => _ConnectionChipState();
+}
+
+class _ConnectionChipState extends State<_ConnectionChip> {
+  final _connectivity = ConnectivityService();
+  bool _isOnline = true;
+  StreamSubscription<bool>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _connectivity.checkNow().then((online) {
+      if (!mounted) return;
+      setState(() => _isOnline = online);
+    });
+    _sub = _connectivity.onStatusChange.listen((online) {
+      if (!mounted) return;
+      setState(() => _isOnline = online);
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final isOnline = _isOnline;
     return Chip(
       avatar: Icon(
         isOnline ? Icons.circle : Icons.wifi_off_rounded,
