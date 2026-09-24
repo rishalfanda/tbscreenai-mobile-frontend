@@ -12,29 +12,34 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<DashboardProvider>(
       builder: (context, dashboard, child) {
-        return SingleChildScrollView(
-          physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(context, dashboard),
-              const SizedBox(height: 24),
-              if (dashboard.isLoading)
-                const Center(child: CircularProgressIndicator())
-              else ...[
-                _buildStatCards(context, dashboard),
-                const SizedBox(height: 16),
-                _buildAgreementLevelRow(context),
-                const SizedBox(height: 24),
-                _buildDiagnosisTrendsChart(context, dashboard),
-                const SizedBox(height: 24),
-                _buildDistributionDonuts(context, dashboard),
-                const SizedBox(height: 24),
-                _buildRecentActivity(context, dashboard),
-              ],
-            ],
-          ),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final pagePadding = constraints.maxWidth < 700 ? 16.0 : 24.0;
+            return SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              padding: EdgeInsets.all(pagePadding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeader(context, dashboard),
+                  const SizedBox(height: 20),
+                  if (dashboard.isLoading)
+                    const Center(child: CircularProgressIndicator())
+                  else ...[
+                    _buildStatCards(context, dashboard),
+                    const SizedBox(height: 16),
+                    _buildAgreementLevelRow(context),
+                    const SizedBox(height: 16),
+                    _buildDiagnosisTrendsChart(context, dashboard),
+                    const SizedBox(height: 16),
+                    _buildDistributionDonuts(context, dashboard),
+                    const SizedBox(height: 16),
+                    _buildRecentActivity(context, dashboard),
+                  ],
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -145,123 +150,147 @@ class DashboardScreen extends StatelessWidget {
   }
 
   Widget _buildStatCards(BuildContext context, DashboardProvider dashboard) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final crossAxisCount = screenWidth < 1100 ? 2 : 4;
-    final aspectRatio = screenWidth < 1100 ? 1.5 : 1.3;
-
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: dashboard.metrics.length,
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: aspectRatio,
-      ),
-      itemBuilder: (context, index) {
-        final metric = dashboard.metrics[index];
-        final isPositive = metric.change.startsWith('+');
-
-        final iconData = switch (metric.icon) {
-          'people' => Icons.people_alt_rounded,
-          'analytics' => Icons.analytics_rounded,
-          'verified' => Icons.verified_user_rounded,
-          'pending' => Icons.pending_actions_rounded,
-          _ => Icons.bar_chart_rounded,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final crossAxisCount = switch (constraints.maxWidth) {
+          < 560 => 1,
+          < 1080 => 2,
+          _ => 4,
         };
 
-        // Map the semantic tone to theme colors; fall back to the per-icon
-        // accent (same visual result as the old Color-carrying model).
-        final Color iconColor = switch (metric.tone) {
-          MetricTone.success => AppTheme.success,
-          MetricTone.warning => AppTheme.warning,
-          null => switch (metric.icon) {
-            'people' => AppTheme.lightBlue,
-            'analytics' => AppTheme.purple,
-            _ => AppTheme.primary,
-          },
-        };
-
-        return Card(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-            side: const BorderSide(color: AppTheme.borderLight),
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: dashboard.metrics.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            mainAxisExtent: crossAxisCount == 1 ? 112 : 128,
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(iconData, color: iconColor),
-                ),
-                const Spacer(),
-                Text(
-                  metric.title,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.subtitleGrey,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          itemBuilder: (context, index) {
+            final metric = dashboard.metrics[index];
+            final isPositive = metric.change.startsWith('+');
+
+            final iconData = switch (metric.icon) {
+              'people' => Icons.people_alt_rounded,
+              'analytics' => Icons.monitor_heart_rounded,
+              'verified' => Icons.verified_user_rounded,
+              'pending' => Icons.pending_actions_rounded,
+              _ => Icons.bar_chart_rounded,
+            };
+
+            // Map the semantic tone to theme colors; fall back to the per-icon
+            // accent (same visual result as the old Color-carrying model).
+            final Color iconColor = switch (metric.tone) {
+              MetricTone.success => AppTheme.success,
+              MetricTone.warning => AppTheme.warning,
+              null => switch (metric.icon) {
+                'people' => AppTheme.lightBlue,
+                'analytics' => AppTheme.primaryDark,
+                _ => AppTheme.primary,
+              },
+            };
+
+            return Card(
+              color: iconColor.withValues(alpha: 0.045),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+                side: BorderSide(color: iconColor.withValues(alpha: 0.16)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
                   children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: iconColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(iconData, color: iconColor, size: 22),
+                    ),
+                    const SizedBox(width: 14),
                     Expanded(
                       child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            metric.value,
+                            metric.title,
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.headlineMedium
+                            style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.navy,
-                                  fontSize: 22,
+                                  color: AppTheme.subtitleGrey,
+                                  fontWeight: FontWeight.w600,
                                 ),
                           ),
-                          if (metric.subtext != null)
+                          const SizedBox(height: 4),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  metric.value,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineSmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        color: AppTheme.navy,
+                                        fontSize: 22,
+                                      ),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      (isPositive
+                                              ? AppTheme.success
+                                              : AppTheme.error)
+                                          .withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  metric.change,
+                                  style: TextStyle(
+                                    color: isPositive
+                                        ? AppTheme.successDark
+                                        : AppTheme.errorDark,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (metric.subtext != null) ...[
+                            const SizedBox(height: 2),
                             Text(
                               metric.subtext!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 color: AppTheme.subtitleGrey,
                                 fontSize: 11,
                               ),
                             ),
+                          ],
                         ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: (isPositive ? AppTheme.success : AppTheme.error)
-                            .withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        metric.change,
-                        style: TextStyle(
-                          color: isPositive ? AppTheme.success : AppTheme.error,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 11,
-                        ),
                       ),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -270,111 +299,92 @@ class DashboardScreen extends StatelessWidget {
   Widget _buildAgreementLevelRow(BuildContext context) {
     const double agreementPct = 88.8;
     return Card(
+      color: AppTheme.success.withValues(alpha: 0.035),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-        side: const BorderSide(color: AppTheme.borderLight),
+        side: BorderSide(color: AppTheme.success.withValues(alpha: 0.16)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 680;
+          return Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.end,
+                  spacing: 16,
+                  runSpacing: 8,
                   children: [
-                    Text(
-                      'Agreement Level',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.navy,
-                        fontSize: 18,
+                    SizedBox(
+                      width: isCompact
+                          ? double.infinity
+                          : constraints.maxWidth - 140,
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Agreement Level',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.navy,
+                              fontSize: 17,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Consistency between AI screening and doctor review',
+                            style: TextStyle(
+                              color: AppTheme.subtitleGrey,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     Text(
-                      'Consistency between AI screening and doctor review',
+                      '$agreementPct%',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.navy,
+                          ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: agreementPct / 100,
+                    minHeight: 10,
+                    backgroundColor: AppTheme.error.withValues(alpha: 0.18),
+                    color: AppTheme.success,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: const [
+                    _StatusKey(color: AppTheme.success, label: 'Agreed 88.8%'),
+                    _StatusKey(color: AppTheme.error, label: 'Disagreed 11.2%'),
+                    Text(
+                      '3,139 validated cases',
                       style: TextStyle(
                         color: AppTheme.subtitleGrey,
-                        fontSize: 13,
+                        fontSize: 11,
                       ),
                     ),
                   ],
                 ),
-                Text(
-                  '$agreementPct%',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.navy,
-                  ),
-                ),
               ],
             ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  flex: agreementPct.toInt(),
-                  child: Container(
-                    height: 12,
-                    decoration: const BoxDecoration(
-                      color: AppTheme.success,
-                      borderRadius: BorderRadius.horizontal(
-                        left: Radius.circular(6),
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: (100 - agreementPct).toInt(),
-                  child: Container(
-                    height: 12,
-                    decoration: const BoxDecoration(
-                      color: AppTheme.error,
-                      borderRadius: BorderRadius.horizontal(
-                        right: Radius.circular(6),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.circle, color: AppTheme.success, size: 10),
-                    SizedBox(width: 4),
-                    Text(
-                      'Agreed',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.subtitleGrey,
-                      ),
-                    ),
-                    SizedBox(width: 16),
-                    Icon(Icons.circle, color: AppTheme.error, size: 10),
-                    SizedBox(width: 4),
-                    Text(
-                      'Disagreed',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.subtitleGrey,
-                      ),
-                    ),
-                  ],
-                ),
-                Text(
-                  'of 3,139 validated cases',
-                  style: TextStyle(color: AppTheme.subtitleGrey, fontSize: 11),
-                ),
-              ],
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -384,42 +394,52 @@ class DashboardScreen extends StatelessWidget {
     DashboardProvider dashboard,
   ) {
     return Card(
+      color: AppTheme.primary.withValues(alpha: 0.03),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-        side: const BorderSide(color: AppTheme.borderLight),
+        side: BorderSide(color: AppTheme.primary.withValues(alpha: 0.16)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 16,
+              runSpacing: 8,
               children: [
                 const Text(
-                  'Screening Trends Over Time',
+                  'Screening volume, last 30 days',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: AppTheme.navy,
-                    fontSize: 18,
+                    fontSize: 17,
                   ),
                 ),
-                Row(
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 6,
                   children: [
-                    _buildLegendItem('Total Screenings', AppTheme.primary),
-                    const SizedBox(width: 16),
-                    _buildLegendItem('Total Patients', AppTheme.lightBlue),
+                    _buildLegendItem('Total Screenings', AppTheme.primaryDark),
+                    _buildLegendItem(
+                      'Total Patients',
+                      AppTheme.navy,
+                      dashed: true,
+                    ),
                   ],
                 ),
               ],
             ),
-            const SizedBox(height: 32),
-            Container(
-              height: 240,
-              width: double.infinity,
-              color: Colors.transparent,
-              child: CustomPaint(
-                painter: TrendsChartPainter(dashboard.trendData),
+            const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (context, constraints) => SizedBox(
+                height: constraints.maxWidth < 600 ? 190 : 220,
+                width: double.infinity,
+                child: CustomPaint(
+                  painter: TrendsChartPainter(dashboard.trendData),
+                ),
               ),
             ),
           ],
@@ -428,11 +448,23 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildLegendItem(String label, Color color) {
+  Widget _buildLegendItem(String label, Color color, {bool dashed = false}) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.circle, color: color, size: 10),
-        const SizedBox(width: 4),
+        SizedBox(
+          width: 22,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: dashed
+                ? List.generate(
+                    3,
+                    (_) => Container(width: 5, height: 3, color: color),
+                  )
+                : [Expanded(child: Container(height: 3, color: color))],
+          ),
+        ),
+        const SizedBox(width: 6),
         Text(
           label,
           style: const TextStyle(fontSize: 12, color: AppTheme.subtitleGrey),
@@ -446,24 +478,28 @@ class DashboardScreen extends StatelessWidget {
     DashboardProvider dashboard,
   ) {
     return Card(
+      color: AppTheme.navy.withValues(alpha: 0.025),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-        side: const BorderSide(color: AppTheme.borderLight),
+        side: BorderSide(color: AppTheme.navy.withValues(alpha: 0.12)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 16,
+              runSpacing: 8,
               children: [
                 const Text(
                   'TB Case Distribution',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: AppTheme.navy,
-                    fontSize: 18,
+                    fontSize: 17,
                   ),
                 ),
                 Container(
@@ -497,27 +533,33 @@ class DashboardScreen extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildDonut(
-                    'TB Case Distribution by AI',
-                    65,
-                    '428 cases',
-                  ),
-                ),
-                const SizedBox(width: 24),
-                Expanded(
-                  child: _buildDonut(
-                    'TB Case Distribution by Doctor',
-                    58,
-                    '247 validated',
-                  ),
-                ),
-              ],
-            ),
             const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final stackPanels = constraints.maxWidth < 700;
+                final panels = [
+                  _buildDonut('AI screening', 65, '428 cases'),
+                  _buildDonut('Doctor review', 58, '247 validated'),
+                ];
+                if (stackPanels) {
+                  return Column(
+                    children: [
+                      panels.first,
+                      const SizedBox(height: 12),
+                      panels.last,
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: panels.first),
+                    const SizedBox(width: 12),
+                    Expanded(child: panels.last),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 12),
             const Text(
               'Doctor distribution only includes validated cases.',
               style: TextStyle(
@@ -533,65 +575,104 @@ class DashboardScreen extends StatelessWidget {
   }
 
   Widget _buildDonut(String title, int positivePct, String totalLabel) {
-    return Column(
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
-            color: AppTheme.navy,
-            fontSize: 16,
-          ),
-        ),
-        const SizedBox(height: 24),
-        SizedBox(
-          width: 160,
-          height: 160,
-          child: Stack(
-            alignment: Alignment.center,
+    final negativePct = 100 - positivePct;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.background,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final chart = SizedBox(
+            width: 108,
+            height: 108,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 94,
+                  height: 94,
+                  child: CircularProgressIndicator(
+                    value: positivePct / 100,
+                    strokeWidth: 12,
+                    backgroundColor: AppTheme.success.withValues(alpha: 0.22),
+                    color: AppTheme.error,
+                  ),
+                ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$positivePct%',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 20,
+                        color: AppTheme.navy,
+                      ),
+                    ),
+                    const Text(
+                      'Positive',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.subtitleGrey,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+          final details = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                width: 140,
-                height: 140,
-                child: CircularProgressIndicator(
-                  value: positivePct / 100,
-                  strokeWidth: 20,
-                  backgroundColor: AppTheme.success.withValues(alpha: 0.2),
-                  color: AppTheme.error,
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.navy,
+                  fontSize: 15,
                 ),
               ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '$positivePct%',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 24,
-                      color: AppTheme.navy,
-                    ),
-                  ),
-                  const Text(
-                    'Positive',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.subtitleGrey,
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 4),
+              Text(
+                totalLabel,
+                style: const TextStyle(
+                  color: AppTheme.subtitleGrey,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _StatusKey(
+                color: AppTheme.error,
+                label: 'Positive $positivePct%',
+              ),
+              const SizedBox(height: 6),
+              _StatusKey(
+                color: AppTheme.success,
+                label: 'Negative $negativePct%',
               ),
             ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          totalLabel,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            color: AppTheme.navy,
-          ),
-        ),
-      ],
+          );
+
+          if (constraints.maxWidth < 320) {
+            return Column(
+              children: [
+                chart,
+                const SizedBox(height: 12),
+                Align(alignment: Alignment.centerLeft, child: details),
+              ],
+            );
+          }
+          return Row(
+            children: [
+              chart,
+              const SizedBox(width: 14),
+              Expanded(child: details),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -609,8 +690,11 @@ class DashboardScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 16,
+              runSpacing: 4,
               children: [
                 const Text(
                   'Recent Activity',
@@ -722,6 +806,32 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
+class _StatusKey extends StatelessWidget {
+  const _StatusKey({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: AppTheme.subtitleGrey),
+        ),
+      ],
+    );
+  }
+}
+
 class TrendsChartPainter extends CustomPainter {
   final List<TrendDataPoint> data;
 
@@ -751,6 +861,7 @@ class TrendsChartPainter extends CustomPainter {
     }
     // Round up to nearest multiple of 7
     maxValue = ((maxValue / 7).ceil()) * 7;
+    if (maxValue == 0) maxValue = 7;
     final yStep = maxValue / 4;
 
     // Draw Grid Lines & Labels (Y-Axis)
@@ -801,8 +912,8 @@ class TrendsChartPainter extends CustomPainter {
       chartHeight,
       padding,
       diagnosesData,
-      AppTheme.primary,
-      false,
+      AppTheme.primaryDark,
+      dashed: false,
     );
     _drawLine(
       canvas,
@@ -810,8 +921,8 @@ class TrendsChartPainter extends CustomPainter {
       chartHeight,
       padding,
       patientsData,
-      AppTheme.lightBlue,
-      false,
+      AppTheme.navy,
+      dashed: true,
     );
   }
 
@@ -821,9 +932,9 @@ class TrendsChartPainter extends CustomPainter {
     double height,
     double padding,
     List<double> data,
-    Color color,
-    bool showArea,
-  ) {
+    Color color, {
+    required bool dashed,
+  }) {
     final paint = Paint()
       ..color = color
       ..strokeWidth = 3
@@ -831,7 +942,6 @@ class TrendsChartPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     final path = Path();
-    final areaPath = Path();
 
     for (int i = 0; i < data.length; i++) {
       double x = padding + (i * width / (data.length - 1));
@@ -839,8 +949,6 @@ class TrendsChartPainter extends CustomPainter {
 
       if (i == 0) {
         path.moveTo(x, y);
-        areaPath.moveTo(x, padding + height);
-        areaPath.lineTo(x, y);
       } else {
         double prevX = padding + ((i - 1) * width / (data.length - 1));
         double prevY = padding + (height - (data[i - 1] * height));
@@ -854,47 +962,20 @@ class TrendsChartPainter extends CustomPainter {
           x,
           y,
         );
-        areaPath.cubicTo(
-          prevX + (x - prevX) / 2,
-          prevY,
-          prevX + (x - prevX) / 2,
-          y,
-          x,
-          y,
-        );
-      }
-
-      if (i == data.length - 1) {
-        areaPath.lineTo(x, padding + height);
-        areaPath.close();
       }
     }
 
-    // Draw area with gradient
-    if (showArea) {
-      final areaPaint = Paint()
-        ..shader =
-            LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                color.withValues(alpha: 0.3),
-                color.withValues(alpha: 0.0),
-              ],
-            ).createShader(
-              Rect.fromLTRB(
-                padding,
-                padding,
-                padding + width,
-                padding + height,
-              ),
-            )
-        ..style = PaintingStyle.fill;
-      canvas.drawPath(areaPath, areaPaint);
+    if (dashed) {
+      for (final metric in path.computeMetrics()) {
+        var distance = 0.0;
+        while (distance < metric.length) {
+          canvas.drawPath(metric.extractPath(distance, distance + 8), paint);
+          distance += 13;
+        }
+      }
+    } else {
+      canvas.drawPath(path, paint);
     }
-
-    // Draw line
-    canvas.drawPath(path, paint);
 
     // Draw data points
     final dotPaint = Paint()

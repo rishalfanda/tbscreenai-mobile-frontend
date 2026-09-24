@@ -56,19 +56,22 @@ class _DatasetScreenState extends State<DatasetScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      physics: const ClampingScrollPhysics(),
-      padding: const EdgeInsets.all(32),
-      child: switch (_currentView) {
-        DatasetView.list => _buildListView(),
-        DatasetView.create => _buildCreateView(),
-        DatasetView.detail => _buildDetailView(),
-        DatasetView.edit => _buildEditView(),
-      },
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const ClampingScrollPhysics(),
+        padding: EdgeInsets.all(constraints.maxWidth < 700 ? 16 : 32),
+        child: switch (_currentView) {
+          DatasetView.list => _buildListView(constraints.maxWidth),
+          DatasetView.create => _buildCreateView(),
+          DatasetView.detail => _buildDetailView(),
+          DatasetView.edit => _buildEditView(),
+        },
+      ),
     );
   }
 
-  Widget _buildListView() {
+  Widget _buildListView(double availableWidth) {
+    final useCards = availableWidth < 900;
     final filtered = _datasets
         .where(
           (d) => d.name.toLowerCase().contains(
@@ -80,8 +83,11 @@ class _DatasetScreenState extends State<DatasetScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 16,
+          runSpacing: 16,
           children: [
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -117,8 +123,8 @@ class _DatasetScreenState extends State<DatasetScreen> {
           ],
         ),
         const SizedBox(height: 24),
-        SizedBox(
-          width: 400,
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
           child: TextField(
             controller: _searchController,
             onChanged: (_) => setState(() {}),
@@ -143,61 +149,199 @@ class _DatasetScreenState extends State<DatasetScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        Card(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-            side: const BorderSide(color: AppTheme.borderLight),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(AppTheme.cardRadius),
+        if (useCards)
+          ...filtered.map(_buildDatasetCard)
+        else
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+              side: const BorderSide(color: AppTheme.borderLight),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 16,
                   ),
-                  border: Border(
-                    bottom: BorderSide(color: AppTheme.borderLight),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(AppTheme.cardRadius),
+                    ),
+                    border: Border(
+                      bottom: BorderSide(color: AppTheme.borderLight),
+                    ),
+                  ),
+                  child: Row(
+                    children: const [
+                      Expanded(
+                        flex: _colName,
+                        child: _HeaderLabel("DATASET NAME"),
+                      ),
+                      SizedBox(width: _colGap),
+                      Expanded(
+                        flex: _colImages,
+                        child: _HeaderLabel("TOTAL IMAGES"),
+                      ),
+                      SizedBox(width: _colGap),
+                      Expanded(flex: _colSize, child: _HeaderLabel("SIZE")),
+                      SizedBox(width: _colGap),
+                      Expanded(
+                        flex: _colUpdated,
+                        child: _HeaderLabel("LAST UPDATED"),
+                      ),
+                      SizedBox(width: _colGap),
+                      Expanded(flex: _colStatus, child: _HeaderLabel("STATUS")),
+                      SizedBox(width: _colGap),
+                      SizedBox(
+                        width: _actionsWidth,
+                        child: _HeaderLabel("ACTIONS"),
+                      ),
+                    ],
                   ),
                 ),
-                child: Row(
-                  children: const [
-                    Expanded(
-                      flex: _colName,
-                      child: _HeaderLabel("DATASET NAME"),
-                    ),
-                    SizedBox(width: _colGap),
-                    Expanded(
-                      flex: _colImages,
-                      child: _HeaderLabel("TOTAL IMAGES"),
-                    ),
-                    SizedBox(width: _colGap),
-                    Expanded(flex: _colSize, child: _HeaderLabel("SIZE")),
-                    SizedBox(width: _colGap),
-                    Expanded(
-                      flex: _colUpdated,
-                      child: _HeaderLabel("LAST UPDATED"),
-                    ),
-                    SizedBox(width: _colGap),
-                    Expanded(flex: _colStatus, child: _HeaderLabel("STATUS")),
-                    SizedBox(width: _colGap),
-                    SizedBox(
-                      width: _actionsWidth,
-                      child: _HeaderLabel("ACTIONS"),
-                    ),
-                  ],
-                ),
-              ),
-              ...filtered.map((dataset) => _buildDatasetRow(dataset)),
-            ],
+                ...filtered.map((dataset) => _buildDatasetRow(dataset)),
+              ],
+            ),
           ),
-        ),
       ],
+    );
+  }
+
+  Widget _buildDatasetCard(DatasetModel dataset) {
+    final statusColor = dataset.status == "ACTIVE"
+        ? AppTheme.success
+        : AppTheme.subtitleGrey;
+    return Card(
+      color: statusColor.withValues(alpha: 0.035),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+        side: BorderSide(color: statusColor.withValues(alpha: 0.16)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.folder_rounded,
+                    color: AppTheme.primaryDark,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        dataset.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.navy,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        dataset.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppTheme.subtitleGrey,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    dataset.status,
+                    softWrap: false,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 24,
+              runSpacing: 12,
+              children: [
+                _DatasetMeta(
+                  label: "Total images",
+                  value: "${dataset.totalImages}",
+                ),
+                _DatasetMeta(label: "Size", value: dataset.size),
+                _DatasetMeta(label: "Last updated", value: dataset.lastUpdated),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                children: [
+                  _RowAction(
+                    icon: Icons.visibility_outlined,
+                    color: AppTheme.primaryDark,
+                    tooltip: "View",
+                    onPressed: () => _navigate(DatasetView.detail, dataset),
+                  ),
+                  _RowAction(
+                    icon: Icons.edit_outlined,
+                    color: AppTheme.navy,
+                    tooltip: "Edit",
+                    onPressed: () => _navigate(DatasetView.edit, dataset),
+                  ),
+                  _RowAction(
+                    icon: Icons.download_outlined,
+                    color: AppTheme.subtitleGrey,
+                    tooltip: "Download",
+                    onPressed: () {},
+                  ),
+                  _RowAction(
+                    icon: Icons.delete_outline_rounded,
+                    color: AppTheme.error,
+                    tooltip: "Delete",
+                    onPressed: () => _showConfirmDeleteDialog(dataset.name, () {
+                      setState(() {
+                        _datasets.removeWhere((d) => d.id == dataset.id);
+                      });
+                    }),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1530,6 +1674,40 @@ class _HeaderLabel extends StatelessWidget {
         fontWeight: FontWeight.w700,
         color: AppTheme.subtitleGrey,
         letterSpacing: 0.5,
+      ),
+    );
+  }
+}
+
+class _DatasetMeta extends StatelessWidget {
+  const _DatasetMeta({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 104,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(color: AppTheme.subtitleGrey, fontSize: 11),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppTheme.navy,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
