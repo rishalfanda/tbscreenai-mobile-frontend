@@ -74,7 +74,7 @@ class TBScreenApp extends StatelessWidget {
         Provider<OnnxInferenceEngine>(
           create: (_) {
             final engine = OnnxInferenceEngine();
-            engine.init(); // fire-and-forget; hasBundle stays false until this resolves
+            engine.ready; // fire-and-forget kick-off; await this to read hasBundle reliably
             return engine;
           },
         ),

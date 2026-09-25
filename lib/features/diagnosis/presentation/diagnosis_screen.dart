@@ -106,6 +106,13 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
   bool _initialized = false;
   bool _pickingImage = false;
 
+  // `OnnxInferenceEngine.hasBundle` reads `false` until its startup `init()`
+  // finishes loading the active bundle from disk. Reading it straight away
+  // on a cold app start — before that resolves — wrongly reports "no model"
+  // even when one is installed; awaiting `ready` first avoids that race.
+  bool _checkingModel = true;
+  bool _hasModelReady = false;
+
   static const _symptoms = <String>[
     'Fever',
     'Cough',
@@ -118,6 +125,22 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
     'Hemoptysis/Coughing Blood',
     'Other',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.hasModelOverride != null) {
+      _checkingModel = false;
+    } else {
+      context.read<OnnxInferenceEngine>().ready.then((_) {
+        if (!mounted) return;
+        setState(() {
+          _hasModelReady = context.read<OnnxInferenceEngine>().hasBundle;
+          _checkingModel = false;
+        });
+      });
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -218,9 +241,8 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
   @override
   Widget build(BuildContext context) {
     final diagnosis = context.watch<DiagnosisProvider>();
-    final hasModel =
-        widget.hasModelOverride ??
-        context.read<OnnxInferenceEngine>().hasBundle;
+    final hasModel = widget.hasModelOverride ?? _hasModelReady;
+    final checkingModel = widget.hasModelOverride == null && _checkingModel;
 
     return ColoredBox(
       color: _page,
@@ -261,7 +283,11 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final left = _leftFormColumn(diagnosis);
-                          final right = _rightImageColumn(diagnosis, hasModel);
+                          final right = _rightImageColumn(
+                            diagnosis,
+                            hasModel,
+                            checkingModel,
+                          );
                           if (constraints.maxWidth >= 800) {
                             return Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -679,11 +705,15 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
     );
   }
 
-  Widget _rightImageColumn(DiagnosisProvider diagnosis, bool hasModel) {
+  Widget _rightImageColumn(
+    DiagnosisProvider diagnosis,
+    bool hasModel,
+    bool checkingModel,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (!hasModel) ...[
+        if (!checkingModel && !hasModel) ...[
           _NoModelBanner(onGoToSync: () => context.go('/sync')),
           const SizedBox(height: 18),
         ],

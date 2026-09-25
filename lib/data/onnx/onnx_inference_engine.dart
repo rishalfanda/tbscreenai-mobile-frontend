@@ -20,8 +20,16 @@ class OnnxInferenceEngine {
 
   BundleStore? _store;
   OrtChainExecutor? _executor;
+  Future<bool>? _readyFuture;
 
   bool get hasBundle => _executor != null && _store != null;
+
+  /// Resolves once the initial [init] load (kicked off once, lazily) has
+  /// finished. `hasBundle` reads `false` until this completes, so anything
+  /// that needs an accurate answer right after app startup — not the
+  /// still-loading default — should await this first instead of reading
+  /// `hasBundle` straight away.
+  Future<bool> get ready => _readyFuture ??= init();
 
   BundleManifest? get manifest => _store?.manifest;
 
