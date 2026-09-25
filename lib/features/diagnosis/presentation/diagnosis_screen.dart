@@ -214,7 +214,12 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
       return;
     }
 
+    // Captured before the `await` so the dialog can still be dismissed even
+    // if this screen is unmounted (e.g. the user navigates away) mid-run.
+    final navigator = Navigator.of(context, rootNavigator: true);
+    _showAnalyzingDialog();
     final success = await provider.runDiagnosis();
+    navigator.pop();
     if (!mounted) return;
     if (success && provider.lastOutcome != null) {
       context.go('/result');
@@ -224,6 +229,49 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
         isError: true,
       );
     }
+  }
+
+  void _showAnalyzingDialog() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: Dialog(
+          backgroundColor: _panel,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 32, vertical: 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: _accent),
+                SizedBox(height: 18),
+                Text(
+                  'Menganalisis citra rontgen...',
+                  style: TextStyle(
+                    color: _text,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _resetForm() {
+    FocusScope.of(context).unfocus();
+    context.read<DiagnosisProvider>().resetForNewDiagnosis();
+    _formKey.currentState?.reset();
+    _nameController.clear();
+    _ageController.clear();
+    _heightController.clear();
+    _weightController.clear();
+    _pediatricController.clear();
   }
 
   void _showMessage(String message, {required bool isError}) {
@@ -735,33 +783,53 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
           _InlineError(message: diagnosis.lastError!),
           const SizedBox(height: 18),
         ],
-        SizedBox(
-          width: double.infinity,
-          height: 60,
-          child: FilledButton(
-            key: const Key('analyze-button'),
-            onPressed: (!hasModel || diagnosis.isRunning) ? null : _analyze,
-            style: FilledButton.styleFrom(
-              backgroundColor: _action,
-              disabledBackgroundColor: _action.withValues(alpha: 0.55),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 60,
+                child: OutlinedButton(
+                  key: const Key('reset-button'),
+                  onPressed: diagnosis.isRunning ? null : _resetForm,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _text,
+                    side: const BorderSide(color: _border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    'Atur Ulang',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                  ),
+                ),
               ),
             ),
-            child: diagnosis.isRunning
-                ? const SizedBox.square(
-                    dimension: 24,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 3,
+            const SizedBox(width: 16),
+            Expanded(
+              child: SizedBox(
+                height: 60,
+                child: FilledButton(
+                  key: const Key('analyze-button'),
+                  onPressed: (!hasModel || diagnosis.isRunning)
+                      ? null
+                      : _analyze,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _action,
+                    disabledBackgroundColor: _action.withValues(alpha: 0.55),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                  )
-                : const Text(
+                  ),
+                  child: const Text(
                     'Analisis',
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
                   ),
-          ),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
