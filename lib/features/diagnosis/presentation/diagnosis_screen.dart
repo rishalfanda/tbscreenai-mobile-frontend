@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/features/diagnosis/application/xray_image_picker.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
@@ -17,13 +18,77 @@ const Color _muted = Color(0xFF94A3B8);
 const Color _accent = Color(0xFF4F9BFF);
 const Color _action = Color(0xFF2463EB);
 
+// Display-label translations. Dropdown/radio `value`s stay in English (the
+// domain/data-layer contract); only what's rendered is Bahasa Indonesia.
+const Map<String, String> _yesNoLabels = {'Yes': 'Ya', 'No': 'Tidak'};
+const Map<String, String> _yesNoUnknownLabels = {
+  'Unknown': 'Tidak Diketahui',
+  'No': 'Tidak',
+  'Yes': 'Ya',
+};
+const Map<String, String> _positiveNegativeLabels = {
+  'Positive': 'Positif',
+  'Negative': 'Negatif',
+};
+const Map<String, String> _positiveNegativeOtherLabels = {
+  'Positive': 'Positif',
+  'Negative': 'Negatif',
+  'Other': 'Lainnya',
+};
+const Map<String, String> _btaLabels = {
+  'BTA Positive': 'BTA Positif',
+  'BTA Negative': 'BTA Negatif',
+};
+const Map<String, String> _genderLabels = {
+  'Female': 'Perempuan',
+  'Male': 'Laki-laki',
+};
+const Map<String, String> _comorbidityLabels = {
+  'None': 'Tidak Ada',
+  'Diabetes Mellitus': 'Diabetes Melitus',
+  'HIV/AIDS': 'HIV/AIDS',
+  'Other Immunocompromised Conditions': 'Kondisi Imun Lemah Lainnya',
+};
+const Map<String, String> _smokingLabels = {
+  'Never': 'Tidak Pernah',
+  'Former': 'Mantan Perokok',
+  'Current': 'Perokok Aktif',
+};
+const Map<String, String> _tbStatusLabels = {
+  'Suspected': 'Diduga',
+  'Screening': 'Skrining',
+  'Follow-up': 'Tindak Lanjut',
+};
+const Map<String, String> _modelTypeLabels = {
+  'Disability': 'Disabilitas',
+  'Non Disability': 'Non-Disabilitas',
+};
+const Map<String, String> _symptomLabels = {
+  'Fever': 'Demam',
+  'Cough': 'Batuk',
+  'Night Sweats': 'Keringat Malam',
+  'Weight Loss': 'Penurunan Berat Badan',
+  'Shortness of Breath': 'Sesak Napas',
+  'Fatigue': 'Kelelahan',
+  'Loss of Appetite': 'Kehilangan Nafsu Makan',
+  'Chest Pain': 'Nyeri Dada',
+  'Hemoptysis/Coughing Blood': 'Batuk Darah (Hemoptisis)',
+  'Other': 'Lainnya',
+};
+
 typedef PickXrayImage = Future<XrayImage?> Function();
 
 class DiagnosisScreen extends StatefulWidget {
-  const DiagnosisScreen({super.key, this.pickImage});
+  const DiagnosisScreen({super.key, this.pickImage, this.hasModelOverride});
 
   /// Injection point used by widget tests; production uses [XrayImagePicker].
   final PickXrayImage? pickImage;
+
+  /// Test-only override for whether an on-device AI model is installed.
+  /// Left null in production, which reads the real
+  /// `OnnxInferenceEngine.hasBundle` from the provider tree; set by widget
+  /// tests that don't wire up an [OnnxInferenceEngine] provider.
+  final bool? hasModelOverride;
 
   @override
   State<DiagnosisScreen> createState() => _DiagnosisScreenState();
@@ -92,13 +157,13 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
     } on PlatformException catch (error) {
       if (mounted) {
         _showMessage(
-          error.message ?? 'The image library could not be opened.',
+          error.message ?? 'Galeri gambar tidak dapat dibuka.',
           isError: true,
         );
       }
     } catch (_) {
       if (mounted) {
-        _showMessage('The X-ray image could not be opened.', isError: true);
+        _showMessage('Citra rontgen tidak dapat dibuka.', isError: true);
       }
     } finally {
       if (mounted) setState(() => _pickingImage = false);
@@ -110,7 +175,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
     final provider = context.read<DiagnosisProvider>();
     final valid = _formKey.currentState?.validate() ?? false;
     if (!valid) {
-      _showMessage('Complete the required patient information.', isError: true);
+      _showMessage('Lengkapi data pasien yang wajib diisi.', isError: true);
       await _scrollController.animateTo(
         0,
         duration: const Duration(milliseconds: 280),
@@ -120,7 +185,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
     }
     if (!provider.hasImage) {
       _showMessage(
-        'Upload or capture a chest X-ray before analysis.',
+        'Unggah atau ambil foto rontgen dada sebelum analisis.',
         isError: true,
       );
       return;
@@ -132,7 +197,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
       context.go('/result');
     } else {
       _showMessage(
-        provider.lastError ?? 'Analysis failed. Try again.',
+        provider.lastError ?? 'Analisis gagal. Coba lagi.',
         isError: true,
       );
     }
@@ -153,7 +218,9 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
   @override
   Widget build(BuildContext context) {
     final diagnosis = context.watch<DiagnosisProvider>();
-    final draft = diagnosis.draft;
+    final hasModel =
+        widget.hasModelOverride ??
+        context.read<OnnxInferenceEngine>().hasBundle;
 
     return ColoredBox(
       color: _page,
@@ -174,7 +241,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 18),
                       child: Text(
-                        'TB X-ray Analysis with AI',
+                        'Analisis Rontgen TB dengan AI',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: _accent,
@@ -191,90 +258,24 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
                         color: _panel,
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _topFields(diagnosis),
-                          const SizedBox(height: 18),
-                          const _SectionLabel(
-                            icon: Icons.coronavirus_outlined,
-                            text: 'Symptom Type',
-                          ),
-                          const SizedBox(height: 6),
-                          _SymptomGrid(
-                            symptoms: _symptoms,
-                            selected: draft.symptoms,
-                            onChanged: diagnosis.toggleSymptom,
-                          ),
-                          const SizedBox(height: 14),
-                          _clinicalDropdowns(diagnosis),
-                          const SizedBox(height: 14),
-                          _pediatricField(diagnosis),
-                          const SizedBox(height: 20),
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              if (constraints.maxWidth >= 980) {
-                                return Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: _leftClinicalColumn(diagnosis),
-                                    ),
-                                    const SizedBox(width: 40),
-                                    Expanded(
-                                      child: _rightImageColumn(diagnosis),
-                                    ),
-                                  ],
-                                );
-                              }
-                              return Column(
-                                children: [
-                                  _rightImageColumn(diagnosis),
-                                  const SizedBox(height: 24),
-                                  _leftClinicalColumn(diagnosis),
-                                ],
-                              );
-                            },
-                          ),
-                          if (diagnosis.lastError != null) ...[
-                            const SizedBox(height: 18),
-                            _InlineError(message: diagnosis.lastError!),
-                          ],
-                          const SizedBox(height: 24),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 60,
-                            child: FilledButton(
-                              key: const Key('analyze-button'),
-                              onPressed: diagnosis.isRunning ? null : _analyze,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: _action,
-                                disabledBackgroundColor: _action.withValues(
-                                  alpha: 0.55,
-                                ),
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              child: diagnosis.isRunning
-                                  ? const SizedBox.square(
-                                      dimension: 24,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 3,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'Analyze',
-                                      style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        ],
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final left = _leftFormColumn(diagnosis);
+                          final right = _rightImageColumn(diagnosis, hasModel);
+                          if (constraints.maxWidth >= 800) {
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: left),
+                                const SizedBox(width: 32),
+                                Expanded(child: right),
+                              ],
+                            );
+                          }
+                          return Column(
+                            children: [left, const SizedBox(height: 24), right],
+                          );
+                        },
                       ),
                     ),
                   ],
@@ -287,101 +288,128 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
     );
   }
 
-  Widget _topFields(DiagnosisProvider diagnosis) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 1050;
-        final name = _LabeledField(
-          label: 'Name/Initial/NickName',
-          child: _DarkTextField(
-            key: const Key('patient-name'),
-            controller: _nameController,
-            textInputAction: TextInputAction.next,
-            onChanged: diagnosis.updatePatientName,
-            validator: (value) => value == null || value.trim().isEmpty
-                ? 'Name is required'
-                : null,
-          ),
-        );
-        final gender = _LabeledField(
-          label: 'Gender',
-          child: _DarkDropdown(
-            key: const Key('gender'),
-            value: diagnosis.draft.gender,
-            hint: 'Select Gender',
-            items: const ['Female', 'Male'],
-            onChanged: diagnosis.updateGender,
-            validator: (value) => value == null ? 'Gender is required' : null,
-          ),
-        );
-        final age = _numberField(
-          label: 'Age',
-          key: const Key('age'),
-          controller: _ageController,
-          onChanged: (value) => diagnosis.updateAge(int.tryParse(value)),
-          min: 1,
-          max: 130,
-        );
-        final height = _numberField(
-          label: 'Height (cm)',
-          key: const Key('height'),
-          controller: _heightController,
-          onChanged: (value) => diagnosis.updateHeight(double.tryParse(value)),
-          min: 20,
-          max: 260,
-          decimal: true,
-        );
-        final weight = _numberField(
-          label: 'Weight (kg)',
-          key: const Key('weight'),
-          controller: _weightController,
-          onChanged: (value) => diagnosis.updateWeight(double.tryParse(value)),
-          min: 1,
-          max: 400,
-          decimal: true,
-        );
-
-        if (wide) {
-          return Row(
+  Widget _leftFormColumn(DiagnosisProvider diagnosis) {
+    final draft = diagnosis.draft;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _topFields(diagnosis),
+        const SizedBox(height: 18),
+        _OptionalFieldsPanel(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(flex: 36, child: name),
-              const SizedBox(width: 20),
-              Expanded(flex: 36, child: gender),
-              const SizedBox(width: 20),
-              Expanded(flex: 8, child: age),
-              const SizedBox(width: 20),
-              Expanded(flex: 8, child: height),
-              const SizedBox(width: 20),
-              Expanded(flex: 8, child: weight),
+              const _SectionLabel(
+                icon: Icons.coronavirus_outlined,
+                text: 'Jenis Gejala',
+              ),
+              const SizedBox(height: 6),
+              _SymptomGrid(
+                symptoms: _symptoms,
+                selected: draft.symptoms,
+                onChanged: diagnosis.toggleSymptom,
+              ),
+              const SizedBox(height: 14),
+              _clinicalDropdowns(diagnosis),
+              const SizedBox(height: 14),
+              _pediatricField(diagnosis),
+              const SizedBox(height: 20),
+              _leftClinicalColumn(diagnosis),
+              const SizedBox(height: 18),
+              _LabeledField(
+                label: 'Jenis Model',
+                icon: Icons.psychology_outlined,
+                child: _DarkDropdown(
+                  key: const Key('model-type-dropdown'),
+                  value: draft.modelType,
+                  hint: 'Pilih Jenis Model',
+                  items: const ['Disability', 'Non Disability'],
+                  labels: _modelTypeLabels,
+                  onChanged: diagnosis.updateModelType,
+                ),
+              ),
             ],
-          );
-        }
+          ),
+        ),
+      ],
+    );
+  }
 
-        return Column(
+  Widget _topFields(DiagnosisProvider diagnosis) {
+    final name = _LabeledField(
+      label: 'Nama/Inisial/Nama Panggilan',
+      child: _DarkTextField(
+        key: const Key('patient-name'),
+        controller: _nameController,
+        textInputAction: TextInputAction.next,
+        onChanged: diagnosis.updatePatientName,
+        validator: (value) =>
+            value == null || value.trim().isEmpty ? 'Nama wajib diisi' : null,
+      ),
+    );
+    final gender = _LabeledField(
+      label: 'Jenis Kelamin',
+      child: _DarkDropdown(
+        key: const Key('gender'),
+        value: diagnosis.draft.gender,
+        hint: 'Pilih Jenis Kelamin',
+        items: const ['Female', 'Male'],
+        labels: _genderLabels,
+        onChanged: diagnosis.updateGender,
+        validator: (value) =>
+            value == null ? 'Jenis kelamin wajib dipilih' : null,
+      ),
+    );
+    final age = _numberField(
+      label: 'Usia',
+      key: const Key('age'),
+      controller: _ageController,
+      onChanged: (value) => diagnosis.updateAge(int.tryParse(value)),
+      min: 1,
+      max: 130,
+    );
+    final height = _numberField(
+      label: 'Tinggi Badan (cm)',
+      key: const Key('height'),
+      controller: _heightController,
+      onChanged: (value) => diagnosis.updateHeight(double.tryParse(value)),
+      min: 20,
+      max: 260,
+      decimal: true,
+    );
+    final weight = _numberField(
+      label: 'Berat Badan (kg)',
+      key: const Key('weight'),
+      controller: _weightController,
+      onChanged: (value) => diagnosis.updateWeight(double.tryParse(value)),
+      min: 1,
+      max: 400,
+      decimal: true,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        name,
+        const SizedBox(height: 14),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: name),
-                const SizedBox(width: 16),
-                Expanded(child: gender),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: age),
-                const SizedBox(width: 16),
-                Expanded(child: height),
-                const SizedBox(width: 16),
-                Expanded(child: weight),
-              ],
-            ),
+            Expanded(child: gender),
+            const SizedBox(width: 16),
+            Expanded(child: age),
           ],
-        );
-      },
+        ),
+        const SizedBox(height: 14),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: height),
+            const SizedBox(width: 16),
+            Expanded(child: weight),
+          ],
+        ),
+      ],
     );
   }
 
@@ -408,7 +436,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
         onChanged: onChanged,
         validator: (value) {
           final parsed = double.tryParse(value ?? '');
-          if (parsed == null) return 'Required';
+          if (parsed == null) return 'Wajib diisi';
           if (parsed < min || parsed > max) return '$min–$max';
           return null;
         },
@@ -421,37 +449,40 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
       builder: (context, constraints) {
         final fields = [
           _LabeledField(
-            label: 'Comorbidity',
+            label: 'Komorbiditas',
             icon: Icons.medical_information_outlined,
             child: _DarkDropdown(
               value: diagnosis.draft.comorbidity,
-              hint: 'Select Comorbidity',
+              hint: 'Pilih Komorbiditas',
               items: const [
                 'None',
                 'Diabetes Mellitus',
                 'HIV/AIDS',
                 'Other Immunocompromised Conditions',
               ],
+              labels: _comorbidityLabels,
               onChanged: diagnosis.updateComorbidity,
             ),
           ),
           _LabeledField(
-            label: 'Smoking',
+            label: 'Merokok',
             icon: Icons.smoking_rooms_outlined,
             child: _DarkDropdown(
               value: diagnosis.draft.smoking,
-              hint: 'Select Smoking Status',
+              hint: 'Pilih Status Merokok',
               items: const ['Never', 'Former', 'Current'],
+              labels: _smokingLabels,
               onChanged: diagnosis.updateSmoking,
             ),
           ),
           _LabeledField(
-            label: 'History of Contact with TB',
+            label: 'Riwayat Kontak dengan TB',
             icon: Icons.history_rounded,
             child: _DarkDropdown(
               value: diagnosis.draft.tbContact,
-              hint: 'Select History',
+              hint: 'Pilih Riwayat',
               items: const ['Unknown', 'No', 'Yes'],
+              labels: _yesNoUnknownLabels,
               onChanged: diagnosis.updateTbContact,
             ),
           ),
@@ -488,7 +519,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
       widthFactor: 0.48,
       alignment: Alignment.centerLeft,
       child: _LabeledField(
-        label: 'If Age < 18 years Old Pediatric TB Scoring',
+        label: 'Jika Usia < 18 Tahun, Skor TB Anak',
         child: _DarkTextField(
           key: ValueKey('pediatric-${enabled ? 'enabled' : 'disabled'}'),
           controller: _pediatricController,
@@ -501,7 +532,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
             if (!enabled || value == null || value.isEmpty) return null;
             final parsed = int.tryParse(value);
             return parsed == null || parsed < 0 || parsed > 13
-                ? 'Enter a score from 0 to 13'
+                ? 'Masukkan skor 0 sampai 13'
                 : null;
           },
         ),
@@ -514,19 +545,20 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionLabel(icon: Icons.home_rounded, text: 'Environment'),
+        const _SectionLabel(icon: Icons.home_rounded, text: 'Lingkungan'),
         const SizedBox(height: 12),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: _LabeledField(
-                label: 'Presence of Windows',
+                label: 'Keberadaan Jendela',
                 icon: Icons.window_rounded,
                 child: _DarkDropdown(
                   value: draft.windowsPresence,
-                  hint: 'Select Options',
+                  hint: 'Pilih Opsi',
                   items: const ['Yes', 'No'],
+                  labels: _yesNoLabels,
                   onChanged: diagnosis.updateWindowsPresence,
                 ),
               ),
@@ -534,13 +566,14 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
             const SizedBox(width: 20),
             Expanded(
               child: _LabeledField(
-                label: 'Direct Sunlight',
+                label: 'Paparan Sinar Matahari Langsung',
                 icon: Icons.light_mode_outlined,
                 child: _DarkDropdown(
                   key: const Key('sunlight-dropdown'),
                   value: draft.sunlightExposure,
-                  hint: 'Select Options',
+                  hint: 'Pilih Opsi',
                   items: const ['Yes', 'No'],
+                  labels: _yesNoLabels,
                   onChanged: diagnosis.updateSunlightExposure,
                 ),
               ),
@@ -549,7 +582,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
         ),
         const SizedBox(height: 22),
         const Text(
-          'A. Bacteriology',
+          'A. Bakteriologi',
           style: TextStyle(
             color: _text,
             fontSize: 17,
@@ -562,9 +595,10 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
           children: [
             Expanded(
               child: _RadioGroup(
-                label: 'Expel Sputum:',
+                label: 'Pemeriksaan Dahak (BTA):',
                 values: const ['BTA Positive', 'BTA Negative'],
                 selected: draft.bta == null ? null : 'BTA ${draft.bta}',
+                labels: _btaLabels,
                 onChanged: (value) => diagnosis.updateBta(
                   value == 'BTA Positive' ? 'Positive' : 'Negative',
                 ),
@@ -573,18 +607,20 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
             const SizedBox(width: 14),
             Expanded(
               child: _RadioGroup(
-                label: 'Culture:',
+                label: 'Kultur:',
                 values: const ['Positive', 'Negative'],
                 selected: draft.culture,
+                labels: _positiveNegativeLabels,
                 onChanged: diagnosis.updateCulture,
               ),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: _RadioGroup(
-                label: 'Xpert MTB/Rif or NAAT:',
+                label: 'Xpert MTB/Rif atau NAAT:',
                 values: const ['Positive', 'Negative'],
                 selected: draft.xpert,
+                labels: _positiveNegativeLabels,
                 onChanged: diagnosis.updateXpert,
               ),
             ),
@@ -592,7 +628,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
         ),
         const SizedBox(height: 18),
         const Text(
-          'B. Others',
+          'B. Lainnya',
           style: TextStyle(
             color: _text,
             fontSize: 17,
@@ -605,6 +641,7 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
           values: const ['Positive', 'Negative', 'Other'],
           selected: draft.igra,
           horizontal: true,
+          labels: _positiveNegativeOtherLabels,
           onChanged: diagnosis.updateIgra,
         ),
         const SizedBox(height: 18),
@@ -613,11 +650,12 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
           children: [
             Expanded(
               child: _LabeledField(
-                label: 'History of TB',
+                label: 'Riwayat TB',
                 child: _DarkDropdown(
                   value: draft.tbHistory,
-                  hint: 'Select TB History',
+                  hint: 'Pilih Riwayat TB',
                   items: const ['No', 'Yes'],
+                  labels: _yesNoLabels,
                   onChanged: diagnosis.updateTbHistory,
                 ),
               ),
@@ -625,11 +663,12 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
             const SizedBox(width: 20),
             Expanded(
               child: _LabeledField(
-                label: 'TB Status',
+                label: 'Status TB',
                 child: _DarkDropdown(
                   value: draft.tbStatus,
-                  hint: 'Select TB Status',
+                  hint: 'Pilih Status TB',
                   items: const ['Suspected', 'Screening', 'Follow-up'],
+                  labels: _tbStatusLabels,
                   onChanged: diagnosis.updateTbStatus,
                 ),
               ),
@@ -640,14 +679,18 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
     );
   }
 
-  Widget _rightImageColumn(DiagnosisProvider diagnosis) {
+  Widget _rightImageColumn(DiagnosisProvider diagnosis, bool hasModel) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _FieldLabel(text: 'Upload X-Ray Image'),
+        if (!hasModel) ...[
+          _NoModelBanner(onGoToSync: () => context.go('/sync')),
+          const SizedBox(height: 18),
+        ],
+        const _FieldLabel(text: 'Unggah Citra Rontgen'),
         const SizedBox(height: 8),
         SizedBox(
-          height: 430,
+          height: 420,
           width: double.infinity,
           child: _DashedUploadPanel(
             image: diagnosis.image,
@@ -657,19 +700,122 @@ class _DiagnosisScreenState extends State<DiagnosisScreen> {
             onRemove: diagnosis.hasImage ? diagnosis.clearImage : null,
           ),
         ),
-        const SizedBox(height: 18),
-        _LabeledField(
-          label: 'Model Type',
-          icon: Icons.psychology_outlined,
-          child: _DarkDropdown(
-            key: const Key('model-type-dropdown'),
-            value: diagnosis.draft.modelType,
-            hint: 'Select Model Type',
-            items: const ['Disability', 'Non Disability'],
-            onChanged: diagnosis.updateModelType,
+        const SizedBox(height: 24),
+        if (diagnosis.lastError != null) ...[
+          _InlineError(message: diagnosis.lastError!),
+          const SizedBox(height: 18),
+        ],
+        SizedBox(
+          width: double.infinity,
+          height: 60,
+          child: FilledButton(
+            key: const Key('analyze-button'),
+            onPressed: (!hasModel || diagnosis.isRunning) ? null : _analyze,
+            style: FilledButton.styleFrom(
+              backgroundColor: _action,
+              disabledBackgroundColor: _action.withValues(alpha: 0.55),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: diagnosis.isRunning
+                ? const SizedBox.square(
+                    dimension: 24,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 3,
+                    ),
+                  )
+                : const Text(
+                    'Analisis',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                  ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _OptionalFieldsPanel extends StatelessWidget {
+  const _OptionalFieldsPanel({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          key: const Key('optional-fields-panel'),
+          initiallyExpanded: false,
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(top: 14),
+          iconColor: _accent,
+          collapsedIconColor: _muted,
+          textColor: _text,
+          collapsedTextColor: _text,
+          title: const Text(
+            'Informasi Tambahan (Opsional)',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+          ),
+          subtitle: const Text(
+            'Gejala, lingkungan, dan hasil pemeriksaan klinis',
+            style: TextStyle(color: _muted, fontSize: 12),
+          ),
+          children: [child],
+        ),
+      ),
+    );
+  }
+}
+
+class _NoModelBanner extends StatelessWidget {
+  const _NoModelBanner({required this.onGoToSync});
+
+  final VoidCallback onGoToSync;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E3A5F),
+        border: Border.all(color: _accent),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.info_outline_rounded, color: _accent),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Model AI belum terpasang di perangkat ini. Unduh model dari '
+                  'Pusat Sinkronisasi sebelum menjalankan analisis.',
+                  style: TextStyle(color: _text, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: onGoToSync,
+              style: TextButton.styleFrom(foregroundColor: _accent),
+              child: const Text('Buka Pusat Sinkronisasi'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -700,25 +846,23 @@ class _SymptomGrid extends StatelessWidget {
             .toDouble();
         return Wrap(
           spacing: gap,
-          runSpacing: 0,
+          runSpacing: 6,
           children: symptoms
               .map(
                 (symptom) => SizedBox(
                   width: width,
-                  height: 40,
                   child: Material(
                     color: Colors.transparent,
                     child: CheckboxListTile(
                       value: selected.contains(symptom),
                       onChanged: (value) => onChanged(symptom, value ?? false),
                       title: Text(
-                        symptom,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        _symptomLabels[symptom] ?? symptom,
                         style: const TextStyle(color: _text, fontSize: 15),
                       ),
                       controlAffinity: ListTileControlAffinity.leading,
                       contentPadding: EdgeInsets.zero,
+                      dense: true,
                       visualDensity: VisualDensity.compact,
                       activeColor: _accent,
                       checkColor: _input,
@@ -859,6 +1003,7 @@ class _DarkDropdown extends StatelessWidget {
     required this.items,
     required this.onChanged,
     this.validator,
+    this.labels,
   });
 
   final String? value;
@@ -866,6 +1011,10 @@ class _DarkDropdown extends StatelessWidget {
   final List<String> items;
   final ValueChanged<String?> onChanged;
   final FormFieldValidator<String>? validator;
+
+  /// Optional display-text override per item value; the stored `value`
+  /// itself is unchanged so domain/data logic never sees the translation.
+  final Map<String, String>? labels;
 
   @override
   Widget build(BuildContext context) {
@@ -887,7 +1036,11 @@ class _DarkDropdown extends StatelessWidget {
           .map(
             (item) => DropdownMenuItem<String>(
               value: item,
-              child: Text(item, maxLines: 1, overflow: TextOverflow.ellipsis),
+              child: Text(
+                labels?[item] ?? item,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           )
           .toList(),
@@ -927,6 +1080,7 @@ class _RadioGroup extends StatelessWidget {
     required this.selected,
     required this.onChanged,
     this.horizontal = false,
+    this.labels,
   });
 
   final String label;
@@ -934,6 +1088,9 @@ class _RadioGroup extends StatelessWidget {
   final String? selected;
   final ValueChanged<String?> onChanged;
   final bool horizontal;
+
+  /// Optional display-text override per option value.
+  final Map<String, String>? labels;
 
   @override
   Widget build(BuildContext context) {
@@ -980,7 +1137,7 @@ class _RadioGroup extends StatelessWidget {
           ),
           Flexible(
             child: Text(
-              value,
+              labels?[value] ?? value,
               maxLines: 2,
               style: const TextStyle(color: _text, fontSize: 14),
             ),
@@ -1036,7 +1193,7 @@ class _DashedUploadPanel extends StatelessWidget {
             ),
           const SizedBox(height: 16),
           const Text(
-            'Upload X-Ray Image',
+            'Unggah Citra Rontgen',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: _muted,
@@ -1046,7 +1203,7 @@ class _DashedUploadPanel extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           const Text(
-            'PNG, JPG, JPEG · Maximum 25 MB',
+            'PNG, JPG, JPEG · Maksimal 25 MB',
             style: TextStyle(color: Color(0xFF71809A), fontSize: 12),
           ),
           const SizedBox(height: 22),
@@ -1059,7 +1216,7 @@ class _DashedUploadPanel extends StatelessWidget {
                 key: const Key('upload-xray'),
                 onPressed: loading ? null : onUpload,
                 icon: const Icon(Icons.upload_file_rounded, size: 19),
-                label: const Text('Choose Image'),
+                label: const Text('Pilih Gambar'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _accent,
                   side: const BorderSide(color: _accent),
@@ -1069,14 +1226,15 @@ class _DashedUploadPanel extends StatelessWidget {
                 key: const Key('capture-xray'),
                 onPressed: loading ? null : onCamera,
                 icon: const Icon(Icons.photo_camera_rounded, size: 19),
-                label: const Text('Use Camera'),
+                label: const Text('Gunakan Kamera'),
                 style: FilledButton.styleFrom(backgroundColor: _action),
               ),
             ],
           ),
           const SizedBox(height: 14),
           const Text(
-            'Use the original digital X-ray when available. Camera capture may reduce image quality.',
+            'Gunakan citra rontgen digital asli jika tersedia. Pengambilan foto '
+            'dengan kamera dapat menurunkan kualitas gambar.',
             textAlign: TextAlign.center,
             style: TextStyle(color: _muted, fontSize: 11, height: 1.35),
           ),
@@ -1121,7 +1279,7 @@ class _DashedUploadPanel extends StatelessWidget {
           top: 10,
           right: 10,
           child: IconButton(
-            tooltip: 'Remove X-ray',
+            tooltip: 'Hapus Rontgen',
             onPressed: onRemove,
             style: IconButton.styleFrom(
               backgroundColor: Colors.black.withValues(alpha: 0.72),

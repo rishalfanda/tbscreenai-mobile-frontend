@@ -16,7 +16,7 @@ void main() {
         create: (_) => DiagnosisProvider(MockDiagnosisRepository()),
         child: const MaterialApp(
           debugShowCheckedModeBanner: false,
-          home: Scaffold(body: DiagnosisScreen()),
+          home: Scaffold(body: DiagnosisScreen(hasModelOverride: true)),
         ),
       ),
     );

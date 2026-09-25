@@ -28,8 +28,9 @@ Widget _app({
     routes: [
       GoRoute(
         path: '/diagnosis',
-        builder: (context, state) =>
-            Scaffold(body: DiagnosisScreen(pickImage: picker)),
+        builder: (context, state) => Scaffold(
+          body: DiagnosisScreen(pickImage: picker, hasModelOverride: true),
+        ),
       ),
       GoRoute(
         path: '/result',
@@ -72,9 +73,11 @@ void main() {
         picker: () async => null,
       ),
     );
+    await tester.tap(find.byKey(const Key('optional-fields-panel')));
+    await tester.pumpAndSettle();
 
-    expect(find.text('TB X-ray Analysis with AI'), findsOneWidget);
-    expect(find.text('Symptom Type'), findsOneWidget);
+    expect(find.text('Analisis Rontgen TB dengan AI'), findsOneWidget);
+    expect(find.text('Jenis Gejala'), findsOneWidget);
     expect(find.byKey(const Key('upload-xray')), findsOneWidget);
     expect(find.byKey(const Key('capture-xray')), findsOneWidget);
     expect(find.byKey(const Key('analyze-button')), findsOneWidget);
@@ -98,9 +101,9 @@ void main() {
     await tester.tap(find.byKey(const Key('analyze-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Name is required'), findsOneWidget);
-    expect(find.text('Gender is required'), findsOneWidget);
-    expect(find.text('Required'), findsWidgets);
+    expect(find.text('Nama wajib diisi'), findsOneWidget);
+    expect(find.text('Jenis kelamin wajib dipilih'), findsOneWidget);
+    expect(find.text('Wajib diisi'), findsWidgets);
     expect(find.text('verified-result-route'), findsNothing);
   });
 
@@ -149,7 +152,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('verified-result-route'), findsNothing);
-    expect(find.text('TB X-ray Analysis with AI'), findsOneWidget);
+    expect(find.text('Analisis Rontgen TB dengan AI'), findsOneWidget);
     expect(provider.lastOutcome, isNull);
     expect(provider.lastError, contains('Check the server connection'));
   });
