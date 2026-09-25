@@ -157,20 +157,45 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
   String? _errorMessage;
   StreamSubscription<double>? _downloadSub;
 
+  final _connectivity = ConnectivityService();
+  bool _isOnline = true;
+  StreamSubscription<bool>? _connectivitySub;
+
   @override
   void initState() {
     super.initState();
-    // Mock repository resolves synchronously — version label is ready
-    // before the first frame.
-    context.read<SyncRepository>().getInstalledModelVersion().then((version) {
+    final repository = context.read<SyncRepository>();
+    repository.getInstalledModelVersion().then((version) {
       if (!mounted) return;
-      setState(() => _currentVersion = version);
+      setState(() => _currentVersion = version ?? '');
+    });
+    // Restore the last completed check (if any) so reopening this page
+    // doesn't reset back to a blank "no info yet" idle state.
+    repository.lastKnownUpdateInfo().then((cached) {
+      if (!mounted || cached == null) return;
+      final (info, checkedAt) = cached;
+      setState(() {
+        _updateInfo = info;
+        _lastChecked = checkedAt;
+        _state = info.hasUpdate
+            ? _ModelSyncState.updateAvailable
+            : _ModelSyncState.upToDate;
+      });
+    });
+    _connectivity.checkNow().then((online) {
+      if (!mounted) return;
+      setState(() => _isOnline = online);
+    });
+    _connectivitySub = _connectivity.onStatusChange.listen((online) {
+      if (!mounted) return;
+      setState(() => _isOnline = online);
     });
   }
 
   @override
   void dispose() {
     _downloadSub?.cancel();
+    _connectivitySub?.cancel();
     super.dispose();
   }
 
@@ -180,13 +205,23 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       _state = _ModelSyncState.checking;
       _lastChecked = DateTime.now();
     });
-    // Repository simulates the 2s server round-trip.
-    final info = await repository.checkForUpdate();
-    if (!mounted) return;
-    setState(() {
-      _updateInfo = info;
-      _state = _ModelSyncState.updateAvailable;
-    });
+    try {
+      final info = await repository.checkForUpdate();
+      if (!mounted) return;
+      setState(() {
+        _updateInfo = info;
+        _state = info.hasUpdate
+            ? _ModelSyncState.updateAvailable
+            : _ModelSyncState.upToDate;
+      });
+    } catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _state = _ModelSyncState.error;
+        _errorMessage =
+            'Gagal memeriksa pembaruan model — periksa koneksi internet Anda. (${err.toString()})';
+      });
+    }
   }
 
   void _startDownload() {
@@ -304,7 +339,9 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Versi Saat Ini: $_currentVersion',
+          _currentVersion.isEmpty
+              ? 'Belum ada model terpasang'
+              : 'Versi Saat Ini: $_currentVersion',
           style: const TextStyle(color: AppTheme.textSecondary),
         ),
         const SizedBox(height: AppTheme.sp4),
@@ -314,10 +351,17 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         ),
         const SizedBox(height: AppTheme.sp16),
         ElevatedButton.icon(
-          onPressed: _checkForUpdate,
+          onPressed: _isOnline ? _checkForUpdate : null,
           icon: const Icon(Icons.search_rounded, size: 18),
           label: const Text('Periksa Pembaruan Model'),
         ),
+        if (!_isOnline) ...[
+          const SizedBox(height: AppTheme.sp8),
+          const Text(
+            'Tidak ada koneksi internet',
+            style: TextStyle(fontSize: 12, color: AppTheme.error),
+          ),
+        ],
       ],
     );
   }
@@ -355,7 +399,9 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
             ),
             const SizedBox(width: AppTheme.sp12),
             Text(
-              'Model sudah versi terbaru ($_currentVersion)',
+              _currentVersion.isEmpty
+                  ? 'Tidak ada pembaruan model tersedia'
+                  : 'Model sudah versi terbaru ($_currentVersion)',
               style: const TextStyle(
                 color: AppTheme.success,
                 fontWeight: FontWeight.w600,
@@ -365,9 +411,14 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         ),
         const SizedBox(height: AppTheme.sp16),
         TextButton(
-          onPressed: _checkForUpdate,
+          onPressed: _isOnline ? _checkForUpdate : null,
           child: const Text('Periksa Ulang'),
         ),
+        if (!_isOnline)
+          const Text(
+            'Tidak ada koneksi internet',
+            style: TextStyle(fontSize: 12, color: AppTheme.error),
+          ),
       ],
     );
   }
@@ -426,7 +477,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
           children: [
             Expanded(
               child: ElevatedButton(
-                onPressed: _startDownload,
+                onPressed: _isOnline ? _startDownload : null,
                 child: const Text('Perbarui Sekarang'),
               ),
             ),
@@ -439,6 +490,13 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
             ),
           ],
         ),
+        if (!_isOnline) ...[
+          const SizedBox(height: AppTheme.sp8),
+          const Text(
+            'Tidak ada koneksi internet',
+            style: TextStyle(fontSize: 12, color: AppTheme.error),
+          ),
+        ],
       ],
     );
   }

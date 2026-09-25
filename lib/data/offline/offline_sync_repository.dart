@@ -1,148 +1,54 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/services.dart' show rootBundle;
 
-import 'package:myapp/core/config/app_config.dart';
-import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/mappers.dart';
 import 'package:myapp/data/local/settings_store.dart';
-import 'package:myapp/data/models_ota/model_update_pipeline.dart';
+import 'package:myapp/data/models_ota/model_update_service.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/models/model_version_info.dart';
 import 'package:myapp/domain/models/patient.dart';
 import 'package:myapp/domain/models/sync_summary.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 
-const _monthsId = [
-  'Januari',
-  'Februari',
-  'Maret',
-  'April',
-  'Mei',
-  'Juni',
-  'Juli',
-  'Agustus',
-  'September',
-  'Oktober',
-  'November',
-  'Desember',
-];
-
-/// "2025-06-10" → "10 Juni 2025"
-String _formatDateId(String isoDate) {
-  final parsed = DateTime.tryParse(isoDate);
-  if (parsed == null) return isoDate;
-  return '${parsed.day} ${_monthsId[parsed.month - 1]} ${parsed.year}';
-}
-
 /// Sync Center backed by the local database and the real sync endpoints.
 ///
 /// Replaces the FASE 3 stub: the installed model version is now persisted per
 /// device, the backup summary counts real cached rows, and uploading pushes
-/// the sync queue instead of ticking a fake progress bar.
+/// the sync queue instead of ticking a fake progress bar. Model-update logic
+/// itself lives in `ModelUpdateService` (shared with `HybridSyncRepository`
+/// for mock/demo mode) — this class only owns the data-backup half.
 class OfflineSyncRepository implements SyncRepository {
   OfflineSyncRepository({
     required AppDatabase db,
-    required ApiClient client,
     required SettingsStore settings,
     required SyncEngine engine,
-    required ModelUpdatePipeline modelPipeline,
+    required ModelUpdateService modelUpdate,
   }) : _db = db,
-       _client = client,
        _settings = settings,
        _engine = engine,
-       _modelPipeline = modelPipeline;
+       _modelUpdate = modelUpdate;
 
   final AppDatabase _db;
-  final ApiClient _client;
   final SettingsStore _settings;
   final SyncEngine _engine;
-  final ModelUpdatePipeline _modelPipeline;
+  final ModelUpdateService _modelUpdate;
 
   /// Result of the most recent upload, surfaced to the UI after the stream ends.
   SyncReport? lastReport;
 
   @override
-  Future<String> getInstalledModelVersion() =>
-      _settings.readInstalledModelVersion();
+  Future<String?> getInstalledModelVersion() =>
+      _modelUpdate.getInstalledModelVersion();
 
   @override
-  Future<ModelVersionInfo> checkForUpdate() async {
-    final installed = await _settings.readInstalledModelVersion();
-    final response = await _client.dio.get<Map<String, dynamic>?>(
-      '/sync/model-version',
-    );
-    final data = response.data;
-    if (data == null) {
-      return ModelVersionInfo(
-        currentVersion: installed,
-        latestVersion: installed,
-        fileSize: '-',
-        releaseDate: '-',
-        changelog: const [],
-      );
-    }
-    return ModelVersionInfo(
-      currentVersion: installed,
-      latestVersion: data['version'] as String,
-      fileSize: '${data['file_size_mb']} MB',
-      releaseDate: _formatDateId(data['release_date'] as String),
-      changelog: List<String>.from(data['changelog'] as List? ?? const []),
-      downloadUrl: data['download_url'] as String?,
-      sha256: data['bundle_zip_sha256'] as String?,
-    );
-  }
+  Future<ModelVersionInfo> checkForUpdate() => _modelUpdate.checkForUpdate();
 
-  /// Downloads, verifies and activates the new model bundle (see
-  /// `ModelUpdatePipeline`), then records the new version on this device.
-  ///
-  /// Falls back to the old simulate-and-persist behavior when no download URL
-  /// is available anywhere (today's real backend serves `download_url` for no
-  /// version yet) — `AppConfig.modelBundleUrl` is a dev-time override for
-  /// exercising the real path before that changes.
   @override
-  Stream<double> downloadModel() async* {
-    final session = _db.sessionGeneration;
-    final info = await checkForUpdate();
-    final url = info.downloadUrl ?? AppConfig.modelBundleUrl;
+  Stream<double> downloadModel() => _modelUpdate.downloadModel();
 
-    if (url == null) {
-      var progress = 0.0;
-      while (progress < 1.0) {
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-        if (session != _db.sessionGeneration) return;
-        progress += 0.05;
-        yield progress.clamp(0.0, 1.0);
-      }
-      await _db.writeForSession(
-        session,
-        () => _settings.saveInstalledModelVersion(info.latestVersion),
-      );
-      return;
-    }
-
-    final sample = await rootBundle.load('assets/sample/xray.png');
-    await for (final progress in _modelPipeline.install(
-      info: ModelVersionInfo(
-        currentVersion: info.currentVersion,
-        latestVersion: info.latestVersion,
-        fileSize: info.fileSize,
-        releaseDate: info.releaseDate,
-        changelog: info.changelog,
-        downloadUrl: url,
-        sha256: info.sha256,
-      ),
-      smokeTestSampleBytes: sample.buffer.asUint8List(),
-    )) {
-      if (session != _db.sessionGeneration) return;
-      yield progress;
-    }
-    if (session != _db.sessionGeneration) return;
-    await _db.writeForSession(
-      session,
-      () => _settings.saveInstalledModelVersion(info.latestVersion),
-    );
-  }
+  @override
+  Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo() =>
+      _modelUpdate.readCachedCheck();
 
   @override
   Future<SyncSummary> getSyncSummary() async {

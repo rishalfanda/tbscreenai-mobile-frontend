@@ -5,14 +5,21 @@ import 'package:myapp/domain/models/sync_summary.dart';
 /// Contract for the Sync Center: AI model updates + medical-data backup.
 /// Offline-first — every operation is user-initiated, never automatic.
 abstract class SyncRepository {
-  /// Version currently installed on this device (fast, local read).
-  Future<String> getInstalledModelVersion();
+  /// Version currently installed on this device (fast, local read). `null`
+  /// means no model bundle is installed yet.
+  Future<String?> getInstalledModelVersion();
 
   /// Contacts the update server. Mock: 2s simulated delay.
   Future<ModelVersionInfo> checkForUpdate();
 
   /// Downloads the latest model, emitting progress 0.0 → 1.0.
   Stream<double> downloadModel();
+
+  /// The last update-check result persisted on this device, and when it was
+  /// fetched — lets the Sync Center restore its Model Update card without
+  /// re-querying the server every time the page opens. `null` if no check has
+  /// ever completed.
+  Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo();
 
   Future<SyncSummary> getSyncSummary();
 

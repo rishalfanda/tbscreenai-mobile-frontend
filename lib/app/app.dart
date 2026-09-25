@@ -10,7 +10,9 @@ import 'package:myapp/data/http/http_repositories.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/mock/mock_repositories.dart';
+import 'package:myapp/data/models_ota/hybrid_sync_repository.dart';
 import 'package:myapp/data/models_ota/model_update_pipeline.dart';
+import 'package:myapp/data/models_ota/model_update_service.dart';
 import 'package:myapp/data/offline/offline_patient_repository.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/onnx/hybrid_diagnosis_repository.dart';
@@ -82,6 +84,14 @@ class TBScreenApp extends StatelessWidget {
             engine: c.read<OnnxInferenceEngine>(),
           ),
         ),
+        Provider<ModelUpdateService>(
+          create: (c) => ModelUpdateService(
+            client: c.read<ApiClient>(),
+            settings: c.read<SettingsStore>(),
+            db: db,
+            modelPipeline: c.read<ModelUpdatePipeline>(),
+          ),
+        ),
         // === Section: Repositories ===
         Provider<AuthRepository>(
           create: (c) => useHttp
@@ -101,12 +111,14 @@ class TBScreenApp extends StatelessWidget {
           create: (c) => useHttp
               ? OfflineSyncRepository(
                   db: db,
-                  client: c.read<ApiClient>(),
                   settings: c.read<SettingsStore>(),
                   engine: c.read<SyncEngine>(),
-                  modelPipeline: c.read<ModelUpdatePipeline>(),
+                  modelUpdate: c.read<ModelUpdateService>(),
                 )
-              : MockSyncRepository(),
+              : HybridSyncRepository(
+                  modelUpdate: c.read<ModelUpdateService>(),
+                  backup: MockSyncRepository(),
+                ),
         ),
         Provider<DashboardRepository>(create: (_) => MockDashboardRepository()),
         Provider<DiagnosisRepository>(

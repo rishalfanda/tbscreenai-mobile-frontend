@@ -28,7 +28,8 @@ class AppConfig {
 
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:8000/api/v1',
+    // defaultValue: 'http://127.0.0.1:8000/api/v1',
+    defaultValue: 'https://3gfz53jt-8000.asse.devtunnels.ms/v1',
   );
 
   /// Dev-time fallback bundle-zip URL, for exercising the real OTA model

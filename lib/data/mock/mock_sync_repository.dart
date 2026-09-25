@@ -29,6 +29,12 @@ class MockSyncRepository implements SyncRepository {
     }
   }
 
+  /// Mock mode never persists anything — it's a stateless, side-effect-free
+  /// simulation, so there is no cached check to restore.
+  @override
+  Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo() =>
+      SynchronousFuture(null);
+
   @override
   Future<SyncSummary> getSyncSummary() =>
       SynchronousFuture(MockSeedData.syncSummary);
