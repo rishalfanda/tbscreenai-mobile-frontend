@@ -6,6 +6,7 @@ export 'diagnosis_outcome.dart';
 export 'installed_bundle_info.dart';
 export 'model_version_info.dart';
 export 'patient.dart';
+export 'segmentation_overlays.dart';
 export 'sync_summary.dart';
 export 'system_status.dart';
 export 'trend_data_point.dart';

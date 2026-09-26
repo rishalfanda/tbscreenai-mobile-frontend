@@ -3,7 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:myapp/data/mock/mock_seed_data.dart';
 import 'package:myapp/data/onnx/inference_result.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
+import 'package:myapp/data/onnx/segmentation_overlay.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
+import 'package:myapp/domain/models/segmentation_overlays.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/domain/repositories/diagnosis_repository.dart';
 
@@ -28,7 +30,15 @@ class OnDeviceDiagnosisRepository implements DiagnosisRepository {
     final stopwatch = Stopwatch()..start();
     final result = await _engine.run(image.bytes);
     stopwatch.stop();
-    return outcomeFromInferenceResult(result, stopwatch.elapsed);
+    final overlays = await renderSegmentationOverlays(
+      xrayBytes: image.bytes,
+      result: result,
+    );
+    return outcomeFromInferenceResult(
+      result,
+      stopwatch.elapsed,
+      segmentation: overlays,
+    );
   }
 }
 
@@ -49,8 +59,9 @@ const List<String> _trackedLesionNames = [
 @visibleForTesting
 DiagnosisOutcome outcomeFromInferenceResult(
   InferenceResult result,
-  Duration elapsed,
-) {
+  Duration elapsed, {
+  SegmentationOverlays? segmentation,
+}) {
   final lungArea = result.lungAreaPx;
   final lesionCounts = result.lesionPixelCounts;
   final percentages = <String, double>{};
@@ -75,5 +86,6 @@ DiagnosisOutcome outcomeFromInferenceResult(
     effusion: percentages['effusion']!,
     fibrotic: percentages['fibrotic']!,
     calcification: percentages['calcification']!,
+    segmentation: segmentation,
   );
 }

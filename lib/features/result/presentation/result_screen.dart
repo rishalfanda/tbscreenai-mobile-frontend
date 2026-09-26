@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
+import 'package:myapp/domain/models/segmentation_overlays.dart';
+import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 
 // === Section: Dark palette (Result screen only) ===
@@ -88,22 +90,13 @@ class ResultScreen extends StatelessWidget {
                       flex: 2,
                       child: Column(
                         children: [
-                          // X-ray Image Card
+                          // X-ray Image Card (with lung/lesion segmentation
+                          // toggle when the on-device pipeline produced one)
                           _DarkCard(
                             padding: EdgeInsets.zero,
-                            child: AspectRatio(
-                              aspectRatio: 16 / 9,
-                              child: snapshot.image?.canPreview == true
-                                  ? Image.memory(
-                                      snapshot.image!.bytes,
-                                      fit: BoxFit.contain,
-                                      errorBuilder: (_, _, _) => const Center(
-                                        child: Text('Image unavailable'),
-                                      ),
-                                    )
-                                  : const Center(
-                                      child: Text('Image preview unavailable'),
-                                    ),
+                            child: _XrayImageCard(
+                              image: snapshot.image,
+                              segmentation: result.segmentation,
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -660,6 +653,133 @@ class _DummyScreeningResultState extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// X-ray preview with an optional lung/lesion segmentation toggle. Falls
+/// back to a plain image (today's behavior) when no segmentation was
+/// produced — mock/HTTP outcomes never carry pixel-level mask data.
+class _XrayImageCard extends StatefulWidget {
+  const _XrayImageCard({required this.image, required this.segmentation});
+
+  final XrayImage? image;
+  final SegmentationOverlays? segmentation;
+
+  @override
+  State<_XrayImageCard> createState() => _XrayImageCardState();
+}
+
+class _XrayImageCardState extends State<_XrayImageCard> {
+  int _view = 0; // 0 = X-ray, 1 = Lung, 2 = Lesion
+
+  @override
+  Widget build(BuildContext context) {
+    final image = widget.image;
+    final segmentation = widget.segmentation;
+
+    if (image?.canPreview != true) {
+      return const AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Center(child: Text('Image preview unavailable')),
+      );
+    }
+
+    if (segmentation == null) {
+      return AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Image.memory(
+          image!.bytes,
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) =>
+              const Center(child: Text('Image unavailable')),
+        ),
+      );
+    }
+
+    final bytes = switch (_view) {
+      1 => segmentation.lungPng,
+      2 => segmentation.lesionPng,
+      _ => segmentation.xrayPng,
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AspectRatio(
+          aspectRatio: 16 / 9,
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+            errorBuilder: (_, _, _) =>
+                const Center(child: Text('Image unavailable')),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(value: 0, label: Text('X-ray')),
+                    ButtonSegment(value: 1, label: Text('Lung')),
+                    ButtonSegment(value: 2, label: Text('Lesion')),
+                  ],
+                  selected: {_view},
+                  onSelectionChanged: (selection) =>
+                      setState(() => _view = selection.first),
+                ),
+              ),
+              if (segmentation.legend.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: segmentation.legend
+                      .map((entry) => _LesionLegendChip(entry: entry))
+                      .toList(),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LesionLegendChip extends StatelessWidget {
+  const _LesionLegendChip({required this.entry});
+
+  final LesionLegendEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final dimmed = entry.pixelCount == 0;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: Color.fromARGB(255, entry.red, entry.green, entry.blue),
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '${entry.name} · ${entry.pixelCount} px',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: dimmed ? _textLo : _textHi,
+          ),
+        ),
+      ],
     );
   }
 }
