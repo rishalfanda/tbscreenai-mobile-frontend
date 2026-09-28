@@ -1,7 +1,7 @@
 import 'package:drift/drift.dart';
 
-/// Cached patients. Mirrors the server row plus two local-only columns:
-/// [updatedAt] (the server version this cache is based on) and [hasConflict].
+/// Cached patients. [serverVersion] is the primary optimistic-lock token;
+/// [updatedAt] is retained only as a legacy/diagnostic secondary timestamp.
 class LocalPatients extends Table {
   /// Server UUID, or a client-generated UUID for rows created offline.
   TextColumn get id => text()();
@@ -15,6 +15,12 @@ class LocalPatients extends Table {
 
   /// JSON-encoded `List<String>`.
   TextColumn get history => text().withDefault(const Constant('[]'))();
+
+  TextColumn get tenantId => text().nullable()();
+  TextColumn get userId => text().nullable()();
+  TextColumn get deviceId => text().nullable()();
+  IntColumn get serverVersion => integer().nullable()();
+  BoolColumn get tombstone => boolean().withDefault(const Constant(false))();
 
   /// Server-side updated_at this cache was built from — the basis for
   /// conflict detection on the next push.
@@ -44,6 +50,15 @@ class LocalDiagnoses extends Table {
   DateTimeColumn get diagnosedAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime().nullable()();
   BoolColumn get hasConflict => boolean().withDefault(const Constant(false))();
+  TextColumn get tenantId => text().nullable()();
+  TextColumn get userId => text().nullable()();
+  TextColumn get deviceId => text().nullable()();
+  IntColumn get serverVersion => integer().nullable()();
+  BoolColumn get tombstone => boolean().withDefault(const Constant(false))();
+  TextColumn get imageChecksum => text().nullable()();
+  TextColumn get imageReference => text().nullable()();
+  TextColumn get provenance => text().withDefault(const Constant('{}'))();
+  BoolColumn get isMock => boolean().withDefault(const Constant(true))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -60,6 +75,9 @@ class SyncQueue extends Table {
   /// 'patient' | 'diagnosis'
   TextColumn get entityType => text()();
   TextColumn get entityId => text()();
+  TextColumn get tenantId => text().nullable()();
+  TextColumn get userId => text().nullable()();
+  TextColumn get deviceId => text().nullable()();
 
   /// 'create' | 'update'
   TextColumn get operation => text()();
@@ -68,13 +86,16 @@ class SyncQueue extends Table {
   TextColumn get payload => text()();
 
   /// Server version the edit was based on — omitted for creates.
+  IntColumn get baseVersion => integer().nullable()();
   DateTimeColumn get baseUpdatedAt => dateTime().nullable()();
 
-  /// pending | synced | conflict | failed
+  /// pending | sending | retryable | synced | conflict | permanent_failure
   TextColumn get status => text().withDefault(const Constant('pending'))();
 
-  /// Server explanation for conflict/failed.
+  /// Server or protocol explanation for conflict/failure.
   TextColumn get detail => text().nullable()();
+  IntColumn get retryCount => integer().withDefault(const Constant(0))();
+  DateTimeColumn get nextAttemptAt => dateTime().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get syncedAt => dateTime().nullable()();
 
@@ -82,8 +103,8 @@ class SyncQueue extends Table {
   Set<Column> get primaryKey => {clientOpId};
 }
 
-/// Key/value store for device-local facts: JWT tokens, installed AI model
-/// version, last successful sync timestamp.
+/// Key/value store for non-secret device/session metadata. JWT token keys are
+/// explicitly rejected by the database settings boundary.
 class AppSettings extends Table {
   TextColumn get key => text()();
   TextColumn get value => text()();

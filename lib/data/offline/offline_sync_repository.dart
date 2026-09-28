@@ -147,6 +147,7 @@ class OfflineSyncRepository implements SyncRepository {
         () => _engine.enqueuePatientUpdate(
           row.id,
           patientPayloadFromRow(row),
+          baseVersion: row.serverVersion,
           baseUpdatedAt: row.updatedAt,
         ),
       );
@@ -156,7 +157,7 @@ class OfflineSyncRepository implements SyncRepository {
 
     try {
       if (session != _db.sessionGeneration) return;
-      lastReport = await _engine.push();
+      lastReport = await _engine.sync();
     } on DioException {
       lastReport = SyncReport(
         applied: 0,

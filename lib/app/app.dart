@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +13,7 @@ import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/mock/mock_repositories.dart';
 import 'package:myapp/data/offline/offline_patient_repository.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
+import 'package:myapp/data/secure/secure_token_storage.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/repositories/repositories.dart';
 import 'package:myapp/state/auth_provider.dart';
@@ -21,41 +24,42 @@ class TBScreenApp extends StatelessWidget {
   const TBScreenApp({
     super.key,
     this.database,
-    this.restoredAccessToken,
-    this.restoredRefreshToken,
+    this.secureTokenStorage,
+    this.useHttpOverride,
   });
 
   /// Injected so tests (and future flavors) can supply an in-memory database.
   final AppDatabase? database;
 
-  /// JWTs restored from disk at startup. When present the router skips the
-  /// login screen and the very first request already carries the header.
-  final String? restoredAccessToken;
-  final String? restoredRefreshToken;
+  /// Production injects platform secure storage. Tests default to an isolated
+  /// memory implementation; there is never a plaintext persistence fallback.
+  final SecureTokenStorage? secureTokenStorage;
 
-  bool get restoredSession =>
-      restoredAccessToken != null && restoredAccessToken!.isNotEmpty;
+  @visibleForTesting
+  final bool? useHttpOverride;
 
   @override
   Widget build(BuildContext context) {
     // Toggle Mock ↔ Http/Offline per repository via --dart-define=USE_HTTP=true.
     // Dashboard/Validation/Dataset stay mock — those backend endpoints do not
     // exist yet. Diagnosis no longer does: /diagnoses/infer is live.
-    const useHttp = AppConfig.useHttp;
+    final useHttp = useHttpOverride ?? AppConfig.useHttp;
     final db = database ?? AppDatabase();
+    final secureStorage = secureTokenStorage ?? MemorySecureTokenStorage();
 
     return MultiProvider(
       providers: [
         // === Section: Local storage & networking ===
         Provider<AppDatabase>.value(value: db),
+        Provider<SecureTokenStorage>.value(value: secureStorage),
         Provider<SettingsStore>(create: (_) => SettingsStore(db)),
         Provider<ApiClient>(
           create: (c) => ApiClient(
             baseUrl: AppConfig.apiBaseUrl,
             settings: c.read<SettingsStore>(),
-            initialAccessToken: restoredAccessToken,
-            initialRefreshToken: restoredRefreshToken,
+            secureStorage: c.read<SecureTokenStorage>(),
           ),
+          dispose: (_, client) => unawaited(client.close()),
         ),
         Provider<SyncEngine>(
           create: (c) => SyncEngine(
@@ -101,10 +105,7 @@ class TBScreenApp extends StatelessWidget {
         Provider<DatasetRepository>(create: (_) => MockDatasetRepository()),
         // === Section: State providers (depend on interfaces only) ===
         ChangeNotifierProvider(
-          create: (context) => AuthProvider(
-            context.read<AuthRepository>(),
-            initiallyLoggedIn: restoredSession,
-          ),
+          create: (context) => AuthProvider(context.read<AuthRepository>()),
         ),
         ChangeNotifierProvider(
           create: (context) => DiagnosisProvider(
@@ -131,20 +132,25 @@ class _RouterView extends StatefulWidget {
 class _RouterViewState extends State<_RouterView> {
   GoRouter? _router;
   ApiClient? _client;
+  StreamSubscription<SessionExpiredEvent>? _sessionSubscription;
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final auth = context.read<AuthProvider>();
     _router ??= AppRouter.create(auth);
-    _client = context.read<ApiClient>();
-    _client!.onSessionExpired = () {
-      auth.logout().catchError((_) {});
-    };
+    final client = context.read<ApiClient>();
+    if (!identical(_client, client)) {
+      unawaited(_sessionSubscription?.cancel());
+      _client = client;
+      _sessionSubscription = client.sessionExpired.listen((_) {
+        unawaited(auth.expireSession().catchError((_) {}));
+      });
+    }
   }
 
   @override
   void dispose() {
-    _client?.onSessionExpired = null;
+    unawaited(_sessionSubscription?.cancel());
     _router?.dispose();
     super.dispose();
   }

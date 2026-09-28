@@ -98,6 +98,63 @@ class $LocalPatientsTable extends LocalPatients
     requiredDuringInsert: false,
     defaultValue: const Constant('[]'),
   );
+  static const VerificationMeta _tenantIdMeta = const VerificationMeta(
+    'tenantId',
+  );
+  @override
+  late final GeneratedColumn<String> tenantId = GeneratedColumn<String>(
+    'tenant_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deviceIdMeta = const VerificationMeta(
+    'deviceId',
+  );
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+    'device_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _serverVersionMeta = const VerificationMeta(
+    'serverVersion',
+  );
+  @override
+  late final GeneratedColumn<int> serverVersion = GeneratedColumn<int>(
+    'server_version',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _tombstoneMeta = const VerificationMeta(
+    'tombstone',
+  );
+  @override
+  late final GeneratedColumn<bool> tombstone = GeneratedColumn<bool>(
+    'tombstone',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("tombstone" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -135,6 +192,11 @@ class $LocalPatientsTable extends LocalPatients
     confidence,
     lastVisit,
     history,
+    tenantId,
+    userId,
+    deviceId,
+    serverVersion,
+    tombstone,
     updatedAt,
     hasConflict,
   ];
@@ -211,6 +273,39 @@ class $LocalPatientsTable extends LocalPatients
         history.isAcceptableOrUnknown(data['history']!, _historyMeta),
       );
     }
+    if (data.containsKey('tenant_id')) {
+      context.handle(
+        _tenantIdMeta,
+        tenantId.isAcceptableOrUnknown(data['tenant_id']!, _tenantIdMeta),
+      );
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(
+        _deviceIdMeta,
+        deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta),
+      );
+    }
+    if (data.containsKey('server_version')) {
+      context.handle(
+        _serverVersionMeta,
+        serverVersion.isAcceptableOrUnknown(
+          data['server_version']!,
+          _serverVersionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('tombstone')) {
+      context.handle(
+        _tombstoneMeta,
+        tombstone.isAcceptableOrUnknown(data['tombstone']!, _tombstoneMeta),
+      );
+    }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
@@ -271,6 +366,26 @@ class $LocalPatientsTable extends LocalPatients
         DriftSqlType.string,
         data['${effectivePrefix}history'],
       )!,
+      tenantId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tenant_id'],
+      ),
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      ),
+      deviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_id'],
+      ),
+      serverVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}server_version'],
+      ),
+      tombstone: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}tombstone'],
+      )!,
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
@@ -301,6 +416,11 @@ class LocalPatient extends DataClass implements Insertable<LocalPatient> {
 
   /// JSON-encoded `List<String>`.
   final String history;
+  final String? tenantId;
+  final String? userId;
+  final String? deviceId;
+  final int? serverVersion;
+  final bool tombstone;
 
   /// Server-side updated_at this cache was built from — the basis for
   /// conflict detection on the next push.
@@ -319,6 +439,11 @@ class LocalPatient extends DataClass implements Insertable<LocalPatient> {
     this.confidence,
     this.lastVisit,
     required this.history,
+    this.tenantId,
+    this.userId,
+    this.deviceId,
+    this.serverVersion,
+    required this.tombstone,
     this.updatedAt,
     required this.hasConflict,
   });
@@ -338,6 +463,19 @@ class LocalPatient extends DataClass implements Insertable<LocalPatient> {
       map['last_visit'] = Variable<String>(lastVisit);
     }
     map['history'] = Variable<String>(history);
+    if (!nullToAbsent || tenantId != null) {
+      map['tenant_id'] = Variable<String>(tenantId);
+    }
+    if (!nullToAbsent || userId != null) {
+      map['user_id'] = Variable<String>(userId);
+    }
+    if (!nullToAbsent || deviceId != null) {
+      map['device_id'] = Variable<String>(deviceId);
+    }
+    if (!nullToAbsent || serverVersion != null) {
+      map['server_version'] = Variable<int>(serverVersion);
+    }
+    map['tombstone'] = Variable<bool>(tombstone);
     if (!nullToAbsent || updatedAt != null) {
       map['updated_at'] = Variable<DateTime>(updatedAt);
     }
@@ -360,6 +498,19 @@ class LocalPatient extends DataClass implements Insertable<LocalPatient> {
           ? const Value.absent()
           : Value(lastVisit),
       history: Value(history),
+      tenantId: tenantId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tenantId),
+      userId: userId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(userId),
+      deviceId: deviceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deviceId),
+      serverVersion: serverVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverVersion),
+      tombstone: Value(tombstone),
       updatedAt: updatedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(updatedAt),
@@ -382,6 +533,11 @@ class LocalPatient extends DataClass implements Insertable<LocalPatient> {
       confidence: serializer.fromJson<int?>(json['confidence']),
       lastVisit: serializer.fromJson<String?>(json['lastVisit']),
       history: serializer.fromJson<String>(json['history']),
+      tenantId: serializer.fromJson<String?>(json['tenantId']),
+      userId: serializer.fromJson<String?>(json['userId']),
+      deviceId: serializer.fromJson<String?>(json['deviceId']),
+      serverVersion: serializer.fromJson<int?>(json['serverVersion']),
+      tombstone: serializer.fromJson<bool>(json['tombstone']),
       updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
       hasConflict: serializer.fromJson<bool>(json['hasConflict']),
     );
@@ -399,6 +555,11 @@ class LocalPatient extends DataClass implements Insertable<LocalPatient> {
       'confidence': serializer.toJson<int?>(confidence),
       'lastVisit': serializer.toJson<String?>(lastVisit),
       'history': serializer.toJson<String>(history),
+      'tenantId': serializer.toJson<String?>(tenantId),
+      'userId': serializer.toJson<String?>(userId),
+      'deviceId': serializer.toJson<String?>(deviceId),
+      'serverVersion': serializer.toJson<int?>(serverVersion),
+      'tombstone': serializer.toJson<bool>(tombstone),
       'updatedAt': serializer.toJson<DateTime?>(updatedAt),
       'hasConflict': serializer.toJson<bool>(hasConflict),
     };
@@ -414,6 +575,11 @@ class LocalPatient extends DataClass implements Insertable<LocalPatient> {
     Value<int?> confidence = const Value.absent(),
     Value<String?> lastVisit = const Value.absent(),
     String? history,
+    Value<String?> tenantId = const Value.absent(),
+    Value<String?> userId = const Value.absent(),
+    Value<String?> deviceId = const Value.absent(),
+    Value<int?> serverVersion = const Value.absent(),
+    bool? tombstone,
     Value<DateTime?> updatedAt = const Value.absent(),
     bool? hasConflict,
   }) => LocalPatient(
@@ -426,6 +592,13 @@ class LocalPatient extends DataClass implements Insertable<LocalPatient> {
     confidence: confidence.present ? confidence.value : this.confidence,
     lastVisit: lastVisit.present ? lastVisit.value : this.lastVisit,
     history: history ?? this.history,
+    tenantId: tenantId.present ? tenantId.value : this.tenantId,
+    userId: userId.present ? userId.value : this.userId,
+    deviceId: deviceId.present ? deviceId.value : this.deviceId,
+    serverVersion: serverVersion.present
+        ? serverVersion.value
+        : this.serverVersion,
+    tombstone: tombstone ?? this.tombstone,
     updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
     hasConflict: hasConflict ?? this.hasConflict,
   );
@@ -442,6 +615,13 @@ class LocalPatient extends DataClass implements Insertable<LocalPatient> {
           : this.confidence,
       lastVisit: data.lastVisit.present ? data.lastVisit.value : this.lastVisit,
       history: data.history.present ? data.history.value : this.history,
+      tenantId: data.tenantId.present ? data.tenantId.value : this.tenantId,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
+      serverVersion: data.serverVersion.present
+          ? data.serverVersion.value
+          : this.serverVersion,
+      tombstone: data.tombstone.present ? data.tombstone.value : this.tombstone,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       hasConflict: data.hasConflict.present
           ? data.hasConflict.value
@@ -461,6 +641,11 @@ class LocalPatient extends DataClass implements Insertable<LocalPatient> {
           ..write('confidence: $confidence, ')
           ..write('lastVisit: $lastVisit, ')
           ..write('history: $history, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('serverVersion: $serverVersion, ')
+          ..write('tombstone: $tombstone, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('hasConflict: $hasConflict')
           ..write(')'))
@@ -478,6 +663,11 @@ class LocalPatient extends DataClass implements Insertable<LocalPatient> {
     confidence,
     lastVisit,
     history,
+    tenantId,
+    userId,
+    deviceId,
+    serverVersion,
+    tombstone,
     updatedAt,
     hasConflict,
   );
@@ -494,6 +684,11 @@ class LocalPatient extends DataClass implements Insertable<LocalPatient> {
           other.confidence == this.confidence &&
           other.lastVisit == this.lastVisit &&
           other.history == this.history &&
+          other.tenantId == this.tenantId &&
+          other.userId == this.userId &&
+          other.deviceId == this.deviceId &&
+          other.serverVersion == this.serverVersion &&
+          other.tombstone == this.tombstone &&
           other.updatedAt == this.updatedAt &&
           other.hasConflict == this.hasConflict);
 }
@@ -508,6 +703,11 @@ class LocalPatientsCompanion extends UpdateCompanion<LocalPatient> {
   final Value<int?> confidence;
   final Value<String?> lastVisit;
   final Value<String> history;
+  final Value<String?> tenantId;
+  final Value<String?> userId;
+  final Value<String?> deviceId;
+  final Value<int?> serverVersion;
+  final Value<bool> tombstone;
   final Value<DateTime?> updatedAt;
   final Value<bool> hasConflict;
   final Value<int> rowid;
@@ -521,6 +721,11 @@ class LocalPatientsCompanion extends UpdateCompanion<LocalPatient> {
     this.confidence = const Value.absent(),
     this.lastVisit = const Value.absent(),
     this.history = const Value.absent(),
+    this.tenantId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.serverVersion = const Value.absent(),
+    this.tombstone = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.hasConflict = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -535,6 +740,11 @@ class LocalPatientsCompanion extends UpdateCompanion<LocalPatient> {
     this.confidence = const Value.absent(),
     this.lastVisit = const Value.absent(),
     this.history = const Value.absent(),
+    this.tenantId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.serverVersion = const Value.absent(),
+    this.tombstone = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.hasConflict = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -553,6 +763,11 @@ class LocalPatientsCompanion extends UpdateCompanion<LocalPatient> {
     Expression<int>? confidence,
     Expression<String>? lastVisit,
     Expression<String>? history,
+    Expression<String>? tenantId,
+    Expression<String>? userId,
+    Expression<String>? deviceId,
+    Expression<int>? serverVersion,
+    Expression<bool>? tombstone,
     Expression<DateTime>? updatedAt,
     Expression<bool>? hasConflict,
     Expression<int>? rowid,
@@ -567,6 +782,11 @@ class LocalPatientsCompanion extends UpdateCompanion<LocalPatient> {
       if (confidence != null) 'confidence': confidence,
       if (lastVisit != null) 'last_visit': lastVisit,
       if (history != null) 'history': history,
+      if (tenantId != null) 'tenant_id': tenantId,
+      if (userId != null) 'user_id': userId,
+      if (deviceId != null) 'device_id': deviceId,
+      if (serverVersion != null) 'server_version': serverVersion,
+      if (tombstone != null) 'tombstone': tombstone,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (hasConflict != null) 'has_conflict': hasConflict,
       if (rowid != null) 'rowid': rowid,
@@ -583,6 +803,11 @@ class LocalPatientsCompanion extends UpdateCompanion<LocalPatient> {
     Value<int?>? confidence,
     Value<String?>? lastVisit,
     Value<String>? history,
+    Value<String?>? tenantId,
+    Value<String?>? userId,
+    Value<String?>? deviceId,
+    Value<int?>? serverVersion,
+    Value<bool>? tombstone,
     Value<DateTime?>? updatedAt,
     Value<bool>? hasConflict,
     Value<int>? rowid,
@@ -597,6 +822,11 @@ class LocalPatientsCompanion extends UpdateCompanion<LocalPatient> {
       confidence: confidence ?? this.confidence,
       lastVisit: lastVisit ?? this.lastVisit,
       history: history ?? this.history,
+      tenantId: tenantId ?? this.tenantId,
+      userId: userId ?? this.userId,
+      deviceId: deviceId ?? this.deviceId,
+      serverVersion: serverVersion ?? this.serverVersion,
+      tombstone: tombstone ?? this.tombstone,
       updatedAt: updatedAt ?? this.updatedAt,
       hasConflict: hasConflict ?? this.hasConflict,
       rowid: rowid ?? this.rowid,
@@ -633,6 +863,21 @@ class LocalPatientsCompanion extends UpdateCompanion<LocalPatient> {
     if (history.present) {
       map['history'] = Variable<String>(history.value);
     }
+    if (tenantId.present) {
+      map['tenant_id'] = Variable<String>(tenantId.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
+    if (serverVersion.present) {
+      map['server_version'] = Variable<int>(serverVersion.value);
+    }
+    if (tombstone.present) {
+      map['tombstone'] = Variable<bool>(tombstone.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -657,6 +902,11 @@ class LocalPatientsCompanion extends UpdateCompanion<LocalPatient> {
           ..write('confidence: $confidence, ')
           ..write('lastVisit: $lastVisit, ')
           ..write('history: $history, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('serverVersion: $serverVersion, ')
+          ..write('tombstone: $tombstone, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('hasConflict: $hasConflict, ')
           ..write('rowid: $rowid')
@@ -808,6 +1058,110 @@ class $LocalDiagnosesTable extends LocalDiagnoses
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _tenantIdMeta = const VerificationMeta(
+    'tenantId',
+  );
+  @override
+  late final GeneratedColumn<String> tenantId = GeneratedColumn<String>(
+    'tenant_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deviceIdMeta = const VerificationMeta(
+    'deviceId',
+  );
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+    'device_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _serverVersionMeta = const VerificationMeta(
+    'serverVersion',
+  );
+  @override
+  late final GeneratedColumn<int> serverVersion = GeneratedColumn<int>(
+    'server_version',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _tombstoneMeta = const VerificationMeta(
+    'tombstone',
+  );
+  @override
+  late final GeneratedColumn<bool> tombstone = GeneratedColumn<bool>(
+    'tombstone',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("tombstone" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _imageChecksumMeta = const VerificationMeta(
+    'imageChecksum',
+  );
+  @override
+  late final GeneratedColumn<String> imageChecksum = GeneratedColumn<String>(
+    'image_checksum',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _imageReferenceMeta = const VerificationMeta(
+    'imageReference',
+  );
+  @override
+  late final GeneratedColumn<String> imageReference = GeneratedColumn<String>(
+    'image_reference',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _provenanceMeta = const VerificationMeta(
+    'provenance',
+  );
+  @override
+  late final GeneratedColumn<String> provenance = GeneratedColumn<String>(
+    'provenance',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  static const VerificationMeta _isMockMeta = const VerificationMeta('isMock');
+  @override
+  late final GeneratedColumn<bool> isMock = GeneratedColumn<bool>(
+    'is_mock',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_mock" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -822,6 +1176,15 @@ class $LocalDiagnosesTable extends LocalDiagnoses
     diagnosedAt,
     updatedAt,
     hasConflict,
+    tenantId,
+    userId,
+    deviceId,
+    serverVersion,
+    tombstone,
+    imageChecksum,
+    imageReference,
+    provenance,
+    isMock,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -928,6 +1291,69 @@ class $LocalDiagnosesTable extends LocalDiagnoses
         ),
       );
     }
+    if (data.containsKey('tenant_id')) {
+      context.handle(
+        _tenantIdMeta,
+        tenantId.isAcceptableOrUnknown(data['tenant_id']!, _tenantIdMeta),
+      );
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(
+        _deviceIdMeta,
+        deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta),
+      );
+    }
+    if (data.containsKey('server_version')) {
+      context.handle(
+        _serverVersionMeta,
+        serverVersion.isAcceptableOrUnknown(
+          data['server_version']!,
+          _serverVersionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('tombstone')) {
+      context.handle(
+        _tombstoneMeta,
+        tombstone.isAcceptableOrUnknown(data['tombstone']!, _tombstoneMeta),
+      );
+    }
+    if (data.containsKey('image_checksum')) {
+      context.handle(
+        _imageChecksumMeta,
+        imageChecksum.isAcceptableOrUnknown(
+          data['image_checksum']!,
+          _imageChecksumMeta,
+        ),
+      );
+    }
+    if (data.containsKey('image_reference')) {
+      context.handle(
+        _imageReferenceMeta,
+        imageReference.isAcceptableOrUnknown(
+          data['image_reference']!,
+          _imageReferenceMeta,
+        ),
+      );
+    }
+    if (data.containsKey('provenance')) {
+      context.handle(
+        _provenanceMeta,
+        provenance.isAcceptableOrUnknown(data['provenance']!, _provenanceMeta),
+      );
+    }
+    if (data.containsKey('is_mock')) {
+      context.handle(
+        _isMockMeta,
+        isMock.isAcceptableOrUnknown(data['is_mock']!, _isMockMeta),
+      );
+    }
     return context;
   }
 
@@ -985,6 +1411,42 @@ class $LocalDiagnosesTable extends LocalDiagnoses
         DriftSqlType.bool,
         data['${effectivePrefix}has_conflict'],
       )!,
+      tenantId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tenant_id'],
+      ),
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      ),
+      deviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_id'],
+      ),
+      serverVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}server_version'],
+      ),
+      tombstone: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}tombstone'],
+      )!,
+      imageChecksum: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}image_checksum'],
+      ),
+      imageReference: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}image_reference'],
+      ),
+      provenance: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}provenance'],
+      )!,
+      isMock: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_mock'],
+      )!,
     );
   }
 
@@ -1009,6 +1471,15 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
   final DateTime diagnosedAt;
   final DateTime? updatedAt;
   final bool hasConflict;
+  final String? tenantId;
+  final String? userId;
+  final String? deviceId;
+  final int? serverVersion;
+  final bool tombstone;
+  final String? imageChecksum;
+  final String? imageReference;
+  final String provenance;
+  final bool isMock;
   const LocalDiagnose({
     required this.id,
     required this.patientId,
@@ -1022,6 +1493,15 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     required this.diagnosedAt,
     this.updatedAt,
     required this.hasConflict,
+    this.tenantId,
+    this.userId,
+    this.deviceId,
+    this.serverVersion,
+    required this.tombstone,
+    this.imageChecksum,
+    this.imageReference,
+    required this.provenance,
+    required this.isMock,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1044,6 +1524,27 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       map['updated_at'] = Variable<DateTime>(updatedAt);
     }
     map['has_conflict'] = Variable<bool>(hasConflict);
+    if (!nullToAbsent || tenantId != null) {
+      map['tenant_id'] = Variable<String>(tenantId);
+    }
+    if (!nullToAbsent || userId != null) {
+      map['user_id'] = Variable<String>(userId);
+    }
+    if (!nullToAbsent || deviceId != null) {
+      map['device_id'] = Variable<String>(deviceId);
+    }
+    if (!nullToAbsent || serverVersion != null) {
+      map['server_version'] = Variable<int>(serverVersion);
+    }
+    map['tombstone'] = Variable<bool>(tombstone);
+    if (!nullToAbsent || imageChecksum != null) {
+      map['image_checksum'] = Variable<String>(imageChecksum);
+    }
+    if (!nullToAbsent || imageReference != null) {
+      map['image_reference'] = Variable<String>(imageReference);
+    }
+    map['provenance'] = Variable<String>(provenance);
+    map['is_mock'] = Variable<bool>(isMock);
     return map;
   }
 
@@ -1067,6 +1568,27 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
           ? const Value.absent()
           : Value(updatedAt),
       hasConflict: Value(hasConflict),
+      tenantId: tenantId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tenantId),
+      userId: userId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(userId),
+      deviceId: deviceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deviceId),
+      serverVersion: serverVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverVersion),
+      tombstone: Value(tombstone),
+      imageChecksum: imageChecksum == null && nullToAbsent
+          ? const Value.absent()
+          : Value(imageChecksum),
+      imageReference: imageReference == null && nullToAbsent
+          ? const Value.absent()
+          : Value(imageReference),
+      provenance: Value(provenance),
+      isMock: Value(isMock),
     );
   }
 
@@ -1088,6 +1610,15 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       diagnosedAt: serializer.fromJson<DateTime>(json['diagnosedAt']),
       updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
       hasConflict: serializer.fromJson<bool>(json['hasConflict']),
+      tenantId: serializer.fromJson<String?>(json['tenantId']),
+      userId: serializer.fromJson<String?>(json['userId']),
+      deviceId: serializer.fromJson<String?>(json['deviceId']),
+      serverVersion: serializer.fromJson<int?>(json['serverVersion']),
+      tombstone: serializer.fromJson<bool>(json['tombstone']),
+      imageChecksum: serializer.fromJson<String?>(json['imageChecksum']),
+      imageReference: serializer.fromJson<String?>(json['imageReference']),
+      provenance: serializer.fromJson<String>(json['provenance']),
+      isMock: serializer.fromJson<bool>(json['isMock']),
     );
   }
   @override
@@ -1106,6 +1637,15 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       'diagnosedAt': serializer.toJson<DateTime>(diagnosedAt),
       'updatedAt': serializer.toJson<DateTime?>(updatedAt),
       'hasConflict': serializer.toJson<bool>(hasConflict),
+      'tenantId': serializer.toJson<String?>(tenantId),
+      'userId': serializer.toJson<String?>(userId),
+      'deviceId': serializer.toJson<String?>(deviceId),
+      'serverVersion': serializer.toJson<int?>(serverVersion),
+      'tombstone': serializer.toJson<bool>(tombstone),
+      'imageChecksum': serializer.toJson<String?>(imageChecksum),
+      'imageReference': serializer.toJson<String?>(imageReference),
+      'provenance': serializer.toJson<String>(provenance),
+      'isMock': serializer.toJson<bool>(isMock),
     };
   }
 
@@ -1122,6 +1662,15 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     DateTime? diagnosedAt,
     Value<DateTime?> updatedAt = const Value.absent(),
     bool? hasConflict,
+    Value<String?> tenantId = const Value.absent(),
+    Value<String?> userId = const Value.absent(),
+    Value<String?> deviceId = const Value.absent(),
+    Value<int?> serverVersion = const Value.absent(),
+    bool? tombstone,
+    Value<String?> imageChecksum = const Value.absent(),
+    Value<String?> imageReference = const Value.absent(),
+    String? provenance,
+    bool? isMock,
   }) => LocalDiagnose(
     id: id ?? this.id,
     patientId: patientId ?? this.patientId,
@@ -1137,6 +1686,21 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     diagnosedAt: diagnosedAt ?? this.diagnosedAt,
     updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
     hasConflict: hasConflict ?? this.hasConflict,
+    tenantId: tenantId.present ? tenantId.value : this.tenantId,
+    userId: userId.present ? userId.value : this.userId,
+    deviceId: deviceId.present ? deviceId.value : this.deviceId,
+    serverVersion: serverVersion.present
+        ? serverVersion.value
+        : this.serverVersion,
+    tombstone: tombstone ?? this.tombstone,
+    imageChecksum: imageChecksum.present
+        ? imageChecksum.value
+        : this.imageChecksum,
+    imageReference: imageReference.present
+        ? imageReference.value
+        : this.imageReference,
+    provenance: provenance ?? this.provenance,
+    isMock: isMock ?? this.isMock,
   );
   LocalDiagnose copyWithCompanion(LocalDiagnosesCompanion data) {
     return LocalDiagnose(
@@ -1166,6 +1730,23 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       hasConflict: data.hasConflict.present
           ? data.hasConflict.value
           : this.hasConflict,
+      tenantId: data.tenantId.present ? data.tenantId.value : this.tenantId,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
+      serverVersion: data.serverVersion.present
+          ? data.serverVersion.value
+          : this.serverVersion,
+      tombstone: data.tombstone.present ? data.tombstone.value : this.tombstone,
+      imageChecksum: data.imageChecksum.present
+          ? data.imageChecksum.value
+          : this.imageChecksum,
+      imageReference: data.imageReference.present
+          ? data.imageReference.value
+          : this.imageReference,
+      provenance: data.provenance.present
+          ? data.provenance.value
+          : this.provenance,
+      isMock: data.isMock.present ? data.isMock.value : this.isMock,
     );
   }
 
@@ -1183,13 +1764,22 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
           ..write('doctorNote: $doctorNote, ')
           ..write('diagnosedAt: $diagnosedAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('hasConflict: $hasConflict')
+          ..write('hasConflict: $hasConflict, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('serverVersion: $serverVersion, ')
+          ..write('tombstone: $tombstone, ')
+          ..write('imageChecksum: $imageChecksum, ')
+          ..write('imageReference: $imageReference, ')
+          ..write('provenance: $provenance, ')
+          ..write('isMock: $isMock')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     patientId,
     isPositive,
@@ -1202,7 +1792,16 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     diagnosedAt,
     updatedAt,
     hasConflict,
-  );
+    tenantId,
+    userId,
+    deviceId,
+    serverVersion,
+    tombstone,
+    imageChecksum,
+    imageReference,
+    provenance,
+    isMock,
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1218,7 +1817,16 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
           other.doctorNote == this.doctorNote &&
           other.diagnosedAt == this.diagnosedAt &&
           other.updatedAt == this.updatedAt &&
-          other.hasConflict == this.hasConflict);
+          other.hasConflict == this.hasConflict &&
+          other.tenantId == this.tenantId &&
+          other.userId == this.userId &&
+          other.deviceId == this.deviceId &&
+          other.serverVersion == this.serverVersion &&
+          other.tombstone == this.tombstone &&
+          other.imageChecksum == this.imageChecksum &&
+          other.imageReference == this.imageReference &&
+          other.provenance == this.provenance &&
+          other.isMock == this.isMock);
 }
 
 class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
@@ -1234,6 +1842,15 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
   final Value<DateTime> diagnosedAt;
   final Value<DateTime?> updatedAt;
   final Value<bool> hasConflict;
+  final Value<String?> tenantId;
+  final Value<String?> userId;
+  final Value<String?> deviceId;
+  final Value<int?> serverVersion;
+  final Value<bool> tombstone;
+  final Value<String?> imageChecksum;
+  final Value<String?> imageReference;
+  final Value<String> provenance;
+  final Value<bool> isMock;
   final Value<int> rowid;
   const LocalDiagnosesCompanion({
     this.id = const Value.absent(),
@@ -1248,6 +1865,15 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     this.diagnosedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.hasConflict = const Value.absent(),
+    this.tenantId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.serverVersion = const Value.absent(),
+    this.tombstone = const Value.absent(),
+    this.imageChecksum = const Value.absent(),
+    this.imageReference = const Value.absent(),
+    this.provenance = const Value.absent(),
+    this.isMock = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LocalDiagnosesCompanion.insert({
@@ -1263,6 +1889,15 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     required DateTime diagnosedAt,
     this.updatedAt = const Value.absent(),
     this.hasConflict = const Value.absent(),
+    this.tenantId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.serverVersion = const Value.absent(),
+    this.tombstone = const Value.absent(),
+    this.imageChecksum = const Value.absent(),
+    this.imageReference = const Value.absent(),
+    this.provenance = const Value.absent(),
+    this.isMock = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        patientId = Value(patientId),
@@ -1283,6 +1918,15 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     Expression<DateTime>? diagnosedAt,
     Expression<DateTime>? updatedAt,
     Expression<bool>? hasConflict,
+    Expression<String>? tenantId,
+    Expression<String>? userId,
+    Expression<String>? deviceId,
+    Expression<int>? serverVersion,
+    Expression<bool>? tombstone,
+    Expression<String>? imageChecksum,
+    Expression<String>? imageReference,
+    Expression<String>? provenance,
+    Expression<bool>? isMock,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1298,6 +1942,15 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
       if (diagnosedAt != null) 'diagnosed_at': diagnosedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (hasConflict != null) 'has_conflict': hasConflict,
+      if (tenantId != null) 'tenant_id': tenantId,
+      if (userId != null) 'user_id': userId,
+      if (deviceId != null) 'device_id': deviceId,
+      if (serverVersion != null) 'server_version': serverVersion,
+      if (tombstone != null) 'tombstone': tombstone,
+      if (imageChecksum != null) 'image_checksum': imageChecksum,
+      if (imageReference != null) 'image_reference': imageReference,
+      if (provenance != null) 'provenance': provenance,
+      if (isMock != null) 'is_mock': isMock,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1315,6 +1968,15 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     Value<DateTime>? diagnosedAt,
     Value<DateTime?>? updatedAt,
     Value<bool>? hasConflict,
+    Value<String?>? tenantId,
+    Value<String?>? userId,
+    Value<String?>? deviceId,
+    Value<int?>? serverVersion,
+    Value<bool>? tombstone,
+    Value<String?>? imageChecksum,
+    Value<String?>? imageReference,
+    Value<String>? provenance,
+    Value<bool>? isMock,
     Value<int>? rowid,
   }) {
     return LocalDiagnosesCompanion(
@@ -1330,6 +1992,15 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
       diagnosedAt: diagnosedAt ?? this.diagnosedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       hasConflict: hasConflict ?? this.hasConflict,
+      tenantId: tenantId ?? this.tenantId,
+      userId: userId ?? this.userId,
+      deviceId: deviceId ?? this.deviceId,
+      serverVersion: serverVersion ?? this.serverVersion,
+      tombstone: tombstone ?? this.tombstone,
+      imageChecksum: imageChecksum ?? this.imageChecksum,
+      imageReference: imageReference ?? this.imageReference,
+      provenance: provenance ?? this.provenance,
+      isMock: isMock ?? this.isMock,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1373,6 +2044,33 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     if (hasConflict.present) {
       map['has_conflict'] = Variable<bool>(hasConflict.value);
     }
+    if (tenantId.present) {
+      map['tenant_id'] = Variable<String>(tenantId.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
+    if (serverVersion.present) {
+      map['server_version'] = Variable<int>(serverVersion.value);
+    }
+    if (tombstone.present) {
+      map['tombstone'] = Variable<bool>(tombstone.value);
+    }
+    if (imageChecksum.present) {
+      map['image_checksum'] = Variable<String>(imageChecksum.value);
+    }
+    if (imageReference.present) {
+      map['image_reference'] = Variable<String>(imageReference.value);
+    }
+    if (provenance.present) {
+      map['provenance'] = Variable<String>(provenance.value);
+    }
+    if (isMock.present) {
+      map['is_mock'] = Variable<bool>(isMock.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1394,6 +2092,15 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
           ..write('diagnosedAt: $diagnosedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('hasConflict: $hasConflict, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('serverVersion: $serverVersion, ')
+          ..write('tombstone: $tombstone, ')
+          ..write('imageChecksum: $imageChecksum, ')
+          ..write('imageReference: $imageReference, ')
+          ..write('provenance: $provenance, ')
+          ..write('isMock: $isMock, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1439,6 +2146,37 @@ class $SyncQueueTable extends SyncQueue
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _tenantIdMeta = const VerificationMeta(
+    'tenantId',
+  );
+  @override
+  late final GeneratedColumn<String> tenantId = GeneratedColumn<String>(
+    'tenant_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deviceIdMeta = const VerificationMeta(
+    'deviceId',
+  );
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+    'device_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _operationMeta = const VerificationMeta(
     'operation',
   );
@@ -1460,6 +2198,17 @@ class $SyncQueueTable extends SyncQueue
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
+  );
+  static const VerificationMeta _baseVersionMeta = const VerificationMeta(
+    'baseVersion',
+  );
+  @override
+  late final GeneratedColumn<int> baseVersion = GeneratedColumn<int>(
+    'base_version',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _baseUpdatedAtMeta = const VerificationMeta(
     'baseUpdatedAt',
@@ -1492,6 +2241,30 @@ class $SyncQueueTable extends SyncQueue
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _retryCountMeta = const VerificationMeta(
+    'retryCount',
+  );
+  @override
+  late final GeneratedColumn<int> retryCount = GeneratedColumn<int>(
+    'retry_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _nextAttemptAtMeta = const VerificationMeta(
+    'nextAttemptAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> nextAttemptAt =
+      GeneratedColumn<DateTime>(
+        'next_attempt_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1519,11 +2292,17 @@ class $SyncQueueTable extends SyncQueue
     clientOpId,
     entityType,
     entityId,
+    tenantId,
+    userId,
+    deviceId,
     operation,
     payload,
+    baseVersion,
     baseUpdatedAt,
     status,
     detail,
+    retryCount,
+    nextAttemptAt,
     createdAt,
     syncedAt,
   ];
@@ -1566,6 +2345,24 @@ class $SyncQueueTable extends SyncQueue
     } else if (isInserting) {
       context.missing(_entityIdMeta);
     }
+    if (data.containsKey('tenant_id')) {
+      context.handle(
+        _tenantIdMeta,
+        tenantId.isAcceptableOrUnknown(data['tenant_id']!, _tenantIdMeta),
+      );
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(
+        _deviceIdMeta,
+        deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta),
+      );
+    }
     if (data.containsKey('operation')) {
       context.handle(
         _operationMeta,
@@ -1581,6 +2378,15 @@ class $SyncQueueTable extends SyncQueue
       );
     } else if (isInserting) {
       context.missing(_payloadMeta);
+    }
+    if (data.containsKey('base_version')) {
+      context.handle(
+        _baseVersionMeta,
+        baseVersion.isAcceptableOrUnknown(
+          data['base_version']!,
+          _baseVersionMeta,
+        ),
+      );
     }
     if (data.containsKey('base_updated_at')) {
       context.handle(
@@ -1601,6 +2407,21 @@ class $SyncQueueTable extends SyncQueue
       context.handle(
         _detailMeta,
         detail.isAcceptableOrUnknown(data['detail']!, _detailMeta),
+      );
+    }
+    if (data.containsKey('retry_count')) {
+      context.handle(
+        _retryCountMeta,
+        retryCount.isAcceptableOrUnknown(data['retry_count']!, _retryCountMeta),
+      );
+    }
+    if (data.containsKey('next_attempt_at')) {
+      context.handle(
+        _nextAttemptAtMeta,
+        nextAttemptAt.isAcceptableOrUnknown(
+          data['next_attempt_at']!,
+          _nextAttemptAtMeta,
+        ),
       );
     }
     if (data.containsKey('created_at')) {
@@ -1638,6 +2459,18 @@ class $SyncQueueTable extends SyncQueue
         DriftSqlType.string,
         data['${effectivePrefix}entity_id'],
       )!,
+      tenantId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tenant_id'],
+      ),
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      ),
+      deviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_id'],
+      ),
       operation: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}operation'],
@@ -1646,6 +2479,10 @@ class $SyncQueueTable extends SyncQueue
         DriftSqlType.string,
         data['${effectivePrefix}payload'],
       )!,
+      baseVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}base_version'],
+      ),
       baseUpdatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}base_updated_at'],
@@ -1657,6 +2494,14 @@ class $SyncQueueTable extends SyncQueue
       detail: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}detail'],
+      ),
+      retryCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}retry_count'],
+      )!,
+      nextAttemptAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}next_attempt_at'],
       ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
@@ -1684,6 +2529,9 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
   /// 'patient' | 'diagnosis'
   final String entityType;
   final String entityId;
+  final String? tenantId;
+  final String? userId;
+  final String? deviceId;
 
   /// 'create' | 'update'
   final String operation;
@@ -1692,24 +2540,33 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
   final String payload;
 
   /// Server version the edit was based on — omitted for creates.
+  final int? baseVersion;
   final DateTime? baseUpdatedAt;
 
-  /// pending | synced | conflict | failed
+  /// pending | sending | retryable | synced | conflict | permanent_failure
   final String status;
 
-  /// Server explanation for conflict/failed.
+  /// Server or protocol explanation for conflict/failure.
   final String? detail;
+  final int retryCount;
+  final DateTime? nextAttemptAt;
   final DateTime createdAt;
   final DateTime? syncedAt;
   const SyncQueueData({
     required this.clientOpId,
     required this.entityType,
     required this.entityId,
+    this.tenantId,
+    this.userId,
+    this.deviceId,
     required this.operation,
     required this.payload,
+    this.baseVersion,
     this.baseUpdatedAt,
     required this.status,
     this.detail,
+    required this.retryCount,
+    this.nextAttemptAt,
     required this.createdAt,
     this.syncedAt,
   });
@@ -1719,14 +2576,30 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
     map['client_op_id'] = Variable<String>(clientOpId);
     map['entity_type'] = Variable<String>(entityType);
     map['entity_id'] = Variable<String>(entityId);
+    if (!nullToAbsent || tenantId != null) {
+      map['tenant_id'] = Variable<String>(tenantId);
+    }
+    if (!nullToAbsent || userId != null) {
+      map['user_id'] = Variable<String>(userId);
+    }
+    if (!nullToAbsent || deviceId != null) {
+      map['device_id'] = Variable<String>(deviceId);
+    }
     map['operation'] = Variable<String>(operation);
     map['payload'] = Variable<String>(payload);
+    if (!nullToAbsent || baseVersion != null) {
+      map['base_version'] = Variable<int>(baseVersion);
+    }
     if (!nullToAbsent || baseUpdatedAt != null) {
       map['base_updated_at'] = Variable<DateTime>(baseUpdatedAt);
     }
     map['status'] = Variable<String>(status);
     if (!nullToAbsent || detail != null) {
       map['detail'] = Variable<String>(detail);
+    }
+    map['retry_count'] = Variable<int>(retryCount);
+    if (!nullToAbsent || nextAttemptAt != null) {
+      map['next_attempt_at'] = Variable<DateTime>(nextAttemptAt);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     if (!nullToAbsent || syncedAt != null) {
@@ -1740,8 +2613,20 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       clientOpId: Value(clientOpId),
       entityType: Value(entityType),
       entityId: Value(entityId),
+      tenantId: tenantId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tenantId),
+      userId: userId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(userId),
+      deviceId: deviceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deviceId),
       operation: Value(operation),
       payload: Value(payload),
+      baseVersion: baseVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(baseVersion),
       baseUpdatedAt: baseUpdatedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(baseUpdatedAt),
@@ -1749,6 +2634,10 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       detail: detail == null && nullToAbsent
           ? const Value.absent()
           : Value(detail),
+      retryCount: Value(retryCount),
+      nextAttemptAt: nextAttemptAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nextAttemptAt),
       createdAt: Value(createdAt),
       syncedAt: syncedAt == null && nullToAbsent
           ? const Value.absent()
@@ -1765,11 +2654,17 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       clientOpId: serializer.fromJson<String>(json['clientOpId']),
       entityType: serializer.fromJson<String>(json['entityType']),
       entityId: serializer.fromJson<String>(json['entityId']),
+      tenantId: serializer.fromJson<String?>(json['tenantId']),
+      userId: serializer.fromJson<String?>(json['userId']),
+      deviceId: serializer.fromJson<String?>(json['deviceId']),
       operation: serializer.fromJson<String>(json['operation']),
       payload: serializer.fromJson<String>(json['payload']),
+      baseVersion: serializer.fromJson<int?>(json['baseVersion']),
       baseUpdatedAt: serializer.fromJson<DateTime?>(json['baseUpdatedAt']),
       status: serializer.fromJson<String>(json['status']),
       detail: serializer.fromJson<String?>(json['detail']),
+      retryCount: serializer.fromJson<int>(json['retryCount']),
+      nextAttemptAt: serializer.fromJson<DateTime?>(json['nextAttemptAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
     );
@@ -1781,11 +2676,17 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       'clientOpId': serializer.toJson<String>(clientOpId),
       'entityType': serializer.toJson<String>(entityType),
       'entityId': serializer.toJson<String>(entityId),
+      'tenantId': serializer.toJson<String?>(tenantId),
+      'userId': serializer.toJson<String?>(userId),
+      'deviceId': serializer.toJson<String?>(deviceId),
       'operation': serializer.toJson<String>(operation),
       'payload': serializer.toJson<String>(payload),
+      'baseVersion': serializer.toJson<int?>(baseVersion),
       'baseUpdatedAt': serializer.toJson<DateTime?>(baseUpdatedAt),
       'status': serializer.toJson<String>(status),
       'detail': serializer.toJson<String?>(detail),
+      'retryCount': serializer.toJson<int>(retryCount),
+      'nextAttemptAt': serializer.toJson<DateTime?>(nextAttemptAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'syncedAt': serializer.toJson<DateTime?>(syncedAt),
     };
@@ -1795,24 +2696,38 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
     String? clientOpId,
     String? entityType,
     String? entityId,
+    Value<String?> tenantId = const Value.absent(),
+    Value<String?> userId = const Value.absent(),
+    Value<String?> deviceId = const Value.absent(),
     String? operation,
     String? payload,
+    Value<int?> baseVersion = const Value.absent(),
     Value<DateTime?> baseUpdatedAt = const Value.absent(),
     String? status,
     Value<String?> detail = const Value.absent(),
+    int? retryCount,
+    Value<DateTime?> nextAttemptAt = const Value.absent(),
     DateTime? createdAt,
     Value<DateTime?> syncedAt = const Value.absent(),
   }) => SyncQueueData(
     clientOpId: clientOpId ?? this.clientOpId,
     entityType: entityType ?? this.entityType,
     entityId: entityId ?? this.entityId,
+    tenantId: tenantId.present ? tenantId.value : this.tenantId,
+    userId: userId.present ? userId.value : this.userId,
+    deviceId: deviceId.present ? deviceId.value : this.deviceId,
     operation: operation ?? this.operation,
     payload: payload ?? this.payload,
+    baseVersion: baseVersion.present ? baseVersion.value : this.baseVersion,
     baseUpdatedAt: baseUpdatedAt.present
         ? baseUpdatedAt.value
         : this.baseUpdatedAt,
     status: status ?? this.status,
     detail: detail.present ? detail.value : this.detail,
+    retryCount: retryCount ?? this.retryCount,
+    nextAttemptAt: nextAttemptAt.present
+        ? nextAttemptAt.value
+        : this.nextAttemptAt,
     createdAt: createdAt ?? this.createdAt,
     syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
   );
@@ -1825,13 +2740,25 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
           ? data.entityType.value
           : this.entityType,
       entityId: data.entityId.present ? data.entityId.value : this.entityId,
+      tenantId: data.tenantId.present ? data.tenantId.value : this.tenantId,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
       operation: data.operation.present ? data.operation.value : this.operation,
       payload: data.payload.present ? data.payload.value : this.payload,
+      baseVersion: data.baseVersion.present
+          ? data.baseVersion.value
+          : this.baseVersion,
       baseUpdatedAt: data.baseUpdatedAt.present
           ? data.baseUpdatedAt.value
           : this.baseUpdatedAt,
       status: data.status.present ? data.status.value : this.status,
       detail: data.detail.present ? data.detail.value : this.detail,
+      retryCount: data.retryCount.present
+          ? data.retryCount.value
+          : this.retryCount,
+      nextAttemptAt: data.nextAttemptAt.present
+          ? data.nextAttemptAt.value
+          : this.nextAttemptAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
     );
@@ -1843,11 +2770,17 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
           ..write('clientOpId: $clientOpId, ')
           ..write('entityType: $entityType, ')
           ..write('entityId: $entityId, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('deviceId: $deviceId, ')
           ..write('operation: $operation, ')
           ..write('payload: $payload, ')
+          ..write('baseVersion: $baseVersion, ')
           ..write('baseUpdatedAt: $baseUpdatedAt, ')
           ..write('status: $status, ')
           ..write('detail: $detail, ')
+          ..write('retryCount: $retryCount, ')
+          ..write('nextAttemptAt: $nextAttemptAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('syncedAt: $syncedAt')
           ..write(')'))
@@ -1859,11 +2792,17 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
     clientOpId,
     entityType,
     entityId,
+    tenantId,
+    userId,
+    deviceId,
     operation,
     payload,
+    baseVersion,
     baseUpdatedAt,
     status,
     detail,
+    retryCount,
+    nextAttemptAt,
     createdAt,
     syncedAt,
   );
@@ -1874,11 +2813,17 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
           other.clientOpId == this.clientOpId &&
           other.entityType == this.entityType &&
           other.entityId == this.entityId &&
+          other.tenantId == this.tenantId &&
+          other.userId == this.userId &&
+          other.deviceId == this.deviceId &&
           other.operation == this.operation &&
           other.payload == this.payload &&
+          other.baseVersion == this.baseVersion &&
           other.baseUpdatedAt == this.baseUpdatedAt &&
           other.status == this.status &&
           other.detail == this.detail &&
+          other.retryCount == this.retryCount &&
+          other.nextAttemptAt == this.nextAttemptAt &&
           other.createdAt == this.createdAt &&
           other.syncedAt == this.syncedAt);
 }
@@ -1887,11 +2832,17 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
   final Value<String> clientOpId;
   final Value<String> entityType;
   final Value<String> entityId;
+  final Value<String?> tenantId;
+  final Value<String?> userId;
+  final Value<String?> deviceId;
   final Value<String> operation;
   final Value<String> payload;
+  final Value<int?> baseVersion;
   final Value<DateTime?> baseUpdatedAt;
   final Value<String> status;
   final Value<String?> detail;
+  final Value<int> retryCount;
+  final Value<DateTime?> nextAttemptAt;
   final Value<DateTime> createdAt;
   final Value<DateTime?> syncedAt;
   final Value<int> rowid;
@@ -1899,11 +2850,17 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     this.clientOpId = const Value.absent(),
     this.entityType = const Value.absent(),
     this.entityId = const Value.absent(),
+    this.tenantId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.deviceId = const Value.absent(),
     this.operation = const Value.absent(),
     this.payload = const Value.absent(),
+    this.baseVersion = const Value.absent(),
     this.baseUpdatedAt = const Value.absent(),
     this.status = const Value.absent(),
     this.detail = const Value.absent(),
+    this.retryCount = const Value.absent(),
+    this.nextAttemptAt = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.syncedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1912,11 +2869,17 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     required String clientOpId,
     required String entityType,
     required String entityId,
+    this.tenantId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.deviceId = const Value.absent(),
     required String operation,
     required String payload,
+    this.baseVersion = const Value.absent(),
     this.baseUpdatedAt = const Value.absent(),
     this.status = const Value.absent(),
     this.detail = const Value.absent(),
+    this.retryCount = const Value.absent(),
+    this.nextAttemptAt = const Value.absent(),
     required DateTime createdAt,
     this.syncedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1930,11 +2893,17 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     Expression<String>? clientOpId,
     Expression<String>? entityType,
     Expression<String>? entityId,
+    Expression<String>? tenantId,
+    Expression<String>? userId,
+    Expression<String>? deviceId,
     Expression<String>? operation,
     Expression<String>? payload,
+    Expression<int>? baseVersion,
     Expression<DateTime>? baseUpdatedAt,
     Expression<String>? status,
     Expression<String>? detail,
+    Expression<int>? retryCount,
+    Expression<DateTime>? nextAttemptAt,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? syncedAt,
     Expression<int>? rowid,
@@ -1943,11 +2912,17 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
       if (clientOpId != null) 'client_op_id': clientOpId,
       if (entityType != null) 'entity_type': entityType,
       if (entityId != null) 'entity_id': entityId,
+      if (tenantId != null) 'tenant_id': tenantId,
+      if (userId != null) 'user_id': userId,
+      if (deviceId != null) 'device_id': deviceId,
       if (operation != null) 'operation': operation,
       if (payload != null) 'payload': payload,
+      if (baseVersion != null) 'base_version': baseVersion,
       if (baseUpdatedAt != null) 'base_updated_at': baseUpdatedAt,
       if (status != null) 'status': status,
       if (detail != null) 'detail': detail,
+      if (retryCount != null) 'retry_count': retryCount,
+      if (nextAttemptAt != null) 'next_attempt_at': nextAttemptAt,
       if (createdAt != null) 'created_at': createdAt,
       if (syncedAt != null) 'synced_at': syncedAt,
       if (rowid != null) 'rowid': rowid,
@@ -1958,11 +2933,17 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     Value<String>? clientOpId,
     Value<String>? entityType,
     Value<String>? entityId,
+    Value<String?>? tenantId,
+    Value<String?>? userId,
+    Value<String?>? deviceId,
     Value<String>? operation,
     Value<String>? payload,
+    Value<int?>? baseVersion,
     Value<DateTime?>? baseUpdatedAt,
     Value<String>? status,
     Value<String?>? detail,
+    Value<int>? retryCount,
+    Value<DateTime?>? nextAttemptAt,
     Value<DateTime>? createdAt,
     Value<DateTime?>? syncedAt,
     Value<int>? rowid,
@@ -1971,11 +2952,17 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
       clientOpId: clientOpId ?? this.clientOpId,
       entityType: entityType ?? this.entityType,
       entityId: entityId ?? this.entityId,
+      tenantId: tenantId ?? this.tenantId,
+      userId: userId ?? this.userId,
+      deviceId: deviceId ?? this.deviceId,
       operation: operation ?? this.operation,
       payload: payload ?? this.payload,
+      baseVersion: baseVersion ?? this.baseVersion,
       baseUpdatedAt: baseUpdatedAt ?? this.baseUpdatedAt,
       status: status ?? this.status,
       detail: detail ?? this.detail,
+      retryCount: retryCount ?? this.retryCount,
+      nextAttemptAt: nextAttemptAt ?? this.nextAttemptAt,
       createdAt: createdAt ?? this.createdAt,
       syncedAt: syncedAt ?? this.syncedAt,
       rowid: rowid ?? this.rowid,
@@ -1994,11 +2981,23 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     if (entityId.present) {
       map['entity_id'] = Variable<String>(entityId.value);
     }
+    if (tenantId.present) {
+      map['tenant_id'] = Variable<String>(tenantId.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
     if (operation.present) {
       map['operation'] = Variable<String>(operation.value);
     }
     if (payload.present) {
       map['payload'] = Variable<String>(payload.value);
+    }
+    if (baseVersion.present) {
+      map['base_version'] = Variable<int>(baseVersion.value);
     }
     if (baseUpdatedAt.present) {
       map['base_updated_at'] = Variable<DateTime>(baseUpdatedAt.value);
@@ -2008,6 +3007,12 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     }
     if (detail.present) {
       map['detail'] = Variable<String>(detail.value);
+    }
+    if (retryCount.present) {
+      map['retry_count'] = Variable<int>(retryCount.value);
+    }
+    if (nextAttemptAt.present) {
+      map['next_attempt_at'] = Variable<DateTime>(nextAttemptAt.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
@@ -2027,11 +3032,17 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
           ..write('clientOpId: $clientOpId, ')
           ..write('entityType: $entityType, ')
           ..write('entityId: $entityId, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('deviceId: $deviceId, ')
           ..write('operation: $operation, ')
           ..write('payload: $payload, ')
+          ..write('baseVersion: $baseVersion, ')
           ..write('baseUpdatedAt: $baseUpdatedAt, ')
           ..write('status: $status, ')
           ..write('detail: $detail, ')
+          ..write('retryCount: $retryCount, ')
+          ..write('nextAttemptAt: $nextAttemptAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('syncedAt: $syncedAt, ')
           ..write('rowid: $rowid')
@@ -2278,6 +3289,11 @@ typedef $$LocalPatientsTableCreateCompanionBuilder =
       Value<int?> confidence,
       Value<String?> lastVisit,
       Value<String> history,
+      Value<String?> tenantId,
+      Value<String?> userId,
+      Value<String?> deviceId,
+      Value<int?> serverVersion,
+      Value<bool> tombstone,
       Value<DateTime?> updatedAt,
       Value<bool> hasConflict,
       Value<int> rowid,
@@ -2293,6 +3309,11 @@ typedef $$LocalPatientsTableUpdateCompanionBuilder =
       Value<int?> confidence,
       Value<String?> lastVisit,
       Value<String> history,
+      Value<String?> tenantId,
+      Value<String?> userId,
+      Value<String?> deviceId,
+      Value<int?> serverVersion,
+      Value<bool> tombstone,
       Value<DateTime?> updatedAt,
       Value<bool> hasConflict,
       Value<int> rowid,
@@ -2349,6 +3370,31 @@ class $$LocalPatientsTableFilterComposer
 
   ColumnFilters<String> get history => $composableBuilder(
     column: $table.history,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get serverVersion => $composableBuilder(
+    column: $table.serverVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get tombstone => $composableBuilder(
+    column: $table.tombstone,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2417,6 +3463,31 @@ class $$LocalPatientsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get serverVersion => $composableBuilder(
+    column: $table.serverVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get tombstone => $composableBuilder(
+    column: $table.tombstone,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -2465,6 +3536,23 @@ class $$LocalPatientsTableAnnotationComposer
 
   GeneratedColumn<String> get history =>
       $composableBuilder(column: $table.history, builder: (column) => column);
+
+  GeneratedColumn<String> get tenantId =>
+      $composableBuilder(column: $table.tenantId, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+
+  GeneratedColumn<int> get serverVersion => $composableBuilder(
+    column: $table.serverVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get tombstone =>
+      $composableBuilder(column: $table.tombstone, builder: (column) => column);
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -2515,6 +3603,11 @@ class $$LocalPatientsTableTableManager
                 Value<int?> confidence = const Value.absent(),
                 Value<String?> lastVisit = const Value.absent(),
                 Value<String> history = const Value.absent(),
+                Value<String?> tenantId = const Value.absent(),
+                Value<String?> userId = const Value.absent(),
+                Value<String?> deviceId = const Value.absent(),
+                Value<int?> serverVersion = const Value.absent(),
+                Value<bool> tombstone = const Value.absent(),
                 Value<DateTime?> updatedAt = const Value.absent(),
                 Value<bool> hasConflict = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -2528,6 +3621,11 @@ class $$LocalPatientsTableTableManager
                 confidence: confidence,
                 lastVisit: lastVisit,
                 history: history,
+                tenantId: tenantId,
+                userId: userId,
+                deviceId: deviceId,
+                serverVersion: serverVersion,
+                tombstone: tombstone,
                 updatedAt: updatedAt,
                 hasConflict: hasConflict,
                 rowid: rowid,
@@ -2543,6 +3641,11 @@ class $$LocalPatientsTableTableManager
                 Value<int?> confidence = const Value.absent(),
                 Value<String?> lastVisit = const Value.absent(),
                 Value<String> history = const Value.absent(),
+                Value<String?> tenantId = const Value.absent(),
+                Value<String?> userId = const Value.absent(),
+                Value<String?> deviceId = const Value.absent(),
+                Value<int?> serverVersion = const Value.absent(),
+                Value<bool> tombstone = const Value.absent(),
                 Value<DateTime?> updatedAt = const Value.absent(),
                 Value<bool> hasConflict = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -2556,6 +3659,11 @@ class $$LocalPatientsTableTableManager
                 confidence: confidence,
                 lastVisit: lastVisit,
                 history: history,
+                tenantId: tenantId,
+                userId: userId,
+                deviceId: deviceId,
+                serverVersion: serverVersion,
+                tombstone: tombstone,
                 updatedAt: updatedAt,
                 hasConflict: hasConflict,
                 rowid: rowid,
@@ -2599,6 +3707,15 @@ typedef $$LocalDiagnosesTableCreateCompanionBuilder =
       required DateTime diagnosedAt,
       Value<DateTime?> updatedAt,
       Value<bool> hasConflict,
+      Value<String?> tenantId,
+      Value<String?> userId,
+      Value<String?> deviceId,
+      Value<int?> serverVersion,
+      Value<bool> tombstone,
+      Value<String?> imageChecksum,
+      Value<String?> imageReference,
+      Value<String> provenance,
+      Value<bool> isMock,
       Value<int> rowid,
     });
 typedef $$LocalDiagnosesTableUpdateCompanionBuilder =
@@ -2615,6 +3732,15 @@ typedef $$LocalDiagnosesTableUpdateCompanionBuilder =
       Value<DateTime> diagnosedAt,
       Value<DateTime?> updatedAt,
       Value<bool> hasConflict,
+      Value<String?> tenantId,
+      Value<String?> userId,
+      Value<String?> deviceId,
+      Value<int?> serverVersion,
+      Value<bool> tombstone,
+      Value<String?> imageChecksum,
+      Value<String?> imageReference,
+      Value<String> provenance,
+      Value<bool> isMock,
       Value<int> rowid,
     });
 
@@ -2684,6 +3810,51 @@ class $$LocalDiagnosesTableFilterComposer
 
   ColumnFilters<bool> get hasConflict => $composableBuilder(
     column: $table.hasConflict,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get serverVersion => $composableBuilder(
+    column: $table.serverVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get tombstone => $composableBuilder(
+    column: $table.tombstone,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get imageChecksum => $composableBuilder(
+    column: $table.imageChecksum,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get imageReference => $composableBuilder(
+    column: $table.imageReference,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get provenance => $composableBuilder(
+    column: $table.provenance,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isMock => $composableBuilder(
+    column: $table.isMock,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2756,6 +3927,51 @@ class $$LocalDiagnosesTableOrderingComposer
     column: $table.hasConflict,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get serverVersion => $composableBuilder(
+    column: $table.serverVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get tombstone => $composableBuilder(
+    column: $table.tombstone,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get imageChecksum => $composableBuilder(
+    column: $table.imageChecksum,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get imageReference => $composableBuilder(
+    column: $table.imageReference,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get provenance => $composableBuilder(
+    column: $table.provenance,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isMock => $composableBuilder(
+    column: $table.isMock,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LocalDiagnosesTableAnnotationComposer
@@ -2816,6 +4032,41 @@ class $$LocalDiagnosesTableAnnotationComposer
     column: $table.hasConflict,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get tenantId =>
+      $composableBuilder(column: $table.tenantId, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+
+  GeneratedColumn<int> get serverVersion => $composableBuilder(
+    column: $table.serverVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get tombstone =>
+      $composableBuilder(column: $table.tombstone, builder: (column) => column);
+
+  GeneratedColumn<String> get imageChecksum => $composableBuilder(
+    column: $table.imageChecksum,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get imageReference => $composableBuilder(
+    column: $table.imageReference,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get provenance => $composableBuilder(
+    column: $table.provenance,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isMock =>
+      $composableBuilder(column: $table.isMock, builder: (column) => column);
 }
 
 class $$LocalDiagnosesTableTableManager
@@ -2863,6 +4114,15 @@ class $$LocalDiagnosesTableTableManager
                 Value<DateTime> diagnosedAt = const Value.absent(),
                 Value<DateTime?> updatedAt = const Value.absent(),
                 Value<bool> hasConflict = const Value.absent(),
+                Value<String?> tenantId = const Value.absent(),
+                Value<String?> userId = const Value.absent(),
+                Value<String?> deviceId = const Value.absent(),
+                Value<int?> serverVersion = const Value.absent(),
+                Value<bool> tombstone = const Value.absent(),
+                Value<String?> imageChecksum = const Value.absent(),
+                Value<String?> imageReference = const Value.absent(),
+                Value<String> provenance = const Value.absent(),
+                Value<bool> isMock = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalDiagnosesCompanion(
                 id: id,
@@ -2877,6 +4137,15 @@ class $$LocalDiagnosesTableTableManager
                 diagnosedAt: diagnosedAt,
                 updatedAt: updatedAt,
                 hasConflict: hasConflict,
+                tenantId: tenantId,
+                userId: userId,
+                deviceId: deviceId,
+                serverVersion: serverVersion,
+                tombstone: tombstone,
+                imageChecksum: imageChecksum,
+                imageReference: imageReference,
+                provenance: provenance,
+                isMock: isMock,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2893,6 +4162,15 @@ class $$LocalDiagnosesTableTableManager
                 required DateTime diagnosedAt,
                 Value<DateTime?> updatedAt = const Value.absent(),
                 Value<bool> hasConflict = const Value.absent(),
+                Value<String?> tenantId = const Value.absent(),
+                Value<String?> userId = const Value.absent(),
+                Value<String?> deviceId = const Value.absent(),
+                Value<int?> serverVersion = const Value.absent(),
+                Value<bool> tombstone = const Value.absent(),
+                Value<String?> imageChecksum = const Value.absent(),
+                Value<String?> imageReference = const Value.absent(),
+                Value<String> provenance = const Value.absent(),
+                Value<bool> isMock = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalDiagnosesCompanion.insert(
                 id: id,
@@ -2907,6 +4185,15 @@ class $$LocalDiagnosesTableTableManager
                 diagnosedAt: diagnosedAt,
                 updatedAt: updatedAt,
                 hasConflict: hasConflict,
+                tenantId: tenantId,
+                userId: userId,
+                deviceId: deviceId,
+                serverVersion: serverVersion,
+                tombstone: tombstone,
+                imageChecksum: imageChecksum,
+                imageReference: imageReference,
+                provenance: provenance,
+                isMock: isMock,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -2939,11 +4226,17 @@ typedef $$SyncQueueTableCreateCompanionBuilder =
       required String clientOpId,
       required String entityType,
       required String entityId,
+      Value<String?> tenantId,
+      Value<String?> userId,
+      Value<String?> deviceId,
       required String operation,
       required String payload,
+      Value<int?> baseVersion,
       Value<DateTime?> baseUpdatedAt,
       Value<String> status,
       Value<String?> detail,
+      Value<int> retryCount,
+      Value<DateTime?> nextAttemptAt,
       required DateTime createdAt,
       Value<DateTime?> syncedAt,
       Value<int> rowid,
@@ -2953,11 +4246,17 @@ typedef $$SyncQueueTableUpdateCompanionBuilder =
       Value<String> clientOpId,
       Value<String> entityType,
       Value<String> entityId,
+      Value<String?> tenantId,
+      Value<String?> userId,
+      Value<String?> deviceId,
       Value<String> operation,
       Value<String> payload,
+      Value<int?> baseVersion,
       Value<DateTime?> baseUpdatedAt,
       Value<String> status,
       Value<String?> detail,
+      Value<int> retryCount,
+      Value<DateTime?> nextAttemptAt,
       Value<DateTime> createdAt,
       Value<DateTime?> syncedAt,
       Value<int> rowid,
@@ -2987,6 +4286,21 @@ class $$SyncQueueTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get operation => $composableBuilder(
     column: $table.operation,
     builder: (column) => ColumnFilters(column),
@@ -2994,6 +4308,11 @@ class $$SyncQueueTableFilterComposer
 
   ColumnFilters<String> get payload => $composableBuilder(
     column: $table.payload,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get baseVersion => $composableBuilder(
+    column: $table.baseVersion,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3009,6 +4328,16 @@ class $$SyncQueueTableFilterComposer
 
   ColumnFilters<String> get detail => $composableBuilder(
     column: $table.detail,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get retryCount => $composableBuilder(
+    column: $table.retryCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get nextAttemptAt => $composableBuilder(
+    column: $table.nextAttemptAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3047,6 +4376,21 @@ class $$SyncQueueTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get operation => $composableBuilder(
     column: $table.operation,
     builder: (column) => ColumnOrderings(column),
@@ -3054,6 +4398,11 @@ class $$SyncQueueTableOrderingComposer
 
   ColumnOrderings<String> get payload => $composableBuilder(
     column: $table.payload,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get baseVersion => $composableBuilder(
+    column: $table.baseVersion,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -3069,6 +4418,16 @@ class $$SyncQueueTableOrderingComposer
 
   ColumnOrderings<String> get detail => $composableBuilder(
     column: $table.detail,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get retryCount => $composableBuilder(
+    column: $table.retryCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get nextAttemptAt => $composableBuilder(
+    column: $table.nextAttemptAt,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -3105,11 +4464,25 @@ class $$SyncQueueTableAnnotationComposer
   GeneratedColumn<String> get entityId =>
       $composableBuilder(column: $table.entityId, builder: (column) => column);
 
+  GeneratedColumn<String> get tenantId =>
+      $composableBuilder(column: $table.tenantId, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+
   GeneratedColumn<String> get operation =>
       $composableBuilder(column: $table.operation, builder: (column) => column);
 
   GeneratedColumn<String> get payload =>
       $composableBuilder(column: $table.payload, builder: (column) => column);
+
+  GeneratedColumn<int> get baseVersion => $composableBuilder(
+    column: $table.baseVersion,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get baseUpdatedAt => $composableBuilder(
     column: $table.baseUpdatedAt,
@@ -3121,6 +4494,16 @@ class $$SyncQueueTableAnnotationComposer
 
   GeneratedColumn<String> get detail =>
       $composableBuilder(column: $table.detail, builder: (column) => column);
+
+  GeneratedColumn<int> get retryCount => $composableBuilder(
+    column: $table.retryCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get nextAttemptAt => $composableBuilder(
+    column: $table.nextAttemptAt,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -3163,11 +4546,17 @@ class $$SyncQueueTableTableManager
                 Value<String> clientOpId = const Value.absent(),
                 Value<String> entityType = const Value.absent(),
                 Value<String> entityId = const Value.absent(),
+                Value<String?> tenantId = const Value.absent(),
+                Value<String?> userId = const Value.absent(),
+                Value<String?> deviceId = const Value.absent(),
                 Value<String> operation = const Value.absent(),
                 Value<String> payload = const Value.absent(),
+                Value<int?> baseVersion = const Value.absent(),
                 Value<DateTime?> baseUpdatedAt = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> detail = const Value.absent(),
+                Value<int> retryCount = const Value.absent(),
+                Value<DateTime?> nextAttemptAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime?> syncedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -3175,11 +4564,17 @@ class $$SyncQueueTableTableManager
                 clientOpId: clientOpId,
                 entityType: entityType,
                 entityId: entityId,
+                tenantId: tenantId,
+                userId: userId,
+                deviceId: deviceId,
                 operation: operation,
                 payload: payload,
+                baseVersion: baseVersion,
                 baseUpdatedAt: baseUpdatedAt,
                 status: status,
                 detail: detail,
+                retryCount: retryCount,
+                nextAttemptAt: nextAttemptAt,
                 createdAt: createdAt,
                 syncedAt: syncedAt,
                 rowid: rowid,
@@ -3189,11 +4584,17 @@ class $$SyncQueueTableTableManager
                 required String clientOpId,
                 required String entityType,
                 required String entityId,
+                Value<String?> tenantId = const Value.absent(),
+                Value<String?> userId = const Value.absent(),
+                Value<String?> deviceId = const Value.absent(),
                 required String operation,
                 required String payload,
+                Value<int?> baseVersion = const Value.absent(),
                 Value<DateTime?> baseUpdatedAt = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> detail = const Value.absent(),
+                Value<int> retryCount = const Value.absent(),
+                Value<DateTime?> nextAttemptAt = const Value.absent(),
                 required DateTime createdAt,
                 Value<DateTime?> syncedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -3201,11 +4602,17 @@ class $$SyncQueueTableTableManager
                 clientOpId: clientOpId,
                 entityType: entityType,
                 entityId: entityId,
+                tenantId: tenantId,
+                userId: userId,
+                deviceId: deviceId,
                 operation: operation,
                 payload: payload,
+                baseVersion: baseVersion,
                 baseUpdatedAt: baseUpdatedAt,
                 status: status,
                 detail: detail,
+                retryCount: retryCount,
+                nextAttemptAt: nextAttemptAt,
                 createdAt: createdAt,
                 syncedAt: syncedAt,
                 rowid: rowid,

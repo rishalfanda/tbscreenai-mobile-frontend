@@ -188,30 +188,48 @@ class _ValidationScreenState extends State<ValidationScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _SummaryItem(
-                            label: "Total",
-                            count: counts["total"]!,
-                            color: AppTheme.subtitleGrey,
-                          ),
-                          _SummaryItem(
-                            label: "Pending",
-                            count: counts["pending"]!,
-                            color: AppTheme.warning,
-                          ),
-                          _SummaryItem(
-                            label: "Agreed",
-                            count: counts["agreed"]!,
-                            color: AppTheme.success,
-                          ),
-                          _SummaryItem(
-                            label: "Disagreed",
-                            count: counts["disagreed"]!,
-                            color: AppTheme.error,
-                          ),
-                        ],
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final itemWidth = (constraints.maxWidth - 12) / 2;
+                          return Wrap(
+                            spacing: 12,
+                            runSpacing: 8,
+                            children: [
+                              SizedBox(
+                                width: itemWidth,
+                                child: _SummaryItem(
+                                  label: "Total",
+                                  count: counts["total"]!,
+                                  color: AppTheme.subtitleGrey,
+                                ),
+                              ),
+                              SizedBox(
+                                width: itemWidth,
+                                child: _SummaryItem(
+                                  label: "Pending",
+                                  count: counts["pending"]!,
+                                  color: AppTheme.warning,
+                                ),
+                              ),
+                              SizedBox(
+                                width: itemWidth,
+                                child: _SummaryItem(
+                                  label: "Agreed",
+                                  count: counts["agreed"]!,
+                                  color: AppTheme.success,
+                                ),
+                              ),
+                              SizedBox(
+                                width: itemWidth,
+                                child: _SummaryItem(
+                                  label: "Disagreed",
+                                  count: counts["disagreed"]!,
+                                  color: AppTheme.error,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -329,29 +347,52 @@ class _ValidationScreenState extends State<ValidationScreen> {
                           ],
                         ),
                         const SizedBox(height: 24),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            _MetaField(
-                              label: "Age",
-                              value: "${selectedCase.age} yrs",
-                            ),
-                            _MetaField(
-                              label: "Gender",
-                              value: selectedCase.gender,
-                            ),
-                            _MetaField(
-                              label: "AI Score",
-                              value: "TBC ${selectedCase.aiScore}%",
-                              valueColor: _getAiScoreColor(
-                                selectedCase.aiScore,
-                              ),
-                            ),
-                            _MetaField(
-                              label: "Screening Date",
-                              value: selectedCase.diagnosisDate,
-                            ),
-                          ],
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            const spacing = 24.0;
+                            final columns = constraints.maxWidth >= 900 ? 4 : 2;
+                            final itemWidth =
+                                (constraints.maxWidth -
+                                    spacing * (columns - 1)) /
+                                columns;
+                            return Wrap(
+                              spacing: spacing,
+                              runSpacing: 12,
+                              children: [
+                                SizedBox(
+                                  width: itemWidth,
+                                  child: _MetaField(
+                                    label: "Age",
+                                    value: "${selectedCase.age} yrs",
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: itemWidth,
+                                  child: _MetaField(
+                                    label: "Gender",
+                                    value: selectedCase.gender,
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: itemWidth,
+                                  child: _MetaField(
+                                    label: "AI Score",
+                                    value: "TBC ${selectedCase.aiScore}%",
+                                    valueColor: _getAiScoreColor(
+                                      selectedCase.aiScore,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: itemWidth,
+                                  child: _MetaField(
+                                    label: "Screening Date",
+                                    value: selectedCase.diagnosisDate,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                         const SizedBox(height: 32),
                         const Text(
@@ -618,6 +659,7 @@ class _SummaryItem extends StatelessWidget {
         ),
         Text(
           label,
+          textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 11, color: AppTheme.subtitleGrey),
         ),
       ],

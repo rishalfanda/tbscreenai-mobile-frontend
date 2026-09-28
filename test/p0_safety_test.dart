@@ -13,6 +13,7 @@ import 'package:myapp/data/http/http_diagnosis_repository.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/offline/offline_patient_repository.dart';
+import 'package:myapp/data/secure/secure_token_storage.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
 import 'package:myapp/domain/models/xray_image.dart';
@@ -94,16 +95,19 @@ void main() {
   late AppDatabase db;
   late ApiClient client;
   late SettingsStore settings;
+  late MemorySecureTokenStorage secureStorage;
   setUp(() {
     db = AppDatabase(NativeDatabase.memory());
     settings = SettingsStore(db);
+    secureStorage = MemorySecureTokenStorage();
     client = ApiClient(
       baseUrl: 'http://fixture.invalid/api/v1',
       settings: settings,
+      secureStorage: secureStorage,
     );
   });
   tearDown(() async {
-    client.dio.close(force: true);
+    await client.close();
     await db.close();
   });
 
@@ -189,6 +193,7 @@ void main() {
     await db.clearAll();
     response.complete(
       _json({
+        'server_time': '2026-09-28T08:00:00Z',
         'patients': [_patient()],
         'diagnoses': [],
       }),
@@ -218,7 +223,8 @@ void main() {
         throwsA(isA<DioException>()),
       );
       expect(await db.countPatients(), 1);
-      expect(await settings.readRestorableAccessToken(), isNull);
+      expect(await db.getSetting(kAccessToken), isNull);
+      expect(await secureStorage.read(kSecureAccessToken), isNull);
     },
   );
 
@@ -239,11 +245,14 @@ void main() {
       client.dio.httpClientAdapter = _Adapter((_) => _json(_login('A')));
       await auth.login(email: 'A@example.test', password: 'synthetic');
       expect(await db.countPatients(), 1);
-      expect(await settings.readRestorableAccessToken(), isNotNull);
+      expect(await db.getSetting(kAccessToken), isNull);
+      expect(await secureStorage.read(kSecureAccessToken), isNotNull);
+      await settings.saveLastSyncAt(DateTime.utc(2026, 9, 28));
       client.dio.httpClientAdapter = _Adapter((_) => _json(_login('B')));
       await auth.login(email: 'B@example.test', password: 'synthetic');
       expect(await db.countPatients(), 0);
       expect(await db.getSetting('session_owner'), 'hospital:B');
+      expect(await settings.readLastSyncAt(), isNull);
     },
   );
 
@@ -262,18 +271,26 @@ void main() {
     response.complete(_json(_login('A')));
     await rejected;
     expect(client.tokens.accessToken, isNull);
-    expect(await settings.readAccessToken(), isNull);
+    expect(await secureStorage.read(kSecureAccessToken), isNull);
   });
 
   test('F02 restore rejects unknown owner and expired token', () async {
-    await db.putSetting(kAccessToken, _jwt('A'));
-    expect(await settings.readRestorableAccessToken(), isNull);
+    final tokens = TokenStore(secureStorage: secureStorage, settings: settings);
+    await tokens.update(access: _jwt('A'), refresh: 'refresh');
+    expect(await tokens.restore(localAuthenticationGranted: false), isFalse);
+    expect(await tokens.restore(localAuthenticationGranted: true), isFalse);
+
     await db.putSetting('session_owner', 'hospital:B');
-    expect(await settings.readRestorableAccessToken(), isNull);
+    await tokens.update(access: _jwt('A'), refresh: 'refresh');
+    expect(await tokens.restore(localAuthenticationGranted: true), isFalse);
+
     await db.putSetting('session_owner', 'hospital:A');
-    expect(await settings.readRestorableAccessToken(), isNotNull);
-    await db.putSetting(kAccessToken, _jwt('A', exp: 1));
-    expect(await settings.readRestorableAccessToken(), isNull);
+    await tokens.update(access: _jwt('A'), refresh: 'refresh');
+    expect(await tokens.restore(localAuthenticationGranted: true), isTrue);
+
+    await tokens.update(access: _jwt('A', exp: 1), refresh: 'refresh');
+    expect(await tokens.restore(localAuthenticationGranted: true), isFalse);
+    expect(await db.getSetting(kAccessToken), isNull);
   });
 
   for (final flag in [true, false, null]) {

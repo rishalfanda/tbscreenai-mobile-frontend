@@ -5,7 +5,7 @@ import 'package:myapp/domain/repositories/patient_repository.dart';
 
 /// Mock patients — same list the screens rendered before, returned
 /// synchronously so there is no loading flash.
-class MockPatientRepository implements PatientRepository {
+class MockPatientRepository extends PatientRepository {
   @override
   Future<List<Patient>> getPatients() =>
       SynchronousFuture(List.unmodifiable(MockSeedData.patients));

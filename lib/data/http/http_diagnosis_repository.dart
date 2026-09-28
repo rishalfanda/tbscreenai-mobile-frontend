@@ -30,7 +30,7 @@ class HttpDiagnosisRepository implements DiagnosisRepository {
 
   @override
   Future<DiagnosisOutcome> runInference({required XrayImage image}) async {
-    final form = FormData.fromMap({
+    FormData buildForm() => FormData.fromMap({
       'image': MultipartFile.fromBytes(
         image.bytes,
         filename: image.filename,
@@ -40,7 +40,8 @@ class HttpDiagnosisRepository implements DiagnosisRepository {
 
     final response = await _client.dio.post<Map<String, dynamic>>(
       '/diagnoses/infer',
-      data: form,
+      data: buildForm(),
+      options: Options(extra: {requestBodyFactoryKey: buildForm}),
     );
 
     return _outcomeFromJson(response.data!);
