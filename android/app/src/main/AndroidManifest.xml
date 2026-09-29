@@ -12,6 +12,7 @@
     <application
         android:label="myapp"
         android:name="${applicationName}"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher">
         <!-- The diagnosis workspace is landscape-first and its camera preview
              already handles sizing/rotation. Prevent Android's large-screen

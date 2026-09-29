@@ -25,8 +25,11 @@ class _StubPushAdapter implements HttpClientAdapter {
   List<Map<String, dynamic>> lastItems = const [];
 
   @override
-  Future<ResponseBody> fetch(RequestOptions options, Stream<List<int>>? stream,
-      Future<void>? cancel) async {
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<List<int>>? stream,
+    Future<void>? cancel,
+  ) async {
     callCount++;
     final body = options.data as Map<String, dynamic>;
     lastItems = (body['items'] as List).cast<Map<String, dynamic>>();
@@ -39,12 +42,14 @@ class _StubPushAdapter implements HttpClientAdapter {
     }
 
     final results = lastItems
-        .map((item) => {
-              'client_op_id': item['client_op_id'],
-              'status': verdict,
-              'entity_id': item['entity_id'],
-              'detail': verdict == 'conflict' ? 'Server version is newer' : null,
-            })
+        .map(
+          (item) => {
+            'client_op_id': item['client_op_id'],
+            'status': verdict,
+            'entity_id': item['entity_id'],
+            'detail': verdict == 'conflict' ? 'Server version is newer' : null,
+          },
+        )
         .toList();
     return ResponseBody.fromString(
       '{"results": ${_encode(results)}}',
@@ -78,14 +83,16 @@ void _boot(String? verdict) {
 }
 
 Future<void> _seedPatient(String id) {
-  return db.upsertPatient(LocalPatientsCompanion.insert(
-    id: id,
-    code: 'TB000001',
-    name: 'Uji Pasien',
-    age: 40,
-    gender: 'Male',
-    updatedAt: Value(DateTime(2026, 7, 1)),
-  ));
+  return db.upsertPatient(
+    LocalPatientsCompanion.insert(
+      id: id,
+      code: 'TB000001',
+      name: 'Uji Pasien',
+      age: 40,
+      gender: 'Male',
+      updatedAt: Value(DateTime(2026, 7, 1)),
+    ),
+  );
 }
 
 void main() {
@@ -94,8 +101,9 @@ void main() {
   test('queued write is pushed carrying its client_op_id', () async {
     _boot('applied');
     await _seedPatient('p1');
-    await engine.enqueuePatientUpdate('p1', {'name': 'Nama Baru'},
-        baseUpdatedAt: DateTime(2026, 7, 1));
+    await engine.enqueuePatientUpdate('p1', {
+      'name': 'Nama Baru',
+    }, baseUpdatedAt: DateTime(2026, 7, 1));
 
     expect(await engine.pendingCount(), 1);
 
@@ -108,58 +116,61 @@ void main() {
     expect(adapter.lastItems.single['entity_id'], 'p1');
   });
 
-  test('retry answered "skipped" is treated as success, not a duplicate',
-      () async {
-    _boot('skipped');
-    await _seedPatient('p1');
-    await engine.enqueuePatientUpdate('p1', {'name': 'Nama Baru'});
+  test(
+    'retry answered "skipped" is treated as success, not a duplicate',
+    () async {
+      _boot('skipped');
+      await _seedPatient('p1');
+      await engine.enqueuePatientUpdate('p1', {'name': 'Nama Baru'});
 
-    final report = await engine.push();
+      final report = await engine.push();
 
-    expect(report.skipped, 1);
-    expect(report.applied, 0);
-    expect(await engine.pendingCount(), 0);
-  });
+      expect(report.skipped, 1);
+      expect(report.applied, 0);
+      expect(await engine.pendingCount(), 0);
+    },
+  );
 
-  test('conflict flags the row for manual review and never overwrites it',
-      () async {
-    _boot('conflict');
-    await _seedPatient('p1');
-    await engine.enqueuePatientUpdate('p1', {'name': 'Nama Baru'},
-        baseUpdatedAt: DateTime(2026, 6, 1));
+  test(
+    'conflict flags the row for manual review and never overwrites it',
+    () async {
+      _boot('conflict');
+      await _seedPatient('p1');
+      await engine.enqueuePatientUpdate('p1', {
+        'name': 'Nama Baru',
+      }, baseUpdatedAt: DateTime(2026, 6, 1));
 
-    final report = await engine.push();
+      final report = await engine.push();
 
-    expect(report.conflicts, 1);
-    expect(report.hasProblems, isTrue);
+      expect(report.conflicts, 1);
+      expect(report.hasProblems, isTrue);
 
-    final row = await db.findPatient('p1');
-    expect(row!.hasConflict, isTrue);
-    // Local data untouched — the doctor decides, not the sync engine.
-    expect(row.name, 'Uji Pasien');
+      final row = await db.findPatient('p1');
+      expect(row!.hasConflict, isTrue);
+      // Local data untouched — the doctor decides, not the sync engine.
+      expect(row.name, 'Uji Pasien');
 
-    final conflicts = await db.opsWithStatus(syncConflict);
-    expect(conflicts.single.detail, 'Server version is newer');
-  });
+      final conflicts = await db.opsWithStatus(syncConflict);
+      expect(conflicts.single.detail, 'Server version is newer');
+    },
+  );
 
-  test('network failure keeps nothing lost — op is retried on next push',
-      () async {
-    _boot(null);
-    await _seedPatient('p1');
-    await engine.enqueuePatientUpdate('p1', {'name': 'Nama Baru'});
+  test(
+    'network failure keeps nothing lost — op is retried on next push',
+    () async {
+      _boot(null);
+      await _seedPatient('p1');
+      await engine.enqueuePatientUpdate('p1', {'name': 'Nama Baru'});
 
-    final first = await engine.push();
-    expect(first.failed, 1);
+      final first = await engine.push();
+      expect(first.failed, 1);
 
-    // Server reachable again: the same op is retried and now succeeds.
-    client.dio.httpClientAdapter = _StubPushAdapter('applied');
-    await db.markOp(
-      (await db.opsWithStatus(syncFailed)).single.clientOpId,
-      syncPending,
-    );
-    final second = await engine.push();
-    expect(second.applied, 1);
-  });
+      // Server reachable again: the same op is retried and now succeeds.
+      client.dio.httpClientAdapter = _StubPushAdapter('applied');
+      final second = await engine.push();
+      expect(second.applied, 1);
+    },
+  );
 
   test('cache refresh preserves rows still waiting in the queue', () async {
     _boot('applied');

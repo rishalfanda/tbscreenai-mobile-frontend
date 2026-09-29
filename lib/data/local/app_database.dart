@@ -2,26 +2,54 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+import 'package:myapp/core/utils/uuid.dart';
 import 'package:myapp/data/local/tables.dart';
 
 part 'app_database.g.dart';
 
-// === Section: Sync queue status values ===
+// === Section: Sync queue state machine ===
 const String syncPending = 'pending';
+const String syncSending = 'sending';
+const String syncRetryable = 'retryable';
 const String syncSynced = 'synced';
 const String syncConflict = 'conflict';
-const String syncFailed = 'failed';
+const String syncPermanentFailure = 'permanent_failure';
 
-// === Section: Settings keys ===
+/// Compatibility name for old tests/callers. A network failure is retryable.
+const String syncFailed = syncRetryable;
+
+// === Section: Non-secret settings keys ===
+// Kept only so regression probes can prove these keys remain absent.
 const String kAccessToken = 'access_token';
 const String kRefreshToken = 'refresh_token';
 const String kInstalledModelVersion = 'installed_model_version';
 const String kLastSyncAt = 'last_sync_at';
+const String kDeviceId = 'device_id';
+const String kSessionOwner = 'session_owner';
+const String kUserId = 'user_id';
+const String kTenantId = 'tenant_id';
+const String kUserRole = 'user_role';
 const String kUserDisplayName = 'user_display_name';
 const String kUserEmail = 'user_email';
 
-/// On-device database. Offline-first: screens read from here, and every write
-/// goes through [SyncQueue] so it survives being offline.
+class DataOwner {
+  const DataOwner({
+    required this.tenantId,
+    required this.userId,
+    required this.deviceId,
+  });
+
+  final String tenantId;
+  final String userId;
+  final String deviceId;
+
+  String get key => '$tenantId:$userId';
+}
+
+/// Offline-first device database.
+///
+/// v2 adds explicit owner/version/retry metadata. Session secrets live in
+/// platform secure storage and are never written here.
 @DriftDatabase(tables: [LocalPatients, LocalDiagnoses, SyncQueue, AppSettings])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
@@ -39,35 +67,159 @@ class AppDatabase extends _$AppDatabase {
       );
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   int _sessionGeneration = 0;
+  DataOwner? _activeOwner;
+
   int get sessionGeneration => _sessionGeneration;
+  DataOwner? get activeOwner => _activeOwner;
+
   void invalidateSession() => _sessionGeneration++;
 
-  /// Authenticate first, then replace a different account's cache atomically.
-  /// A failed login must not destroy the current owner's offline work.
-  Future<void> activateOwner(
-    int generation,
-    String owner,
-    Future<void> Function() persist,
-  ) {
-    return writeForSession(generation, () async {
-      if (await getSetting('session_owner') != owner) {
-        await batch((b) {
-          b.deleteWhere(localPatients, (_) => const Constant(true));
-          b.deleteWhere(localDiagnoses, (_) => const Constant(true));
-          b.deleteWhere(syncQueue, (_) => const Constant(true));
-          b.deleteWhere(appSettings, (_) => const Constant(true));
-        });
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) => m.createAll(),
+    onUpgrade: (m, from, to) async {
+      if (from < 2) await _migrateV1ToV2(m);
+    },
+    beforeOpen: (details) async {
+      // A process crash can leave an op in sending. The same client_op_id is
+      // safe to replay because the backend enforces idempotency.
+      if (details.versionNow >= 2) {
+        await customUpdate(
+          'UPDATE sync_queue '
+          'SET status = ?, detail = COALESCE(detail, ?) '
+          'WHERE status = ?',
+          variables: [
+            Variable.withString(syncRetryable),
+            Variable.withString('Recovered after interrupted sync'),
+            Variable.withString(syncSending),
+          ],
+          updates: {syncQueue},
+        );
+        await _deleteLegacyTokenRows();
       }
-      await persist();
-      await putSetting('session_owner', owner);
+    },
+  );
+
+  Future<void> _migrateV1ToV2(Migrator m) async {
+    await m.addColumn(localPatients, localPatients.tenantId);
+    await m.addColumn(localPatients, localPatients.userId);
+    await m.addColumn(localPatients, localPatients.deviceId);
+    await m.addColumn(localPatients, localPatients.serverVersion);
+    await m.addColumn(localPatients, localPatients.tombstone);
+
+    await m.addColumn(localDiagnoses, localDiagnoses.tenantId);
+    await m.addColumn(localDiagnoses, localDiagnoses.userId);
+    await m.addColumn(localDiagnoses, localDiagnoses.deviceId);
+    await m.addColumn(localDiagnoses, localDiagnoses.serverVersion);
+    await m.addColumn(localDiagnoses, localDiagnoses.tombstone);
+    await m.addColumn(localDiagnoses, localDiagnoses.imageChecksum);
+    await m.addColumn(localDiagnoses, localDiagnoses.imageReference);
+    await m.addColumn(localDiagnoses, localDiagnoses.provenance);
+    await m.addColumn(localDiagnoses, localDiagnoses.isMock);
+
+    await m.addColumn(syncQueue, syncQueue.tenantId);
+    await m.addColumn(syncQueue, syncQueue.userId);
+    await m.addColumn(syncQueue, syncQueue.deviceId);
+    await m.addColumn(syncQueue, syncQueue.baseVersion);
+    await m.addColumn(syncQueue, syncQueue.retryCount);
+    await m.addColumn(syncQueue, syncQueue.nextAttemptAt);
+
+    final owner = await _rawSetting(kSessionOwner);
+    final separator = owner?.indexOf(':') ?? -1;
+    final tenantId = separator > 0 ? owner!.substring(0, separator) : null;
+    final userId = separator > 0 && separator < owner!.length - 1
+        ? owner.substring(separator + 1)
+        : null;
+    final deviceId = await _rawSetting(kDeviceId) ?? uuidV4();
+    await into(appSettings).insertOnConflictUpdate(
+      AppSettingsCompanion.insert(key: kDeviceId, value: deviceId),
+    );
+
+    if (tenantId != null && userId != null) {
+      final variables = [
+        Variable.withString(tenantId),
+        Variable.withString(userId),
+        Variable.withString(deviceId),
+      ];
+      for (final table in ['local_patients', 'local_diagnoses', 'sync_queue']) {
+        await customUpdate(
+          'UPDATE $table SET tenant_id = ?, user_id = ?, device_id = ? '
+          'WHERE tenant_id IS NULL OR user_id IS NULL OR device_id IS NULL',
+          variables: variables,
+        );
+      }
+    } else {
+      await customUpdate(
+        'UPDATE sync_queue SET status = ?, detail = ? '
+        'WHERE status != ?',
+        variables: [
+          Variable.withString(syncPermanentFailure),
+          Variable.withString(
+            'Quarantined during v2 migration: owner attribution required',
+          ),
+          Variable.withString(syncSynced),
+        ],
+        updates: {syncQueue},
+      );
+    }
+
+    await customUpdate(
+      'UPDATE sync_queue SET status = ?, retry_count = 1 '
+      'WHERE status = ?',
+      variables: [
+        Variable.withString(syncRetryable),
+        Variable.withString('failed'),
+      ],
+      updates: {syncQueue},
+    );
+    await _deleteLegacyTokenRows();
+  }
+
+  Future<String?> _rawSetting(String key) async {
+    final row = await customSelect(
+      'SELECT value FROM app_settings WHERE key = ? LIMIT 1',
+      variables: [Variable.withString(key)],
+      readsFrom: {appSettings},
+    ).getSingleOrNull();
+    return row?.read<String>('value');
+  }
+
+  Future<void> _deleteLegacyTokenRows() => customUpdate(
+    'DELETE FROM app_settings WHERE key IN (?, ?)',
+    variables: [
+      Variable.withString(kAccessToken),
+      Variable.withString(kRefreshToken),
+    ],
+    updates: {appSettings},
+  );
+
+  /// Authenticates first, then switches the local owner atomically. A failed
+  /// login never destroys the previous owner's offline work.
+  Future<void> activateOwner(int generation, DataOwner owner) {
+    return writeForSession(generation, () async {
+      final previous = await getSetting(kSessionOwner);
+      if (previous != null && previous != owner.key) {
+        await _deleteClinicalData();
+        await _deleteIdentitySettings();
+      } else if (previous == owner.key) {
+        await _claimUnattributedRows(owner);
+      }
+      if (previous != owner.key) {
+        // A delta cursor belongs to exactly one account. A new owner must
+        // start with a full pull or it can silently miss older records.
+        await deleteSetting(kLastSyncAt);
+      }
+      _activeOwner = owner;
+      await putSetting(kSessionOwner, owner.key);
+      await putSetting(kDeviceId, owner.deviceId);
     });
   }
 
-  /// Serialize writes with logout. A response from an earlier session cannot
-  /// refill the single-owner cache after it has been cleared.
+  /// Serializes writes with logout. A response from an earlier session cannot
+  /// refill the cache after it has been cleared.
   Future<void> writeForSession(int generation, Future<void> Function() write) {
     return transaction(() async {
       if (generation != _sessionGeneration) return;
@@ -85,6 +237,9 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> putSetting(String key, String value) {
+    if (key == kAccessToken || key == kRefreshToken) {
+      throw ArgumentError('Session secrets are forbidden in SQLite');
+    }
     return into(appSettings).insertOnConflictUpdate(
       AppSettingsCompanion.insert(key: key, value: value),
     );
@@ -96,135 +251,443 @@ class AppDatabase extends _$AppDatabase {
 
   // === Section: Patients cache ===
 
-  Future<List<LocalPatient>> allPatients() {
-    return (select(
-      localPatients,
-    )..orderBy([(t) => OrderingTerm.desc(t.lastVisit)])).get();
+  Future<List<LocalPatient>> allPatients() => _patientQuery().get();
+
+  Stream<List<LocalPatient>> watchPatients() => _patientQuery().watch();
+
+  SimpleSelectStatement<$LocalPatientsTable, LocalPatient> _patientQuery() {
+    final query = select(localPatients)
+      ..where((t) => t.tombstone.equals(false))
+      ..orderBy([(t) => OrderingTerm.desc(t.lastVisit)]);
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query;
   }
 
   Future<LocalPatient?> findPatient(String id) {
-    return (select(
-      localPatients,
-    )..where((t) => t.id.equals(id))).getSingleOrNull();
+    final query = select(localPatients)..where((t) => t.id.equals(id));
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query.getSingleOrNull();
   }
 
   Future<void> upsertPatient(LocalPatientsCompanion row) {
-    return into(localPatients).insertOnConflictUpdate(row);
+    return into(localPatients).insertOnConflictUpdate(_ownPatient(row));
   }
 
-  /// Replaces the cache with a fresh server snapshot, but keeps rows that are
-  /// still waiting in the queue — dropping them would lose offline work.
+  /// Replaces a full server snapshot while preserving every dirty/conflicted
+  /// row. Incoming data is also prevented from overwriting those local edits.
   Future<void> replacePatientCache(List<LocalPatientsCompanion> rows) async {
-    final queuedIds = await pendingEntityIds('patient');
+    final protectedIds = (await protectedEntityIds('patient')).toSet();
+    final safeRows = rows
+        .where(
+          (row) =>
+              !protectedIds.contains(row.id.value) &&
+              !(row.tombstone.present && row.tombstone.value),
+        )
+        .map(_ownPatient)
+        .toList();
+    final keepIds = {...protectedIds, ...safeRows.map((row) => row.id.value)};
+    final owner = _activeOwner;
+
     await batch((b) {
-      b.deleteWhere(localPatients, (t) => t.id.isNotIn(queuedIds));
-      b.insertAllOnConflictUpdate(localPatients, rows);
+      b.deleteWhere(localPatients, (t) {
+        Expression<bool> predicate = t.id.isNotIn(keepIds);
+        if (owner != null) {
+          predicate =
+              predicate &
+              t.tenantId.equals(owner.tenantId) &
+              t.userId.equals(owner.userId) &
+              t.deviceId.equals(owner.deviceId);
+        }
+        return predicate;
+      });
+      b.insertAllOnConflictUpdate(localPatients, safeRows);
     });
   }
 
-  Future<void> markPatientConflict(String id, bool value) {
-    return (update(localPatients)..where((t) => t.id.equals(id))).write(
-      LocalPatientsCompanion(hasConflict: Value(value)),
-    );
+  Future<void> mergePatientChanges(List<LocalPatientsCompanion> rows) async {
+    final protectedIds = (await protectedEntityIds('patient')).toSet();
+    for (final raw in rows) {
+      final id = raw.id.value;
+      final deleted = raw.tombstone.present && raw.tombstone.value;
+      if (protectedIds.contains(id)) {
+        if (deleted) await markPatientConflict(id, true);
+        continue;
+      }
+      if (deleted) {
+        final statement = delete(localPatients)..where((t) => t.id.equals(id));
+        final owner = _activeOwner;
+        if (owner != null) {
+          statement.where(
+            (t) =>
+                t.tenantId.equals(owner.tenantId) &
+                t.userId.equals(owner.userId) &
+                t.deviceId.equals(owner.deviceId),
+          );
+        }
+        await statement.go();
+      } else {
+        await upsertPatient(raw);
+      }
+    }
   }
 
-  Future<int> countPatients() async {
-    final count = countAll();
-    final row = await (selectOnly(
-      localPatients,
-    )..addColumns([count])).getSingle();
-    return row.read(count) ?? 0;
+  Future<void> markPatientConflict(String id, bool value) {
+    final statement = update(localPatients)..where((t) => t.id.equals(id));
+    final owner = _activeOwner;
+    if (owner != null) {
+      statement.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return statement.write(LocalPatientsCompanion(hasConflict: Value(value)));
   }
+
+  Future<int> countPatients() async => (await allPatients()).length;
 
   // === Section: Diagnoses cache ===
 
   Future<List<LocalDiagnose>> allDiagnoses() {
-    return (select(
-      localDiagnoses,
-    )..orderBy([(t) => OrderingTerm.desc(t.diagnosedAt)])).get();
+    final query = select(localDiagnoses)
+      ..where((t) => t.tombstone.equals(false))
+      ..orderBy([(t) => OrderingTerm.desc(t.diagnosedAt)]);
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query.get();
   }
 
   Future<void> upsertDiagnosis(LocalDiagnosesCompanion row) {
-    return into(localDiagnoses).insertOnConflictUpdate(row);
+    return into(localDiagnoses).insertOnConflictUpdate(_ownDiagnosis(row));
+  }
+
+  Future<LocalDiagnose?> findDiagnosis(String id) {
+    final query = select(localDiagnoses)..where((t) => t.id.equals(id));
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query.getSingleOrNull();
   }
 
   Future<void> replaceDiagnosisCache(List<LocalDiagnosesCompanion> rows) async {
-    final queuedIds = await pendingEntityIds('diagnosis');
+    final protectedIds = (await protectedEntityIds('diagnosis')).toSet();
+    final safeRows = rows
+        .where(
+          (row) =>
+              !protectedIds.contains(row.id.value) &&
+              !(row.tombstone.present && row.tombstone.value),
+        )
+        .map(_ownDiagnosis)
+        .toList();
+    final keepIds = {...protectedIds, ...safeRows.map((row) => row.id.value)};
+    final owner = _activeOwner;
     await batch((b) {
-      b.deleteWhere(localDiagnoses, (t) => t.id.isNotIn(queuedIds));
-      b.insertAllOnConflictUpdate(localDiagnoses, rows);
+      b.deleteWhere(localDiagnoses, (t) {
+        Expression<bool> predicate = t.id.isNotIn(keepIds);
+        if (owner != null) {
+          predicate =
+              predicate &
+              t.tenantId.equals(owner.tenantId) &
+              t.userId.equals(owner.userId) &
+              t.deviceId.equals(owner.deviceId);
+        }
+        return predicate;
+      });
+      b.insertAllOnConflictUpdate(localDiagnoses, safeRows);
     });
   }
 
-  Future<int> countDiagnoses() async {
-    final count = countAll();
-    final row = await (selectOnly(
-      localDiagnoses,
-    )..addColumns([count])).getSingle();
-    return row.read(count) ?? 0;
+  Future<void> mergeDiagnosisChanges(List<LocalDiagnosesCompanion> rows) async {
+    final protectedIds = (await protectedEntityIds('diagnosis')).toSet();
+    for (final raw in rows) {
+      final id = raw.id.value;
+      final deleted = raw.tombstone.present && raw.tombstone.value;
+      if (protectedIds.contains(id)) {
+        if (deleted) await markDiagnosisConflict(id, true);
+        continue;
+      }
+      if (deleted) {
+        final statement = delete(localDiagnoses)..where((t) => t.id.equals(id));
+        final owner = _activeOwner;
+        if (owner != null) {
+          statement.where(
+            (t) =>
+                t.tenantId.equals(owner.tenantId) &
+                t.userId.equals(owner.userId) &
+                t.deviceId.equals(owner.deviceId),
+          );
+        }
+        await statement.go();
+      } else {
+        await upsertDiagnosis(raw);
+      }
+    }
   }
+
+  Future<void> markDiagnosisConflict(String id, bool value) {
+    final statement = update(localDiagnoses)..where((t) => t.id.equals(id));
+    final owner = _activeOwner;
+    if (owner != null) {
+      statement.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return statement.write(LocalDiagnosesCompanion(hasConflict: Value(value)));
+  }
+
+  Future<int> countDiagnoses() async => (await allDiagnoses()).length;
 
   // === Section: Sync queue ===
 
   Future<void> enqueue(SyncQueueCompanion op) {
-    return into(syncQueue).insertOnConflictUpdate(op);
+    return into(syncQueue).insertOnConflictUpdate(_ownOperation(op));
   }
 
-  Future<List<SyncQueueData>> pendingOps() {
-    return (select(syncQueue)
-          ..where((t) => t.status.equals(syncPending))
-          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
-        .get();
+  Future<List<SyncQueueData>> pendingOps() => opsReadyForPush(manual: true);
+
+  Future<List<SyncQueueData>> opsReadyForPush({
+    required bool manual,
+    DateTime? now,
+  }) {
+    final instant = now ?? DateTime.now().toUtc();
+    final query = select(syncQueue)
+      ..where(
+        (t) =>
+            t.status.equals(syncPending) |
+            t.status.equals(syncRetryable) |
+            t.status.equals(syncSending),
+      )
+      ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]);
+    if (!manual) {
+      query.where(
+        (t) =>
+            t.nextAttemptAt.isNull() |
+            t.nextAttemptAt.isSmallerOrEqualValue(instant),
+      );
+    }
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query.get();
   }
 
   Future<List<SyncQueueData>> opsWithStatus(String status) {
-    return (select(syncQueue)..where((t) => t.status.equals(status))).get();
+    final query = select(syncQueue)..where((t) => t.status.equals(status));
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query.get();
   }
 
-  Future<List<String>> pendingEntityIds(String entityType) async {
-    final rows =
-        await (select(syncQueue)..where(
-              (t) =>
-                  t.status.equals(syncPending) &
-                  t.entityType.equals(entityType),
-            ))
-            .get();
-    return rows.map((r) => r.entityId).toList();
+  Future<List<String>> protectedEntityIds(String entityType) async {
+    final query = select(syncQueue)
+      ..where(
+        (t) =>
+            t.status.equals(syncSynced).not() & t.entityType.equals(entityType),
+      );
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    final rows = await query.get();
+    return rows.map((row) => row.entityId).toList();
   }
+
+  Future<List<String>> pendingEntityIds(String entityType) =>
+      protectedEntityIds(entityType);
 
   Future<void> markOp(String clientOpId, String status, {String? detail}) {
-    return (update(
-      syncQueue,
-    )..where((t) => t.clientOpId.equals(clientOpId))).write(
+    final statement = update(syncQueue)
+      ..where((t) => t.clientOpId.equals(clientOpId));
+    _scopeOperation(statement);
+    return statement.write(
       SyncQueueCompanion(
         status: Value(status),
         detail: Value(detail),
-        syncedAt: Value(status == syncSynced ? DateTime.now() : null),
+        nextAttemptAt: const Value(null),
+        syncedAt: Value(status == syncSynced ? DateTime.now().toUtc() : null),
+      ),
+    );
+  }
+
+  Future<void> markOpSending(String clientOpId) {
+    final statement = update(syncQueue)
+      ..where((t) => t.clientOpId.equals(clientOpId));
+    _scopeOperation(statement);
+    return statement.write(
+      const SyncQueueCompanion(status: Value(syncSending), detail: Value(null)),
+    );
+  }
+
+  Future<void> markOpRetryable(
+    SyncQueueData op, {
+    required DateTime nextAttemptAt,
+    required String detail,
+  }) {
+    final statement = update(syncQueue)
+      ..where((t) => t.clientOpId.equals(op.clientOpId));
+    _scopeOperation(statement);
+    return statement.write(
+      SyncQueueCompanion(
+        status: const Value(syncRetryable),
+        detail: Value(detail),
+        retryCount: Value(op.retryCount + 1),
+        nextAttemptAt: Value(nextAttemptAt.toUtc()),
+        syncedAt: const Value(null),
       ),
     );
   }
 
   Future<int> countPending() async {
-    final count = countAll();
-    final row =
-        await (selectOnly(syncQueue)
-              ..addColumns([count])
-              ..where(syncQueue.status.equals(syncPending)))
-            .getSingle();
-    return row.read(count) ?? 0;
+    final rows = await opsReadyForPush(manual: true);
+    return rows.length;
   }
 
-  /// Wipes cached medical data on logout. Queue and settings are cleared too —
-  /// nothing belonging to the previous user may stay on the device.
+  void _scopeOperation(UpdateStatement<$SyncQueueTable, SyncQueueData> query) {
+    final owner = _activeOwner;
+    if (owner == null) return;
+    query.where(
+      (t) =>
+          t.tenantId.equals(owner.tenantId) &
+          t.userId.equals(owner.userId) &
+          t.deviceId.equals(owner.deviceId),
+    );
+  }
+
+  // === Section: Session cleanup ===
+
+  /// Clears PHI and queue state while retaining device-only settings.
+  Future<void> clearSessionData() async {
+    _sessionGeneration++;
+    _activeOwner = null;
+    await transaction(() async {
+      await _deleteClinicalData();
+      await _deleteIdentitySettings();
+      await deleteSetting(kLastSyncAt);
+    });
+  }
+
+  /// Full wipe used by tests and explicit reset flows.
   Future<void> clearAll() async {
     _sessionGeneration++;
-    await transaction(
-      () => batch((b) {
-        b.deleteWhere(localPatients, (_) => const Constant(true));
-        b.deleteWhere(localDiagnoses, (_) => const Constant(true));
-        b.deleteWhere(syncQueue, (_) => const Constant(true));
-        b.deleteWhere(appSettings, (_) => const Constant(true));
-      }),
+    _activeOwner = null;
+    await transaction(() async {
+      await _deleteClinicalData();
+      await delete(appSettings).go();
+    });
+  }
+
+  Future<void> _deleteClinicalData() => batch((b) {
+    b.deleteWhere(localPatients, (_) => const Constant(true));
+    b.deleteWhere(localDiagnoses, (_) => const Constant(true));
+    b.deleteWhere(syncQueue, (_) => const Constant(true));
+  });
+
+  Future<void> _deleteIdentitySettings() async {
+    for (final key in [
+      kSessionOwner,
+      kUserId,
+      kTenantId,
+      kUserRole,
+      kUserDisplayName,
+      kUserEmail,
+    ]) {
+      await deleteSetting(key);
+    }
+  }
+
+  Future<void> _claimUnattributedRows(DataOwner owner) async {
+    final variables = [
+      Variable.withString(owner.tenantId),
+      Variable.withString(owner.userId),
+      Variable.withString(owner.deviceId),
+    ];
+    for (final table in ['local_patients', 'local_diagnoses', 'sync_queue']) {
+      await customUpdate(
+        'UPDATE $table SET tenant_id = ?, user_id = ?, device_id = ? '
+        'WHERE tenant_id IS NULL AND user_id IS NULL',
+        variables: variables,
+      );
+    }
+  }
+
+  LocalPatientsCompanion _ownPatient(LocalPatientsCompanion row) {
+    final owner = _activeOwner;
+    if (owner == null) return row;
+    return row.copyWith(
+      tenantId: Value(owner.tenantId),
+      userId: Value(owner.userId),
+      deviceId: Value(owner.deviceId),
+    );
+  }
+
+  LocalDiagnosesCompanion _ownDiagnosis(LocalDiagnosesCompanion row) {
+    final owner = _activeOwner;
+    if (owner == null) return row;
+    return row.copyWith(
+      tenantId: Value(owner.tenantId),
+      userId: Value(owner.userId),
+      deviceId: Value(owner.deviceId),
+    );
+  }
+
+  SyncQueueCompanion _ownOperation(SyncQueueCompanion row) {
+    final owner = _activeOwner;
+    if (owner == null) return row;
+    return row.copyWith(
+      tenantId: Value(owner.tenantId),
+      userId: Value(owner.userId),
+      deviceId: Value(owner.deviceId),
     );
   }
 }

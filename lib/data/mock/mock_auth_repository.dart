@@ -9,7 +9,14 @@ class MockAuthRepository implements AuthRepository {
   @override
   Future<UserProfile> login({required String email, required String password}) {
     final displayName = email.split('@').first.replaceAll('.', ' ');
-    return SynchronousFuture(UserProfile(displayName: displayName, email: email));
+    return SynchronousFuture(
+      UserProfile(
+        userId: 'demo-$email',
+        tenantId: 'demo-tenant',
+        displayName: displayName,
+        email: email,
+      ),
+    );
   }
 
   @override

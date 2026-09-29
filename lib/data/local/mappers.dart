@@ -18,6 +18,9 @@ LocalPatientsCompanion patientRowFromJson(Map<String, dynamic> json) {
     lastVisit: Value(json['last_visit'] as String?),
     history: Value(jsonEncode(json['history'] as List? ?? const [])),
     updatedAt: Value(DateTime.tryParse(json['updated_at'] as String? ?? '')),
+    tenantId: Value(json['tenant_id'] as String?),
+    serverVersion: Value((json['version'] as num?)?.toInt()),
+    tombstone: Value(json['deleted_at'] != null),
   );
 }
 
@@ -66,7 +69,19 @@ LocalDiagnosesCompanion diagnosisRowFromJson(Map<String, dynamic> json) {
     status: Value(json['status'] as String? ?? 'pending'),
     doctorNote: Value(json['doctor_note'] as String?),
     diagnosedAt:
-        DateTime.tryParse(json['diagnosed_at'] as String? ?? '') ?? DateTime.now(),
+        DateTime.tryParse(json['diagnosed_at'] as String? ?? '') ??
+        DateTime.now(),
     updatedAt: Value(DateTime.tryParse(json['updated_at'] as String? ?? '')),
+    tenantId: Value(json['tenant_id'] as String?),
+    serverVersion: Value((json['version'] as num?)?.toInt()),
+    tombstone: Value(json['deleted_at'] != null),
+    imageReference: Value(json['image_path'] as String?),
+    provenance: Value(
+      jsonEncode({
+        'model_version': json['model_version'],
+        'created_by': json['created_by'],
+      }),
+    ),
+    isMock: Value(json['is_mock'] != false),
   );
 }
