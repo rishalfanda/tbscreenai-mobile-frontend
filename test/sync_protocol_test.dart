@@ -49,7 +49,9 @@ void main() {
   late AppDatabase db;
   late ApiClient client;
   late SyncEngine engine;
-  final now = DateTime.utc(2026, 9, 28, 8);
+  // Deliberately far behind the host clock: background scheduling must use
+  // the injected engine clock, never wall time from the CI runner.
+  final now = DateTime.utc(2000, 1, 1);
 
   setUp(() {
     db = AppDatabase(NativeDatabase.memory());

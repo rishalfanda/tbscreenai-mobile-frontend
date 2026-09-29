@@ -142,7 +142,10 @@ class SyncEngine {
 
   Future<SyncReport> _push({required bool manual}) async {
     final session = _db.sessionGeneration;
-    final pending = await _db.opsReadyForPush(manual: manual);
+    final pending = await _db.opsReadyForPush(
+      manual: manual,
+      now: _now().toUtc(),
+    );
     if (session != _db.sessionGeneration || pending.isEmpty) {
       return const SyncReport.empty();
     }
