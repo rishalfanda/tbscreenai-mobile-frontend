@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
+import 'package:myapp/domain/models/clinical_conflict.dart';
 import 'package:myapp/domain/models/validation_case.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
 import 'package:myapp/features/shared/presentation/widgets/widgets.dart';
@@ -18,6 +21,9 @@ class _ValidationScreenState extends State<ValidationScreen> {
   String _activeTab = "pending";
   String _searchQuery = "";
   bool _isSubmitting = false;
+  bool _isLoading = true;
+  String? _loadError;
+  Map<String, ClinicalConflict> _conflicts = const {};
   final TextEditingController _noteController = TextEditingController();
   bool _isHeatmapView = false;
 
@@ -26,13 +32,34 @@ class _ValidationScreenState extends State<ValidationScreen> {
     super.initState();
     // Mock repository resolves synchronously — cases & auto-selection are
     // ready before the first frame, matching the pre-refactor behavior.
-    context.read<ValidationRepository>().getCases().then((cases) {
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final repository = context.read<ValidationRepository>();
+    try {
+      final cases = await repository.getCases();
+      final conflicts = await repository.getConflicts();
       if (!mounted) return;
       setState(() {
         _cases = List.of(cases);
-        _autoSelectFirstPending();
+        _conflicts = {
+          for (final conflict in conflicts) conflict.diagnosisId: conflict,
+        };
+        _isLoading = false;
+        _loadError = null;
+        if (_selectedId == null ||
+            !_cases.any((candidate) => candidate.id == _selectedId)) {
+          _autoSelectFirstPending();
+        }
       });
-    });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _loadError = 'Validation data could not be loaded: $error';
+      });
+    }
   }
 
   @override
@@ -57,7 +84,9 @@ class _ValidationScreenState extends State<ValidationScreen> {
 
   List<ValidationCase> get _filteredCases {
     return _cases.where((c) {
-      final matchesTab = _activeTab == "all" || c.status == _activeTab;
+      final matchesTab =
+          _activeTab == "all" ||
+          (_activeTab == 'conflicts' ? c.hasConflict : c.status == _activeTab);
       final matchesSearch =
           c.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           c.id.toLowerCase().contains(_searchQuery.toLowerCase());
@@ -71,6 +100,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
       "pending": _cases.where((c) => c.status == "pending").length,
       "agreed": _cases.where((c) => c.status == "agreed").length,
       "disagreed": _cases.where((c) => c.status == "disagreed").length,
+      "conflicts": _cases.where((c) => c.hasConflict).length,
     };
   }
 
@@ -83,9 +113,11 @@ class _ValidationScreenState extends State<ValidationScreen> {
   }
 
   Future<void> _handleValidation(String newStatus) async {
-    if (_selectedId == null) return;
+    if (_selectedId == null || _isSubmitting) return;
 
-    if (newStatus == "disagreed" && _noteController.text.trim().isEmpty) {
+    final selectedId = _selectedId!;
+    final note = _noteController.text.trim();
+    if (newStatus == "disagreed" && note.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Please add a clinical note before disagreeing."),
@@ -98,55 +130,155 @@ class _ValidationScreenState extends State<ValidationScreen> {
     final repository = context.read<ValidationRepository>();
     setState(() => _isSubmitting = true);
 
-    // Repository simulates the 500ms server latency.
-    await repository.submitValidation(
-      id: _selectedId!,
-      status: newStatus,
-      note: _noteController.text.trim(),
-    );
-    if (!mounted) return;
-
-    setState(() {
-      final index = _cases.indexWhere((c) => c.id == _selectedId);
-      if (index != -1) {
-        _cases[index] = _cases[index].copyWith(
-          status: newStatus,
-          doctorNote: _noteController.text.trim(),
-        );
+    try {
+      final submission = await repository.submitValidation(
+        id: selectedId,
+        status: newStatus,
+        note: note.isEmpty ? null : note,
+      );
+      if (!mounted) return;
+      final changedSelection = _selectedId != selectedId;
+      setState(() {
+        final index = _cases.indexWhere((c) => c.id == selectedId);
+        if (index != -1) {
+          _cases[index] = _cases[index].copyWith(
+            status: newStatus,
+            doctorNote: note,
+            hasConflict: submission.state == ValidationSubmissionState.conflict,
+            syncState: submission.state.name,
+          );
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_submissionMessage(submission.state, newStatus)),
+          backgroundColor:
+              submission.state == ValidationSubmissionState.synced ||
+                  submission.state == ValidationSubmissionState.demo
+              ? AppTheme.success
+              : AppTheme.warning,
+        ),
+      );
+      if (!changedSelection) {
+        final pending = _cases.where((c) => c.status == 'pending');
+        if (pending.isNotEmpty) _onSelectCase(pending.first);
       }
-      _isSubmitting = false;
+      if (submission.state == ValidationSubmissionState.conflict) {
+        await _load();
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Validation was not saved: $error'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
 
+  String _submissionMessage(ValidationSubmissionState state, String status) =>
+      switch (state) {
+        ValidationSubmissionState.queued =>
+          'Saved locally; the verdict is pending sync.',
+        ValidationSubmissionState.conflict =>
+          'Saved locally, but the server changed. Review the conflict.',
+        ValidationSubmissionState.demo =>
+          status == 'pending' ? 'Demo status reset' : 'Demo verdict updated',
+        ValidationSubmissionState.synced =>
+          status == 'pending'
+              ? 'Status reset and synced'
+              : 'Verdict saved and synced',
+      };
+
+  Future<void> _resetStatus() async {
+    _noteController.clear();
+    await _handleValidation('pending');
+  }
+
+  Future<void> _resolveConflict(
+    ClinicalConflict conflict,
+    ConflictDecision decision,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirm conflict decision'),
+        content: Text(switch (decision) {
+          ConflictDecision.keepServer =>
+            'Use the server verdict and discard this local verdict?',
+          ConflictDecision.reapplyLocal =>
+            'Queue the local verdict again against server version ${conflict.serverVersion}?',
+          ConflictDecision.cancel =>
+            'Leave both values unchanged and keep this conflict open?',
+        }),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _isSubmitting = true);
+    try {
+      await context.read<ValidationRepository>().resolveConflict(
+        conflict: conflict,
+        decision: decision,
+      );
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            newStatus == "agreed" ? "Marked as Agreed" : "Marked as Disagreed",
+            decision == ConflictDecision.cancel
+                ? 'Conflict left open; decision was audited.'
+                : 'Conflict decision saved and audited.',
           ),
           backgroundColor: AppTheme.success,
         ),
       );
-
-      // Auto-advance
-      try {
-        final nextPending = _cases.firstWhere((c) => c.status == "pending");
-        _onSelectCase(nextPending);
-      } catch (e) {
-        // No more pending cases
-      }
-    });
-  }
-
-  void _resetStatus() {
-    if (_selectedId == null) return;
-    setState(() {
-      final index = _cases.indexWhere((c) => c.id == _selectedId);
-      if (index != -1) {
-        _cases[index] = _cases[index].copyWith(status: "pending");
-      }
-    });
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Conflict was not resolved: $error'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_loadError != null && _cases.isEmpty) {
+      return Center(
+        child: EmptyState(
+          icon: Icons.cloud_off_rounded,
+          title: 'Validation unavailable',
+          message: _loadError!,
+          action: FilledButton(
+            onPressed: () {
+              setState(() => _isLoading = true);
+              unawaited(_load());
+            },
+            child: const Text('Retry'),
+          ),
+        ),
+      );
+    }
     final counts = _summaryCounts;
     final filtered = _filteredCases;
     final selectedCase = _selectedId != null
@@ -190,7 +322,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                       const SizedBox(height: 16),
                       LayoutBuilder(
                         builder: (context, constraints) {
-                          final itemWidth = (constraints.maxWidth - 12) / 2;
+                          final itemWidth = (constraints.maxWidth - 24) / 3;
                           return Wrap(
                             spacing: 12,
                             runSpacing: 8,
@@ -225,6 +357,14 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                   label: "Disagreed",
                                   count: counts["disagreed"]!,
                                   color: AppTheme.error,
+                                ),
+                              ),
+                              SizedBox(
+                                width: itemWidth,
+                                child: _SummaryItem(
+                                  label: "Conflicts",
+                                  count: counts["conflicts"]!,
+                                  color: AppTheme.warning,
                                 ),
                               ),
                             ],
@@ -275,6 +415,12 @@ class _ValidationScreenState extends State<ValidationScreen> {
                         label: "Disagreed",
                         active: _activeTab == "disagreed",
                         onTap: () => setState(() => _activeTab = "disagreed"),
+                      ),
+                      _TabItem(
+                        label: "Conflicts",
+                        active: _activeTab == "conflicts",
+                        count: counts["conflicts"],
+                        onTap: () => setState(() => _activeTab = "conflicts"),
                       ),
                     ],
                   ),
@@ -474,6 +620,14 @@ class _ValidationScreenState extends State<ValidationScreen> {
                         ),
                         const SizedBox(height: 16),
                         _FindingsRow(findings: selectedCase.findings),
+                        if (selectedCase.hasConflict) ...[
+                          const SizedBox(height: 24),
+                          _ConflictResolutionCard(
+                            conflict: _conflicts[selectedCase.id],
+                            busy: _isSubmitting,
+                            onDecision: _resolveConflict,
+                          ),
+                        ],
                         const SizedBox(height: 32),
                         const Text(
                           "Doctor's Note",
@@ -488,7 +642,9 @@ class _ValidationScreenState extends State<ValidationScreen> {
                           controller: _noteController,
                           maxLines: 4,
                           maxLength: 500,
-                          readOnly: selectedCase.status != "pending",
+                          readOnly:
+                              selectedCase.hasConflict ||
+                              selectedCase.status != "pending",
                           decoration: InputDecoration(
                             hintText:
                                 "Add clinical notes or correction reason...",
@@ -509,7 +665,9 @@ class _ValidationScreenState extends State<ValidationScreen> {
                           ),
                         ),
                         const SizedBox(height: 32),
-                        if (selectedCase.status == "pending")
+                        if (selectedCase.hasConflict)
+                          const SizedBox.shrink()
+                        else if (selectedCase.status == "pending")
                           Row(
                             children: [
                               Expanded(
@@ -631,6 +789,152 @@ class _ValidationScreenState extends State<ValidationScreen> {
     if (score > 70) return const Color(0xFFE24B4A);
     if (score >= 30) return const Color(0xFFEF9F27);
     return const Color(0xFF1D9E75);
+  }
+}
+
+class _ConflictResolutionCard extends StatelessWidget {
+  const _ConflictResolutionCard({
+    required this.conflict,
+    required this.busy,
+    required this.onDecision,
+  });
+
+  final ClinicalConflict? conflict;
+  final bool busy;
+  final Future<void> Function(ClinicalConflict, ConflictDecision) onDecision;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = conflict;
+    if (value == null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.warning.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Text(
+          'Conflict details are loading. No clinical value was overwritten.',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.warning.withValues(alpha: 0.10),
+        border: Border.all(color: AppTheme.warning),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.compare_arrows_rounded, color: AppTheme.warning),
+              SizedBox(width: 8),
+              Text(
+                'Doctor review conflict',
+                style: TextStyle(
+                  color: AppTheme.navy,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value.detail ??
+                'The server changed after this device loaded the diagnosis.',
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 16,
+            runSpacing: 12,
+            children: [
+              _ConflictValue(
+                title: 'Local (base v${value.baseVersion ?? '-'})',
+                status: value.localStatus,
+                note: value.localNote,
+              ),
+              _ConflictValue(
+                title: 'Server (v${value.serverVersion ?? '-'})',
+                status: value.serverStatus ?? 'Unavailable',
+                note: value.serverNote,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              OutlinedButton(
+                onPressed: busy
+                    ? null
+                    : () => onDecision(value, ConflictDecision.cancel),
+                child: const Text('Cancel / keep open'),
+              ),
+              OutlinedButton(
+                onPressed: busy || !value.hasServerSnapshot
+                    ? null
+                    : () => onDecision(value, ConflictDecision.keepServer),
+                child: const Text('Keep server'),
+              ),
+              FilledButton(
+                onPressed: busy || !value.hasServerSnapshot
+                    ? null
+                    : () => onDecision(value, ConflictDecision.reapplyLocal),
+                child: const Text('Reapply local'),
+              ),
+            ],
+          ),
+          if (!value.hasServerSnapshot) ...[
+            const SizedBox(height: 10),
+            const Text(
+              'Reconnect to fetch the authoritative server snapshot.',
+              style: TextStyle(color: AppTheme.error),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ConflictValue extends StatelessWidget {
+  const _ConflictValue({
+    required this.title,
+    required this.status,
+    required this.note,
+  });
+
+  final String title;
+  final String status;
+  final String? note;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 280,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text('Verdict: $status'),
+          Text('Note: ${note?.trim().isNotEmpty == true ? note : '-'}'),
+        ],
+      ),
+    );
   }
 }
 

@@ -80,14 +80,24 @@ void main() {
       // The backend validates by file signature; a placeholder that is not
       // really an image would be rejected with 415 and the flow would look
       // broken for entirely the wrong reason.
-      expect(image.bytes.sublist(0, 8),
-          [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+      expect(image.bytes.sublist(0, 8), [
+        0x89,
+        0x50,
+        0x4E,
+        0x47,
+        0x0D,
+        0x0A,
+        0x1A,
+        0x0A,
+      ]);
       expect(image.isEmpty, isFalse);
     });
 
     test('carries its filename through', () {
-      expect(XrayImage.placeholder('captured_xray.png').filename,
-          'captured_xray.png');
+      expect(
+        XrayImage.placeholder('captured_xray.png').filename,
+        'captured_xray.png',
+      );
     });
   });
 
@@ -105,8 +115,10 @@ void main() {
         contains('multipart/form-data'),
       );
       // The field name must be "image" — that is what the endpoint binds to.
-      expect(utf8.decode(adapter.capturedBody, allowMalformed: true),
-          contains('name="image"'));
+      expect(
+        utf8.decode(adapter.capturedBody, allowMalformed: true),
+        contains('name="image"'),
+      );
     });
 
     test('sends the actual bytes, not just the filename', () async {
@@ -141,13 +153,15 @@ void main() {
     });
 
     test('a response missing findings does not crash the screen', () async {
-      final adapter = _RecordingAdapter(body: {
-        'is_positive': false,
-        'confidence': 12,
-        'processing_time_ms': 1000,
-        'model_version': 'v1',
-        'is_mock': true,
-      });
+      final adapter = _RecordingAdapter(
+        body: {
+          'is_positive': false,
+          'confidence': 12,
+          'processing_time_ms': 1000,
+          'model_version': 'v1',
+          'is_mock': true,
+        },
+      );
       final repo = HttpDiagnosisRepository(_client(adapter));
 
       final outcome = await repo.runInference(image: XrayImage.placeholder());
@@ -168,9 +182,16 @@ void main() {
     });
 
     test('produces an outcome once an image is attached', () async {
-      final provider = DiagnosisProvider(
-        HttpDiagnosisRepository(_client(_RecordingAdapter())),
-      )..attachPlaceholderImage('xray.png');
+      final provider =
+          DiagnosisProvider(
+              HttpDiagnosisRepository(_client(_RecordingAdapter())),
+            )
+            ..updatePatientName('Patient A')
+            ..updateGender('Female')
+            ..updateAge(34)
+            ..updateHeight(160)
+            ..updateWeight(55)
+            ..attachPlaceholderImage('xray.png');
 
       await provider.runDiagnosis();
 
@@ -180,21 +201,28 @@ void main() {
       expect(provider.lastError, isNull);
     });
 
-    test('a server failure clears the outcome instead of keeping a stale one',
-        () async {
-      final failing = _RecordingAdapter(statusCode: 500, body: const {});
-      final provider = DiagnosisProvider(
-        HttpDiagnosisRepository(_client(failing)),
-      )..attachPlaceholderImage('xray.png');
+    test(
+      'a server failure clears the outcome instead of keeping a stale one',
+      () async {
+        final failing = _RecordingAdapter(statusCode: 500, body: const {});
+        final provider =
+            DiagnosisProvider(HttpDiagnosisRepository(_client(failing)))
+              ..updatePatientName('Patient A')
+              ..updateGender('Female')
+              ..updateAge(34)
+              ..updateHeight(160)
+              ..updateWeight(55)
+              ..attachPlaceholderImage('xray.png');
 
-      await provider.runDiagnosis();
+        await provider.runDiagnosis();
 
-      // Leaving the previous patient's result on screen after a failed run is
-      // a misread waiting to happen.
-      expect(provider.lastOutcome, isNull);
-      expect(provider.lastError, isNotNull);
-      expect(provider.isRunning, isFalse);
-    });
+        // Leaving the previous patient's result on screen after a failed run is
+        // a misread waiting to happen.
+        expect(provider.lastOutcome, isNull);
+        expect(provider.lastError, isNotNull);
+        expect(provider.isRunning, isFalse);
+      },
+    );
 
     test('resetting clears image, outcome and error together', () async {
       final provider = DiagnosisProvider(MockDiagnosisRepository())

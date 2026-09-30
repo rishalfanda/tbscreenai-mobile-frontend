@@ -6,6 +6,7 @@ class DiagnosisOutcome {
     required this.processingTime,
     required this.modelVersion,
     required this.createdAt,
+    this.processingTimeMs,
     this.isMock = true,
     this.consolidation = 0,
     this.cavity = 0,
@@ -19,6 +20,7 @@ class DiagnosisOutcome {
   final String processingTime;
   final String modelVersion;
   final DateTime createdAt;
+  final int? processingTimeMs;
 
   /// Unknown provenance is treated as demo, never implicitly clinical.
   final bool isMock;
@@ -27,4 +29,12 @@ class DiagnosisOutcome {
   final double effusion;
   final double fibrotic;
   final double calcification;
+
+  Map<String, double> get findings => {
+    'consolidation': consolidation,
+    'cavity': cavity,
+    'effusion': effusion,
+    'fibrotic': fibrotic,
+    'calcification': calcification,
+  };
 }

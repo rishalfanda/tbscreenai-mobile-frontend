@@ -1,0 +1,31 @@
+{
+  "contract_version": 1,
+  "patient": {
+    "schema_version": 1,
+    "patient_id": "patient",
+    "patient_code": null,
+    "patient_name": "Synthetic patient",
+    "gender": "Female",
+    "age": 34,
+    "height_cm": 160.0,
+    "weight_kg": 55.0
+  },
+  "clinical": {
+    "schema_version": 1,
+    "device_id": "device",
+    "symptoms": ["Cough"],
+    "comorbidity": null,
+    "smoking": null,
+    "tb_contact": null,
+    "pediatric_score": null,
+    "windows_presence": null,
+    "sunlight_exposure": null,
+    "bta": null,
+    "culture": null,
+    "xpert": null,
+    "igra": null,
+    "tb_history": null,
+    "tb_status": null,
+    "selected_model": "CNN"
+  }
+}

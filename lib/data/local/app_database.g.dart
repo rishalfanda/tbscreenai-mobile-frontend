@@ -1162,6 +1162,42 @@ class $LocalDiagnosesTable extends LocalDiagnoses
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _patientSnapshotMeta = const VerificationMeta(
+    'patientSnapshot',
+  );
+  @override
+  late final GeneratedColumn<String> patientSnapshot = GeneratedColumn<String>(
+    'patient_snapshot',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  static const VerificationMeta _clinicalSnapshotMeta = const VerificationMeta(
+    'clinicalSnapshot',
+  );
+  @override
+  late final GeneratedColumn<String> clinicalSnapshot = GeneratedColumn<String>(
+    'clinical_snapshot',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  static const VerificationMeta _saveStatusMeta = const VerificationMeta(
+    'saveStatus',
+  );
+  @override
+  late final GeneratedColumn<String> saveStatus = GeneratedColumn<String>(
+    'save_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('unsaved'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1185,6 +1221,9 @@ class $LocalDiagnosesTable extends LocalDiagnoses
     imageReference,
     provenance,
     isMock,
+    patientSnapshot,
+    clinicalSnapshot,
+    saveStatus,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1354,6 +1393,30 @@ class $LocalDiagnosesTable extends LocalDiagnoses
         isMock.isAcceptableOrUnknown(data['is_mock']!, _isMockMeta),
       );
     }
+    if (data.containsKey('patient_snapshot')) {
+      context.handle(
+        _patientSnapshotMeta,
+        patientSnapshot.isAcceptableOrUnknown(
+          data['patient_snapshot']!,
+          _patientSnapshotMeta,
+        ),
+      );
+    }
+    if (data.containsKey('clinical_snapshot')) {
+      context.handle(
+        _clinicalSnapshotMeta,
+        clinicalSnapshot.isAcceptableOrUnknown(
+          data['clinical_snapshot']!,
+          _clinicalSnapshotMeta,
+        ),
+      );
+    }
+    if (data.containsKey('save_status')) {
+      context.handle(
+        _saveStatusMeta,
+        saveStatus.isAcceptableOrUnknown(data['save_status']!, _saveStatusMeta),
+      );
+    }
     return context;
   }
 
@@ -1447,6 +1510,18 @@ class $LocalDiagnosesTable extends LocalDiagnoses
         DriftSqlType.bool,
         data['${effectivePrefix}is_mock'],
       )!,
+      patientSnapshot: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}patient_snapshot'],
+      )!,
+      clinicalSnapshot: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}clinical_snapshot'],
+      )!,
+      saveStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}save_status'],
+      )!,
     );
   }
 
@@ -1480,6 +1555,14 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
   final String? imageReference;
   final String provenance;
   final bool isMock;
+
+  /// Versioned snapshots keep the displayed Result tied to the exact patient
+  /// and clinical inputs used for inference, even after a process restart.
+  final String patientSnapshot;
+  final String clinicalSnapshot;
+
+  /// unsaved | pending_sync | saved | conflict | failed
+  final String saveStatus;
   const LocalDiagnose({
     required this.id,
     required this.patientId,
@@ -1502,6 +1585,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     this.imageReference,
     required this.provenance,
     required this.isMock,
+    required this.patientSnapshot,
+    required this.clinicalSnapshot,
+    required this.saveStatus,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1545,6 +1631,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     }
     map['provenance'] = Variable<String>(provenance);
     map['is_mock'] = Variable<bool>(isMock);
+    map['patient_snapshot'] = Variable<String>(patientSnapshot);
+    map['clinical_snapshot'] = Variable<String>(clinicalSnapshot);
+    map['save_status'] = Variable<String>(saveStatus);
     return map;
   }
 
@@ -1589,6 +1678,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
           : Value(imageReference),
       provenance: Value(provenance),
       isMock: Value(isMock),
+      patientSnapshot: Value(patientSnapshot),
+      clinicalSnapshot: Value(clinicalSnapshot),
+      saveStatus: Value(saveStatus),
     );
   }
 
@@ -1619,6 +1711,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       imageReference: serializer.fromJson<String?>(json['imageReference']),
       provenance: serializer.fromJson<String>(json['provenance']),
       isMock: serializer.fromJson<bool>(json['isMock']),
+      patientSnapshot: serializer.fromJson<String>(json['patientSnapshot']),
+      clinicalSnapshot: serializer.fromJson<String>(json['clinicalSnapshot']),
+      saveStatus: serializer.fromJson<String>(json['saveStatus']),
     );
   }
   @override
@@ -1646,6 +1741,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       'imageReference': serializer.toJson<String?>(imageReference),
       'provenance': serializer.toJson<String>(provenance),
       'isMock': serializer.toJson<bool>(isMock),
+      'patientSnapshot': serializer.toJson<String>(patientSnapshot),
+      'clinicalSnapshot': serializer.toJson<String>(clinicalSnapshot),
+      'saveStatus': serializer.toJson<String>(saveStatus),
     };
   }
 
@@ -1671,6 +1769,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     Value<String?> imageReference = const Value.absent(),
     String? provenance,
     bool? isMock,
+    String? patientSnapshot,
+    String? clinicalSnapshot,
+    String? saveStatus,
   }) => LocalDiagnose(
     id: id ?? this.id,
     patientId: patientId ?? this.patientId,
@@ -1701,6 +1802,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
         : this.imageReference,
     provenance: provenance ?? this.provenance,
     isMock: isMock ?? this.isMock,
+    patientSnapshot: patientSnapshot ?? this.patientSnapshot,
+    clinicalSnapshot: clinicalSnapshot ?? this.clinicalSnapshot,
+    saveStatus: saveStatus ?? this.saveStatus,
   );
   LocalDiagnose copyWithCompanion(LocalDiagnosesCompanion data) {
     return LocalDiagnose(
@@ -1747,6 +1851,15 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
           ? data.provenance.value
           : this.provenance,
       isMock: data.isMock.present ? data.isMock.value : this.isMock,
+      patientSnapshot: data.patientSnapshot.present
+          ? data.patientSnapshot.value
+          : this.patientSnapshot,
+      clinicalSnapshot: data.clinicalSnapshot.present
+          ? data.clinicalSnapshot.value
+          : this.clinicalSnapshot,
+      saveStatus: data.saveStatus.present
+          ? data.saveStatus.value
+          : this.saveStatus,
     );
   }
 
@@ -1773,7 +1886,10 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
           ..write('imageChecksum: $imageChecksum, ')
           ..write('imageReference: $imageReference, ')
           ..write('provenance: $provenance, ')
-          ..write('isMock: $isMock')
+          ..write('isMock: $isMock, ')
+          ..write('patientSnapshot: $patientSnapshot, ')
+          ..write('clinicalSnapshot: $clinicalSnapshot, ')
+          ..write('saveStatus: $saveStatus')
           ..write(')'))
         .toString();
   }
@@ -1801,6 +1917,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     imageReference,
     provenance,
     isMock,
+    patientSnapshot,
+    clinicalSnapshot,
+    saveStatus,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -1826,7 +1945,10 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
           other.imageChecksum == this.imageChecksum &&
           other.imageReference == this.imageReference &&
           other.provenance == this.provenance &&
-          other.isMock == this.isMock);
+          other.isMock == this.isMock &&
+          other.patientSnapshot == this.patientSnapshot &&
+          other.clinicalSnapshot == this.clinicalSnapshot &&
+          other.saveStatus == this.saveStatus);
 }
 
 class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
@@ -1851,6 +1973,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
   final Value<String?> imageReference;
   final Value<String> provenance;
   final Value<bool> isMock;
+  final Value<String> patientSnapshot;
+  final Value<String> clinicalSnapshot;
+  final Value<String> saveStatus;
   final Value<int> rowid;
   const LocalDiagnosesCompanion({
     this.id = const Value.absent(),
@@ -1874,6 +1999,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     this.imageReference = const Value.absent(),
     this.provenance = const Value.absent(),
     this.isMock = const Value.absent(),
+    this.patientSnapshot = const Value.absent(),
+    this.clinicalSnapshot = const Value.absent(),
+    this.saveStatus = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LocalDiagnosesCompanion.insert({
@@ -1898,6 +2026,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     this.imageReference = const Value.absent(),
     this.provenance = const Value.absent(),
     this.isMock = const Value.absent(),
+    this.patientSnapshot = const Value.absent(),
+    this.clinicalSnapshot = const Value.absent(),
+    this.saveStatus = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        patientId = Value(patientId),
@@ -1927,6 +2058,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     Expression<String>? imageReference,
     Expression<String>? provenance,
     Expression<bool>? isMock,
+    Expression<String>? patientSnapshot,
+    Expression<String>? clinicalSnapshot,
+    Expression<String>? saveStatus,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1951,6 +2085,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
       if (imageReference != null) 'image_reference': imageReference,
       if (provenance != null) 'provenance': provenance,
       if (isMock != null) 'is_mock': isMock,
+      if (patientSnapshot != null) 'patient_snapshot': patientSnapshot,
+      if (clinicalSnapshot != null) 'clinical_snapshot': clinicalSnapshot,
+      if (saveStatus != null) 'save_status': saveStatus,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1977,6 +2114,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     Value<String?>? imageReference,
     Value<String>? provenance,
     Value<bool>? isMock,
+    Value<String>? patientSnapshot,
+    Value<String>? clinicalSnapshot,
+    Value<String>? saveStatus,
     Value<int>? rowid,
   }) {
     return LocalDiagnosesCompanion(
@@ -2001,6 +2141,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
       imageReference: imageReference ?? this.imageReference,
       provenance: provenance ?? this.provenance,
       isMock: isMock ?? this.isMock,
+      patientSnapshot: patientSnapshot ?? this.patientSnapshot,
+      clinicalSnapshot: clinicalSnapshot ?? this.clinicalSnapshot,
+      saveStatus: saveStatus ?? this.saveStatus,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2071,6 +2214,15 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     if (isMock.present) {
       map['is_mock'] = Variable<bool>(isMock.value);
     }
+    if (patientSnapshot.present) {
+      map['patient_snapshot'] = Variable<String>(patientSnapshot.value);
+    }
+    if (clinicalSnapshot.present) {
+      map['clinical_snapshot'] = Variable<String>(clinicalSnapshot.value);
+    }
+    if (saveStatus.present) {
+      map['save_status'] = Variable<String>(saveStatus.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2101,6 +2253,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
           ..write('imageReference: $imageReference, ')
           ..write('provenance: $provenance, ')
           ..write('isMock: $isMock, ')
+          ..write('patientSnapshot: $patientSnapshot, ')
+          ..write('clinicalSnapshot: $clinicalSnapshot, ')
+          ..write('saveStatus: $saveStatus, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2241,6 +2396,17 @@ class $SyncQueueTable extends SyncQueue
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _serverPayloadMeta = const VerificationMeta(
+    'serverPayload',
+  );
+  @override
+  late final GeneratedColumn<String> serverPayload = GeneratedColumn<String>(
+    'server_payload',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _retryCountMeta = const VerificationMeta(
     'retryCount',
   );
@@ -2301,6 +2467,7 @@ class $SyncQueueTable extends SyncQueue
     baseUpdatedAt,
     status,
     detail,
+    serverPayload,
     retryCount,
     nextAttemptAt,
     createdAt,
@@ -2409,6 +2576,15 @@ class $SyncQueueTable extends SyncQueue
         detail.isAcceptableOrUnknown(data['detail']!, _detailMeta),
       );
     }
+    if (data.containsKey('server_payload')) {
+      context.handle(
+        _serverPayloadMeta,
+        serverPayload.isAcceptableOrUnknown(
+          data['server_payload']!,
+          _serverPayloadMeta,
+        ),
+      );
+    }
     if (data.containsKey('retry_count')) {
       context.handle(
         _retryCountMeta,
@@ -2495,6 +2671,10 @@ class $SyncQueueTable extends SyncQueue
         DriftSqlType.string,
         data['${effectivePrefix}detail'],
       ),
+      serverPayload: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}server_payload'],
+      ),
       retryCount: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}retry_count'],
@@ -2548,6 +2728,10 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
 
   /// Server or protocol explanation for conflict/failure.
   final String? detail;
+
+  /// Authoritative server snapshot fetched for manual conflict resolution.
+  /// Never auto-applied to clinical fields.
+  final String? serverPayload;
   final int retryCount;
   final DateTime? nextAttemptAt;
   final DateTime createdAt;
@@ -2565,6 +2749,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
     this.baseUpdatedAt,
     required this.status,
     this.detail,
+    this.serverPayload,
     required this.retryCount,
     this.nextAttemptAt,
     required this.createdAt,
@@ -2596,6 +2781,9 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
     map['status'] = Variable<String>(status);
     if (!nullToAbsent || detail != null) {
       map['detail'] = Variable<String>(detail);
+    }
+    if (!nullToAbsent || serverPayload != null) {
+      map['server_payload'] = Variable<String>(serverPayload);
     }
     map['retry_count'] = Variable<int>(retryCount);
     if (!nullToAbsent || nextAttemptAt != null) {
@@ -2634,6 +2822,9 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       detail: detail == null && nullToAbsent
           ? const Value.absent()
           : Value(detail),
+      serverPayload: serverPayload == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverPayload),
       retryCount: Value(retryCount),
       nextAttemptAt: nextAttemptAt == null && nullToAbsent
           ? const Value.absent()
@@ -2663,6 +2854,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       baseUpdatedAt: serializer.fromJson<DateTime?>(json['baseUpdatedAt']),
       status: serializer.fromJson<String>(json['status']),
       detail: serializer.fromJson<String?>(json['detail']),
+      serverPayload: serializer.fromJson<String?>(json['serverPayload']),
       retryCount: serializer.fromJson<int>(json['retryCount']),
       nextAttemptAt: serializer.fromJson<DateTime?>(json['nextAttemptAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -2685,6 +2877,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       'baseUpdatedAt': serializer.toJson<DateTime?>(baseUpdatedAt),
       'status': serializer.toJson<String>(status),
       'detail': serializer.toJson<String?>(detail),
+      'serverPayload': serializer.toJson<String?>(serverPayload),
       'retryCount': serializer.toJson<int>(retryCount),
       'nextAttemptAt': serializer.toJson<DateTime?>(nextAttemptAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -2705,6 +2898,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
     Value<DateTime?> baseUpdatedAt = const Value.absent(),
     String? status,
     Value<String?> detail = const Value.absent(),
+    Value<String?> serverPayload = const Value.absent(),
     int? retryCount,
     Value<DateTime?> nextAttemptAt = const Value.absent(),
     DateTime? createdAt,
@@ -2724,6 +2918,9 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
         : this.baseUpdatedAt,
     status: status ?? this.status,
     detail: detail.present ? detail.value : this.detail,
+    serverPayload: serverPayload.present
+        ? serverPayload.value
+        : this.serverPayload,
     retryCount: retryCount ?? this.retryCount,
     nextAttemptAt: nextAttemptAt.present
         ? nextAttemptAt.value
@@ -2753,6 +2950,9 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
           : this.baseUpdatedAt,
       status: data.status.present ? data.status.value : this.status,
       detail: data.detail.present ? data.detail.value : this.detail,
+      serverPayload: data.serverPayload.present
+          ? data.serverPayload.value
+          : this.serverPayload,
       retryCount: data.retryCount.present
           ? data.retryCount.value
           : this.retryCount,
@@ -2779,6 +2979,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
           ..write('baseUpdatedAt: $baseUpdatedAt, ')
           ..write('status: $status, ')
           ..write('detail: $detail, ')
+          ..write('serverPayload: $serverPayload, ')
           ..write('retryCount: $retryCount, ')
           ..write('nextAttemptAt: $nextAttemptAt, ')
           ..write('createdAt: $createdAt, ')
@@ -2801,6 +3002,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
     baseUpdatedAt,
     status,
     detail,
+    serverPayload,
     retryCount,
     nextAttemptAt,
     createdAt,
@@ -2822,6 +3024,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
           other.baseUpdatedAt == this.baseUpdatedAt &&
           other.status == this.status &&
           other.detail == this.detail &&
+          other.serverPayload == this.serverPayload &&
           other.retryCount == this.retryCount &&
           other.nextAttemptAt == this.nextAttemptAt &&
           other.createdAt == this.createdAt &&
@@ -2841,6 +3044,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
   final Value<DateTime?> baseUpdatedAt;
   final Value<String> status;
   final Value<String?> detail;
+  final Value<String?> serverPayload;
   final Value<int> retryCount;
   final Value<DateTime?> nextAttemptAt;
   final Value<DateTime> createdAt;
@@ -2859,6 +3063,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     this.baseUpdatedAt = const Value.absent(),
     this.status = const Value.absent(),
     this.detail = const Value.absent(),
+    this.serverPayload = const Value.absent(),
     this.retryCount = const Value.absent(),
     this.nextAttemptAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -2878,6 +3083,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     this.baseUpdatedAt = const Value.absent(),
     this.status = const Value.absent(),
     this.detail = const Value.absent(),
+    this.serverPayload = const Value.absent(),
     this.retryCount = const Value.absent(),
     this.nextAttemptAt = const Value.absent(),
     required DateTime createdAt,
@@ -2902,6 +3108,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     Expression<DateTime>? baseUpdatedAt,
     Expression<String>? status,
     Expression<String>? detail,
+    Expression<String>? serverPayload,
     Expression<int>? retryCount,
     Expression<DateTime>? nextAttemptAt,
     Expression<DateTime>? createdAt,
@@ -2921,6 +3128,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
       if (baseUpdatedAt != null) 'base_updated_at': baseUpdatedAt,
       if (status != null) 'status': status,
       if (detail != null) 'detail': detail,
+      if (serverPayload != null) 'server_payload': serverPayload,
       if (retryCount != null) 'retry_count': retryCount,
       if (nextAttemptAt != null) 'next_attempt_at': nextAttemptAt,
       if (createdAt != null) 'created_at': createdAt,
@@ -2942,6 +3150,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     Value<DateTime?>? baseUpdatedAt,
     Value<String>? status,
     Value<String?>? detail,
+    Value<String?>? serverPayload,
     Value<int>? retryCount,
     Value<DateTime?>? nextAttemptAt,
     Value<DateTime>? createdAt,
@@ -2961,6 +3170,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
       baseUpdatedAt: baseUpdatedAt ?? this.baseUpdatedAt,
       status: status ?? this.status,
       detail: detail ?? this.detail,
+      serverPayload: serverPayload ?? this.serverPayload,
       retryCount: retryCount ?? this.retryCount,
       nextAttemptAt: nextAttemptAt ?? this.nextAttemptAt,
       createdAt: createdAt ?? this.createdAt,
@@ -3008,6 +3218,9 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     if (detail.present) {
       map['detail'] = Variable<String>(detail.value);
     }
+    if (serverPayload.present) {
+      map['server_payload'] = Variable<String>(serverPayload.value);
+    }
     if (retryCount.present) {
       map['retry_count'] = Variable<int>(retryCount.value);
     }
@@ -3041,10 +3254,1324 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
           ..write('baseUpdatedAt: $baseUpdatedAt, ')
           ..write('status: $status, ')
           ..write('detail: $detail, ')
+          ..write('serverPayload: $serverPayload, ')
           ..write('retryCount: $retryCount, ')
           ..write('nextAttemptAt: $nextAttemptAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('syncedAt: $syncedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $EncryptedXrayArtifactsTable extends EncryptedXrayArtifacts
+    with TableInfo<$EncryptedXrayArtifactsTable, EncryptedXrayArtifact> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $EncryptedXrayArtifactsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _cipherTextMeta = const VerificationMeta(
+    'cipherText',
+  );
+  @override
+  late final GeneratedColumn<Uint8List> cipherText = GeneratedColumn<Uint8List>(
+    'cipher_text',
+    aliasedName,
+    false,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nonceMeta = const VerificationMeta('nonce');
+  @override
+  late final GeneratedColumn<Uint8List> nonce = GeneratedColumn<Uint8List>(
+    'nonce',
+    aliasedName,
+    false,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _macMeta = const VerificationMeta('mac');
+  @override
+  late final GeneratedColumn<Uint8List> mac = GeneratedColumn<Uint8List>(
+    'mac',
+    aliasedName,
+    false,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _filenameMeta = const VerificationMeta(
+    'filename',
+  );
+  @override
+  late final GeneratedColumn<String> filename = GeneratedColumn<String>(
+    'filename',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _mimeTypeMeta = const VerificationMeta(
+    'mimeType',
+  );
+  @override
+  late final GeneratedColumn<String> mimeType = GeneratedColumn<String>(
+    'mime_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _checksumMeta = const VerificationMeta(
+    'checksum',
+  );
+  @override
+  late final GeneratedColumn<String> checksum = GeneratedColumn<String>(
+    'checksum',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sizeBytesMeta = const VerificationMeta(
+    'sizeBytes',
+  );
+  @override
+  late final GeneratedColumn<int> sizeBytes = GeneratedColumn<int>(
+    'size_bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _tenantIdMeta = const VerificationMeta(
+    'tenantId',
+  );
+  @override
+  late final GeneratedColumn<String> tenantId = GeneratedColumn<String>(
+    'tenant_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deviceIdMeta = const VerificationMeta(
+    'deviceId',
+  );
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+    'device_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    cipherText,
+    nonce,
+    mac,
+    filename,
+    mimeType,
+    source,
+    checksum,
+    sizeBytes,
+    createdAt,
+    tenantId,
+    userId,
+    deviceId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'encrypted_xray_artifacts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<EncryptedXrayArtifact> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('cipher_text')) {
+      context.handle(
+        _cipherTextMeta,
+        cipherText.isAcceptableOrUnknown(data['cipher_text']!, _cipherTextMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_cipherTextMeta);
+    }
+    if (data.containsKey('nonce')) {
+      context.handle(
+        _nonceMeta,
+        nonce.isAcceptableOrUnknown(data['nonce']!, _nonceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nonceMeta);
+    }
+    if (data.containsKey('mac')) {
+      context.handle(
+        _macMeta,
+        mac.isAcceptableOrUnknown(data['mac']!, _macMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_macMeta);
+    }
+    if (data.containsKey('filename')) {
+      context.handle(
+        _filenameMeta,
+        filename.isAcceptableOrUnknown(data['filename']!, _filenameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_filenameMeta);
+    }
+    if (data.containsKey('mime_type')) {
+      context.handle(
+        _mimeTypeMeta,
+        mimeType.isAcceptableOrUnknown(data['mime_type']!, _mimeTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_mimeTypeMeta);
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceMeta);
+    }
+    if (data.containsKey('checksum')) {
+      context.handle(
+        _checksumMeta,
+        checksum.isAcceptableOrUnknown(data['checksum']!, _checksumMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_checksumMeta);
+    }
+    if (data.containsKey('size_bytes')) {
+      context.handle(
+        _sizeBytesMeta,
+        sizeBytes.isAcceptableOrUnknown(data['size_bytes']!, _sizeBytesMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sizeBytesMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('tenant_id')) {
+      context.handle(
+        _tenantIdMeta,
+        tenantId.isAcceptableOrUnknown(data['tenant_id']!, _tenantIdMeta),
+      );
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(
+        _deviceIdMeta,
+        deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  EncryptedXrayArtifact map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return EncryptedXrayArtifact(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      cipherText: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}cipher_text'],
+      )!,
+      nonce: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}nonce'],
+      )!,
+      mac: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}mac'],
+      )!,
+      filename: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}filename'],
+      )!,
+      mimeType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mime_type'],
+      )!,
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      checksum: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}checksum'],
+      )!,
+      sizeBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}size_bytes'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      tenantId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tenant_id'],
+      ),
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      ),
+      deviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_id'],
+      ),
+    );
+  }
+
+  @override
+  $EncryptedXrayArtifactsTable createAlias(String alias) {
+    return $EncryptedXrayArtifactsTable(attachedDatabase, alias);
+  }
+}
+
+class EncryptedXrayArtifact extends DataClass
+    implements Insertable<EncryptedXrayArtifact> {
+  final String id;
+  final Uint8List cipherText;
+  final Uint8List nonce;
+  final Uint8List mac;
+  final String filename;
+  final String mimeType;
+  final String source;
+  final String checksum;
+  final int sizeBytes;
+  final DateTime createdAt;
+  final String? tenantId;
+  final String? userId;
+  final String? deviceId;
+  const EncryptedXrayArtifact({
+    required this.id,
+    required this.cipherText,
+    required this.nonce,
+    required this.mac,
+    required this.filename,
+    required this.mimeType,
+    required this.source,
+    required this.checksum,
+    required this.sizeBytes,
+    required this.createdAt,
+    this.tenantId,
+    this.userId,
+    this.deviceId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['cipher_text'] = Variable<Uint8List>(cipherText);
+    map['nonce'] = Variable<Uint8List>(nonce);
+    map['mac'] = Variable<Uint8List>(mac);
+    map['filename'] = Variable<String>(filename);
+    map['mime_type'] = Variable<String>(mimeType);
+    map['source'] = Variable<String>(source);
+    map['checksum'] = Variable<String>(checksum);
+    map['size_bytes'] = Variable<int>(sizeBytes);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || tenantId != null) {
+      map['tenant_id'] = Variable<String>(tenantId);
+    }
+    if (!nullToAbsent || userId != null) {
+      map['user_id'] = Variable<String>(userId);
+    }
+    if (!nullToAbsent || deviceId != null) {
+      map['device_id'] = Variable<String>(deviceId);
+    }
+    return map;
+  }
+
+  EncryptedXrayArtifactsCompanion toCompanion(bool nullToAbsent) {
+    return EncryptedXrayArtifactsCompanion(
+      id: Value(id),
+      cipherText: Value(cipherText),
+      nonce: Value(nonce),
+      mac: Value(mac),
+      filename: Value(filename),
+      mimeType: Value(mimeType),
+      source: Value(source),
+      checksum: Value(checksum),
+      sizeBytes: Value(sizeBytes),
+      createdAt: Value(createdAt),
+      tenantId: tenantId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tenantId),
+      userId: userId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(userId),
+      deviceId: deviceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deviceId),
+    );
+  }
+
+  factory EncryptedXrayArtifact.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return EncryptedXrayArtifact(
+      id: serializer.fromJson<String>(json['id']),
+      cipherText: serializer.fromJson<Uint8List>(json['cipherText']),
+      nonce: serializer.fromJson<Uint8List>(json['nonce']),
+      mac: serializer.fromJson<Uint8List>(json['mac']),
+      filename: serializer.fromJson<String>(json['filename']),
+      mimeType: serializer.fromJson<String>(json['mimeType']),
+      source: serializer.fromJson<String>(json['source']),
+      checksum: serializer.fromJson<String>(json['checksum']),
+      sizeBytes: serializer.fromJson<int>(json['sizeBytes']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      tenantId: serializer.fromJson<String?>(json['tenantId']),
+      userId: serializer.fromJson<String?>(json['userId']),
+      deviceId: serializer.fromJson<String?>(json['deviceId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'cipherText': serializer.toJson<Uint8List>(cipherText),
+      'nonce': serializer.toJson<Uint8List>(nonce),
+      'mac': serializer.toJson<Uint8List>(mac),
+      'filename': serializer.toJson<String>(filename),
+      'mimeType': serializer.toJson<String>(mimeType),
+      'source': serializer.toJson<String>(source),
+      'checksum': serializer.toJson<String>(checksum),
+      'sizeBytes': serializer.toJson<int>(sizeBytes),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'tenantId': serializer.toJson<String?>(tenantId),
+      'userId': serializer.toJson<String?>(userId),
+      'deviceId': serializer.toJson<String?>(deviceId),
+    };
+  }
+
+  EncryptedXrayArtifact copyWith({
+    String? id,
+    Uint8List? cipherText,
+    Uint8List? nonce,
+    Uint8List? mac,
+    String? filename,
+    String? mimeType,
+    String? source,
+    String? checksum,
+    int? sizeBytes,
+    DateTime? createdAt,
+    Value<String?> tenantId = const Value.absent(),
+    Value<String?> userId = const Value.absent(),
+    Value<String?> deviceId = const Value.absent(),
+  }) => EncryptedXrayArtifact(
+    id: id ?? this.id,
+    cipherText: cipherText ?? this.cipherText,
+    nonce: nonce ?? this.nonce,
+    mac: mac ?? this.mac,
+    filename: filename ?? this.filename,
+    mimeType: mimeType ?? this.mimeType,
+    source: source ?? this.source,
+    checksum: checksum ?? this.checksum,
+    sizeBytes: sizeBytes ?? this.sizeBytes,
+    createdAt: createdAt ?? this.createdAt,
+    tenantId: tenantId.present ? tenantId.value : this.tenantId,
+    userId: userId.present ? userId.value : this.userId,
+    deviceId: deviceId.present ? deviceId.value : this.deviceId,
+  );
+  EncryptedXrayArtifact copyWithCompanion(
+    EncryptedXrayArtifactsCompanion data,
+  ) {
+    return EncryptedXrayArtifact(
+      id: data.id.present ? data.id.value : this.id,
+      cipherText: data.cipherText.present
+          ? data.cipherText.value
+          : this.cipherText,
+      nonce: data.nonce.present ? data.nonce.value : this.nonce,
+      mac: data.mac.present ? data.mac.value : this.mac,
+      filename: data.filename.present ? data.filename.value : this.filename,
+      mimeType: data.mimeType.present ? data.mimeType.value : this.mimeType,
+      source: data.source.present ? data.source.value : this.source,
+      checksum: data.checksum.present ? data.checksum.value : this.checksum,
+      sizeBytes: data.sizeBytes.present ? data.sizeBytes.value : this.sizeBytes,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      tenantId: data.tenantId.present ? data.tenantId.value : this.tenantId,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EncryptedXrayArtifact(')
+          ..write('id: $id, ')
+          ..write('cipherText: $cipherText, ')
+          ..write('nonce: $nonce, ')
+          ..write('mac: $mac, ')
+          ..write('filename: $filename, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('source: $source, ')
+          ..write('checksum: $checksum, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('deviceId: $deviceId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    $driftBlobEquality.hash(cipherText),
+    $driftBlobEquality.hash(nonce),
+    $driftBlobEquality.hash(mac),
+    filename,
+    mimeType,
+    source,
+    checksum,
+    sizeBytes,
+    createdAt,
+    tenantId,
+    userId,
+    deviceId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is EncryptedXrayArtifact &&
+          other.id == this.id &&
+          $driftBlobEquality.equals(other.cipherText, this.cipherText) &&
+          $driftBlobEquality.equals(other.nonce, this.nonce) &&
+          $driftBlobEquality.equals(other.mac, this.mac) &&
+          other.filename == this.filename &&
+          other.mimeType == this.mimeType &&
+          other.source == this.source &&
+          other.checksum == this.checksum &&
+          other.sizeBytes == this.sizeBytes &&
+          other.createdAt == this.createdAt &&
+          other.tenantId == this.tenantId &&
+          other.userId == this.userId &&
+          other.deviceId == this.deviceId);
+}
+
+class EncryptedXrayArtifactsCompanion
+    extends UpdateCompanion<EncryptedXrayArtifact> {
+  final Value<String> id;
+  final Value<Uint8List> cipherText;
+  final Value<Uint8List> nonce;
+  final Value<Uint8List> mac;
+  final Value<String> filename;
+  final Value<String> mimeType;
+  final Value<String> source;
+  final Value<String> checksum;
+  final Value<int> sizeBytes;
+  final Value<DateTime> createdAt;
+  final Value<String?> tenantId;
+  final Value<String?> userId;
+  final Value<String?> deviceId;
+  final Value<int> rowid;
+  const EncryptedXrayArtifactsCompanion({
+    this.id = const Value.absent(),
+    this.cipherText = const Value.absent(),
+    this.nonce = const Value.absent(),
+    this.mac = const Value.absent(),
+    this.filename = const Value.absent(),
+    this.mimeType = const Value.absent(),
+    this.source = const Value.absent(),
+    this.checksum = const Value.absent(),
+    this.sizeBytes = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.tenantId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  EncryptedXrayArtifactsCompanion.insert({
+    required String id,
+    required Uint8List cipherText,
+    required Uint8List nonce,
+    required Uint8List mac,
+    required String filename,
+    required String mimeType,
+    required String source,
+    required String checksum,
+    required int sizeBytes,
+    required DateTime createdAt,
+    this.tenantId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       cipherText = Value(cipherText),
+       nonce = Value(nonce),
+       mac = Value(mac),
+       filename = Value(filename),
+       mimeType = Value(mimeType),
+       source = Value(source),
+       checksum = Value(checksum),
+       sizeBytes = Value(sizeBytes),
+       createdAt = Value(createdAt);
+  static Insertable<EncryptedXrayArtifact> custom({
+    Expression<String>? id,
+    Expression<Uint8List>? cipherText,
+    Expression<Uint8List>? nonce,
+    Expression<Uint8List>? mac,
+    Expression<String>? filename,
+    Expression<String>? mimeType,
+    Expression<String>? source,
+    Expression<String>? checksum,
+    Expression<int>? sizeBytes,
+    Expression<DateTime>? createdAt,
+    Expression<String>? tenantId,
+    Expression<String>? userId,
+    Expression<String>? deviceId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (cipherText != null) 'cipher_text': cipherText,
+      if (nonce != null) 'nonce': nonce,
+      if (mac != null) 'mac': mac,
+      if (filename != null) 'filename': filename,
+      if (mimeType != null) 'mime_type': mimeType,
+      if (source != null) 'source': source,
+      if (checksum != null) 'checksum': checksum,
+      if (sizeBytes != null) 'size_bytes': sizeBytes,
+      if (createdAt != null) 'created_at': createdAt,
+      if (tenantId != null) 'tenant_id': tenantId,
+      if (userId != null) 'user_id': userId,
+      if (deviceId != null) 'device_id': deviceId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  EncryptedXrayArtifactsCompanion copyWith({
+    Value<String>? id,
+    Value<Uint8List>? cipherText,
+    Value<Uint8List>? nonce,
+    Value<Uint8List>? mac,
+    Value<String>? filename,
+    Value<String>? mimeType,
+    Value<String>? source,
+    Value<String>? checksum,
+    Value<int>? sizeBytes,
+    Value<DateTime>? createdAt,
+    Value<String?>? tenantId,
+    Value<String?>? userId,
+    Value<String?>? deviceId,
+    Value<int>? rowid,
+  }) {
+    return EncryptedXrayArtifactsCompanion(
+      id: id ?? this.id,
+      cipherText: cipherText ?? this.cipherText,
+      nonce: nonce ?? this.nonce,
+      mac: mac ?? this.mac,
+      filename: filename ?? this.filename,
+      mimeType: mimeType ?? this.mimeType,
+      source: source ?? this.source,
+      checksum: checksum ?? this.checksum,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
+      createdAt: createdAt ?? this.createdAt,
+      tenantId: tenantId ?? this.tenantId,
+      userId: userId ?? this.userId,
+      deviceId: deviceId ?? this.deviceId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (cipherText.present) {
+      map['cipher_text'] = Variable<Uint8List>(cipherText.value);
+    }
+    if (nonce.present) {
+      map['nonce'] = Variable<Uint8List>(nonce.value);
+    }
+    if (mac.present) {
+      map['mac'] = Variable<Uint8List>(mac.value);
+    }
+    if (filename.present) {
+      map['filename'] = Variable<String>(filename.value);
+    }
+    if (mimeType.present) {
+      map['mime_type'] = Variable<String>(mimeType.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (checksum.present) {
+      map['checksum'] = Variable<String>(checksum.value);
+    }
+    if (sizeBytes.present) {
+      map['size_bytes'] = Variable<int>(sizeBytes.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (tenantId.present) {
+      map['tenant_id'] = Variable<String>(tenantId.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EncryptedXrayArtifactsCompanion(')
+          ..write('id: $id, ')
+          ..write('cipherText: $cipherText, ')
+          ..write('nonce: $nonce, ')
+          ..write('mac: $mac, ')
+          ..write('filename: $filename, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('source: $source, ')
+          ..write('checksum: $checksum, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ClinicalAuditEventsTable extends ClinicalAuditEvents
+    with TableInfo<$ClinicalAuditEventsTable, ClinicalAuditEvent> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ClinicalAuditEventsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _entityTypeMeta = const VerificationMeta(
+    'entityType',
+  );
+  @override
+  late final GeneratedColumn<String> entityType = GeneratedColumn<String>(
+    'entity_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _entityIdMeta = const VerificationMeta(
+    'entityId',
+  );
+  @override
+  late final GeneratedColumn<String> entityId = GeneratedColumn<String>(
+    'entity_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _actionMeta = const VerificationMeta('action');
+  @override
+  late final GeneratedColumn<String> action = GeneratedColumn<String>(
+    'action',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _detailsMeta = const VerificationMeta(
+    'details',
+  );
+  @override
+  late final GeneratedColumn<String> details = GeneratedColumn<String>(
+    'details',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _tenantIdMeta = const VerificationMeta(
+    'tenantId',
+  );
+  @override
+  late final GeneratedColumn<String> tenantId = GeneratedColumn<String>(
+    'tenant_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deviceIdMeta = const VerificationMeta(
+    'deviceId',
+  );
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+    'device_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    entityType,
+    entityId,
+    action,
+    details,
+    createdAt,
+    tenantId,
+    userId,
+    deviceId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'clinical_audit_events';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ClinicalAuditEvent> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('entity_type')) {
+      context.handle(
+        _entityTypeMeta,
+        entityType.isAcceptableOrUnknown(data['entity_type']!, _entityTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entityTypeMeta);
+    }
+    if (data.containsKey('entity_id')) {
+      context.handle(
+        _entityIdMeta,
+        entityId.isAcceptableOrUnknown(data['entity_id']!, _entityIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entityIdMeta);
+    }
+    if (data.containsKey('action')) {
+      context.handle(
+        _actionMeta,
+        action.isAcceptableOrUnknown(data['action']!, _actionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_actionMeta);
+    }
+    if (data.containsKey('details')) {
+      context.handle(
+        _detailsMeta,
+        details.isAcceptableOrUnknown(data['details']!, _detailsMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('tenant_id')) {
+      context.handle(
+        _tenantIdMeta,
+        tenantId.isAcceptableOrUnknown(data['tenant_id']!, _tenantIdMeta),
+      );
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(
+        _deviceIdMeta,
+        deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ClinicalAuditEvent map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ClinicalAuditEvent(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      entityType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entity_type'],
+      )!,
+      entityId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entity_id'],
+      )!,
+      action: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}action'],
+      )!,
+      details: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}details'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      tenantId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tenant_id'],
+      ),
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      ),
+      deviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_id'],
+      ),
+    );
+  }
+
+  @override
+  $ClinicalAuditEventsTable createAlias(String alias) {
+    return $ClinicalAuditEventsTable(attachedDatabase, alias);
+  }
+}
+
+class ClinicalAuditEvent extends DataClass
+    implements Insertable<ClinicalAuditEvent> {
+  final String id;
+  final String entityType;
+  final String entityId;
+  final String action;
+  final String details;
+  final DateTime createdAt;
+  final String? tenantId;
+  final String? userId;
+  final String? deviceId;
+  const ClinicalAuditEvent({
+    required this.id,
+    required this.entityType,
+    required this.entityId,
+    required this.action,
+    required this.details,
+    required this.createdAt,
+    this.tenantId,
+    this.userId,
+    this.deviceId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['entity_type'] = Variable<String>(entityType);
+    map['entity_id'] = Variable<String>(entityId);
+    map['action'] = Variable<String>(action);
+    map['details'] = Variable<String>(details);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || tenantId != null) {
+      map['tenant_id'] = Variable<String>(tenantId);
+    }
+    if (!nullToAbsent || userId != null) {
+      map['user_id'] = Variable<String>(userId);
+    }
+    if (!nullToAbsent || deviceId != null) {
+      map['device_id'] = Variable<String>(deviceId);
+    }
+    return map;
+  }
+
+  ClinicalAuditEventsCompanion toCompanion(bool nullToAbsent) {
+    return ClinicalAuditEventsCompanion(
+      id: Value(id),
+      entityType: Value(entityType),
+      entityId: Value(entityId),
+      action: Value(action),
+      details: Value(details),
+      createdAt: Value(createdAt),
+      tenantId: tenantId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tenantId),
+      userId: userId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(userId),
+      deviceId: deviceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deviceId),
+    );
+  }
+
+  factory ClinicalAuditEvent.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ClinicalAuditEvent(
+      id: serializer.fromJson<String>(json['id']),
+      entityType: serializer.fromJson<String>(json['entityType']),
+      entityId: serializer.fromJson<String>(json['entityId']),
+      action: serializer.fromJson<String>(json['action']),
+      details: serializer.fromJson<String>(json['details']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      tenantId: serializer.fromJson<String?>(json['tenantId']),
+      userId: serializer.fromJson<String?>(json['userId']),
+      deviceId: serializer.fromJson<String?>(json['deviceId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'entityType': serializer.toJson<String>(entityType),
+      'entityId': serializer.toJson<String>(entityId),
+      'action': serializer.toJson<String>(action),
+      'details': serializer.toJson<String>(details),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'tenantId': serializer.toJson<String?>(tenantId),
+      'userId': serializer.toJson<String?>(userId),
+      'deviceId': serializer.toJson<String?>(deviceId),
+    };
+  }
+
+  ClinicalAuditEvent copyWith({
+    String? id,
+    String? entityType,
+    String? entityId,
+    String? action,
+    String? details,
+    DateTime? createdAt,
+    Value<String?> tenantId = const Value.absent(),
+    Value<String?> userId = const Value.absent(),
+    Value<String?> deviceId = const Value.absent(),
+  }) => ClinicalAuditEvent(
+    id: id ?? this.id,
+    entityType: entityType ?? this.entityType,
+    entityId: entityId ?? this.entityId,
+    action: action ?? this.action,
+    details: details ?? this.details,
+    createdAt: createdAt ?? this.createdAt,
+    tenantId: tenantId.present ? tenantId.value : this.tenantId,
+    userId: userId.present ? userId.value : this.userId,
+    deviceId: deviceId.present ? deviceId.value : this.deviceId,
+  );
+  ClinicalAuditEvent copyWithCompanion(ClinicalAuditEventsCompanion data) {
+    return ClinicalAuditEvent(
+      id: data.id.present ? data.id.value : this.id,
+      entityType: data.entityType.present
+          ? data.entityType.value
+          : this.entityType,
+      entityId: data.entityId.present ? data.entityId.value : this.entityId,
+      action: data.action.present ? data.action.value : this.action,
+      details: data.details.present ? data.details.value : this.details,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      tenantId: data.tenantId.present ? data.tenantId.value : this.tenantId,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ClinicalAuditEvent(')
+          ..write('id: $id, ')
+          ..write('entityType: $entityType, ')
+          ..write('entityId: $entityId, ')
+          ..write('action: $action, ')
+          ..write('details: $details, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('deviceId: $deviceId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    entityType,
+    entityId,
+    action,
+    details,
+    createdAt,
+    tenantId,
+    userId,
+    deviceId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ClinicalAuditEvent &&
+          other.id == this.id &&
+          other.entityType == this.entityType &&
+          other.entityId == this.entityId &&
+          other.action == this.action &&
+          other.details == this.details &&
+          other.createdAt == this.createdAt &&
+          other.tenantId == this.tenantId &&
+          other.userId == this.userId &&
+          other.deviceId == this.deviceId);
+}
+
+class ClinicalAuditEventsCompanion extends UpdateCompanion<ClinicalAuditEvent> {
+  final Value<String> id;
+  final Value<String> entityType;
+  final Value<String> entityId;
+  final Value<String> action;
+  final Value<String> details;
+  final Value<DateTime> createdAt;
+  final Value<String?> tenantId;
+  final Value<String?> userId;
+  final Value<String?> deviceId;
+  final Value<int> rowid;
+  const ClinicalAuditEventsCompanion({
+    this.id = const Value.absent(),
+    this.entityType = const Value.absent(),
+    this.entityId = const Value.absent(),
+    this.action = const Value.absent(),
+    this.details = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.tenantId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ClinicalAuditEventsCompanion.insert({
+    required String id,
+    required String entityType,
+    required String entityId,
+    required String action,
+    this.details = const Value.absent(),
+    required DateTime createdAt,
+    this.tenantId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       entityType = Value(entityType),
+       entityId = Value(entityId),
+       action = Value(action),
+       createdAt = Value(createdAt);
+  static Insertable<ClinicalAuditEvent> custom({
+    Expression<String>? id,
+    Expression<String>? entityType,
+    Expression<String>? entityId,
+    Expression<String>? action,
+    Expression<String>? details,
+    Expression<DateTime>? createdAt,
+    Expression<String>? tenantId,
+    Expression<String>? userId,
+    Expression<String>? deviceId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (entityType != null) 'entity_type': entityType,
+      if (entityId != null) 'entity_id': entityId,
+      if (action != null) 'action': action,
+      if (details != null) 'details': details,
+      if (createdAt != null) 'created_at': createdAt,
+      if (tenantId != null) 'tenant_id': tenantId,
+      if (userId != null) 'user_id': userId,
+      if (deviceId != null) 'device_id': deviceId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ClinicalAuditEventsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? entityType,
+    Value<String>? entityId,
+    Value<String>? action,
+    Value<String>? details,
+    Value<DateTime>? createdAt,
+    Value<String?>? tenantId,
+    Value<String?>? userId,
+    Value<String?>? deviceId,
+    Value<int>? rowid,
+  }) {
+    return ClinicalAuditEventsCompanion(
+      id: id ?? this.id,
+      entityType: entityType ?? this.entityType,
+      entityId: entityId ?? this.entityId,
+      action: action ?? this.action,
+      details: details ?? this.details,
+      createdAt: createdAt ?? this.createdAt,
+      tenantId: tenantId ?? this.tenantId,
+      userId: userId ?? this.userId,
+      deviceId: deviceId ?? this.deviceId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (entityType.present) {
+      map['entity_type'] = Variable<String>(entityType.value);
+    }
+    if (entityId.present) {
+      map['entity_id'] = Variable<String>(entityId.value);
+    }
+    if (action.present) {
+      map['action'] = Variable<String>(action.value);
+    }
+    if (details.present) {
+      map['details'] = Variable<String>(details.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (tenantId.present) {
+      map['tenant_id'] = Variable<String>(tenantId.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ClinicalAuditEventsCompanion(')
+          ..write('id: $id, ')
+          ..write('entityType: $entityType, ')
+          ..write('entityId: $entityId, ')
+          ..write('action: $action, ')
+          ..write('details: $details, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('deviceId: $deviceId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3265,6 +4792,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $LocalPatientsTable localPatients = $LocalPatientsTable(this);
   late final $LocalDiagnosesTable localDiagnoses = $LocalDiagnosesTable(this);
   late final $SyncQueueTable syncQueue = $SyncQueueTable(this);
+  late final $EncryptedXrayArtifactsTable encryptedXrayArtifacts =
+      $EncryptedXrayArtifactsTable(this);
+  late final $ClinicalAuditEventsTable clinicalAuditEvents =
+      $ClinicalAuditEventsTable(this);
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -3274,6 +4805,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     localPatients,
     localDiagnoses,
     syncQueue,
+    encryptedXrayArtifacts,
+    clinicalAuditEvents,
     appSettings,
   ];
 }
@@ -3716,6 +5249,9 @@ typedef $$LocalDiagnosesTableCreateCompanionBuilder =
       Value<String?> imageReference,
       Value<String> provenance,
       Value<bool> isMock,
+      Value<String> patientSnapshot,
+      Value<String> clinicalSnapshot,
+      Value<String> saveStatus,
       Value<int> rowid,
     });
 typedef $$LocalDiagnosesTableUpdateCompanionBuilder =
@@ -3741,6 +5277,9 @@ typedef $$LocalDiagnosesTableUpdateCompanionBuilder =
       Value<String?> imageReference,
       Value<String> provenance,
       Value<bool> isMock,
+      Value<String> patientSnapshot,
+      Value<String> clinicalSnapshot,
+      Value<String> saveStatus,
       Value<int> rowid,
     });
 
@@ -3855,6 +5394,21 @@ class $$LocalDiagnosesTableFilterComposer
 
   ColumnFilters<bool> get isMock => $composableBuilder(
     column: $table.isMock,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get patientSnapshot => $composableBuilder(
+    column: $table.patientSnapshot,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get clinicalSnapshot => $composableBuilder(
+    column: $table.clinicalSnapshot,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get saveStatus => $composableBuilder(
+    column: $table.saveStatus,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -3972,6 +5526,21 @@ class $$LocalDiagnosesTableOrderingComposer
     column: $table.isMock,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get patientSnapshot => $composableBuilder(
+    column: $table.patientSnapshot,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get clinicalSnapshot => $composableBuilder(
+    column: $table.clinicalSnapshot,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get saveStatus => $composableBuilder(
+    column: $table.saveStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LocalDiagnosesTableAnnotationComposer
@@ -4067,6 +5636,21 @@ class $$LocalDiagnosesTableAnnotationComposer
 
   GeneratedColumn<bool> get isMock =>
       $composableBuilder(column: $table.isMock, builder: (column) => column);
+
+  GeneratedColumn<String> get patientSnapshot => $composableBuilder(
+    column: $table.patientSnapshot,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get clinicalSnapshot => $composableBuilder(
+    column: $table.clinicalSnapshot,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get saveStatus => $composableBuilder(
+    column: $table.saveStatus,
+    builder: (column) => column,
+  );
 }
 
 class $$LocalDiagnosesTableTableManager
@@ -4123,6 +5707,9 @@ class $$LocalDiagnosesTableTableManager
                 Value<String?> imageReference = const Value.absent(),
                 Value<String> provenance = const Value.absent(),
                 Value<bool> isMock = const Value.absent(),
+                Value<String> patientSnapshot = const Value.absent(),
+                Value<String> clinicalSnapshot = const Value.absent(),
+                Value<String> saveStatus = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalDiagnosesCompanion(
                 id: id,
@@ -4146,6 +5733,9 @@ class $$LocalDiagnosesTableTableManager
                 imageReference: imageReference,
                 provenance: provenance,
                 isMock: isMock,
+                patientSnapshot: patientSnapshot,
+                clinicalSnapshot: clinicalSnapshot,
+                saveStatus: saveStatus,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4171,6 +5761,9 @@ class $$LocalDiagnosesTableTableManager
                 Value<String?> imageReference = const Value.absent(),
                 Value<String> provenance = const Value.absent(),
                 Value<bool> isMock = const Value.absent(),
+                Value<String> patientSnapshot = const Value.absent(),
+                Value<String> clinicalSnapshot = const Value.absent(),
+                Value<String> saveStatus = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalDiagnosesCompanion.insert(
                 id: id,
@@ -4194,6 +5787,9 @@ class $$LocalDiagnosesTableTableManager
                 imageReference: imageReference,
                 provenance: provenance,
                 isMock: isMock,
+                patientSnapshot: patientSnapshot,
+                clinicalSnapshot: clinicalSnapshot,
+                saveStatus: saveStatus,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -4235,6 +5831,7 @@ typedef $$SyncQueueTableCreateCompanionBuilder =
       Value<DateTime?> baseUpdatedAt,
       Value<String> status,
       Value<String?> detail,
+      Value<String?> serverPayload,
       Value<int> retryCount,
       Value<DateTime?> nextAttemptAt,
       required DateTime createdAt,
@@ -4255,6 +5852,7 @@ typedef $$SyncQueueTableUpdateCompanionBuilder =
       Value<DateTime?> baseUpdatedAt,
       Value<String> status,
       Value<String?> detail,
+      Value<String?> serverPayload,
       Value<int> retryCount,
       Value<DateTime?> nextAttemptAt,
       Value<DateTime> createdAt,
@@ -4328,6 +5926,11 @@ class $$SyncQueueTableFilterComposer
 
   ColumnFilters<String> get detail => $composableBuilder(
     column: $table.detail,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get serverPayload => $composableBuilder(
+    column: $table.serverPayload,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4421,6 +6024,11 @@ class $$SyncQueueTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get serverPayload => $composableBuilder(
+    column: $table.serverPayload,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get retryCount => $composableBuilder(
     column: $table.retryCount,
     builder: (column) => ColumnOrderings(column),
@@ -4495,6 +6103,11 @@ class $$SyncQueueTableAnnotationComposer
   GeneratedColumn<String> get detail =>
       $composableBuilder(column: $table.detail, builder: (column) => column);
 
+  GeneratedColumn<String> get serverPayload => $composableBuilder(
+    column: $table.serverPayload,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get retryCount => $composableBuilder(
     column: $table.retryCount,
     builder: (column) => column,
@@ -4555,6 +6168,7 @@ class $$SyncQueueTableTableManager
                 Value<DateTime?> baseUpdatedAt = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> detail = const Value.absent(),
+                Value<String?> serverPayload = const Value.absent(),
                 Value<int> retryCount = const Value.absent(),
                 Value<DateTime?> nextAttemptAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -4573,6 +6187,7 @@ class $$SyncQueueTableTableManager
                 baseUpdatedAt: baseUpdatedAt,
                 status: status,
                 detail: detail,
+                serverPayload: serverPayload,
                 retryCount: retryCount,
                 nextAttemptAt: nextAttemptAt,
                 createdAt: createdAt,
@@ -4593,6 +6208,7 @@ class $$SyncQueueTableTableManager
                 Value<DateTime?> baseUpdatedAt = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> detail = const Value.absent(),
+                Value<String?> serverPayload = const Value.absent(),
                 Value<int> retryCount = const Value.absent(),
                 Value<DateTime?> nextAttemptAt = const Value.absent(),
                 required DateTime createdAt,
@@ -4611,6 +6227,7 @@ class $$SyncQueueTableTableManager
                 baseUpdatedAt: baseUpdatedAt,
                 status: status,
                 detail: detail,
+                serverPayload: serverPayload,
                 retryCount: retryCount,
                 nextAttemptAt: nextAttemptAt,
                 createdAt: createdAt,
@@ -4640,6 +6257,673 @@ typedef $$SyncQueueTableProcessedTableManager =
         BaseReferences<_$AppDatabase, $SyncQueueTable, SyncQueueData>,
       ),
       SyncQueueData,
+      PrefetchHooks Function()
+    >;
+typedef $$EncryptedXrayArtifactsTableCreateCompanionBuilder =
+    EncryptedXrayArtifactsCompanion Function({
+      required String id,
+      required Uint8List cipherText,
+      required Uint8List nonce,
+      required Uint8List mac,
+      required String filename,
+      required String mimeType,
+      required String source,
+      required String checksum,
+      required int sizeBytes,
+      required DateTime createdAt,
+      Value<String?> tenantId,
+      Value<String?> userId,
+      Value<String?> deviceId,
+      Value<int> rowid,
+    });
+typedef $$EncryptedXrayArtifactsTableUpdateCompanionBuilder =
+    EncryptedXrayArtifactsCompanion Function({
+      Value<String> id,
+      Value<Uint8List> cipherText,
+      Value<Uint8List> nonce,
+      Value<Uint8List> mac,
+      Value<String> filename,
+      Value<String> mimeType,
+      Value<String> source,
+      Value<String> checksum,
+      Value<int> sizeBytes,
+      Value<DateTime> createdAt,
+      Value<String?> tenantId,
+      Value<String?> userId,
+      Value<String?> deviceId,
+      Value<int> rowid,
+    });
+
+class $$EncryptedXrayArtifactsTableFilterComposer
+    extends Composer<_$AppDatabase, $EncryptedXrayArtifactsTable> {
+  $$EncryptedXrayArtifactsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get cipherText => $composableBuilder(
+    column: $table.cipherText,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get nonce => $composableBuilder(
+    column: $table.nonce,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get mac => $composableBuilder(
+    column: $table.mac,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get filename => $composableBuilder(
+    column: $table.filename,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mimeType => $composableBuilder(
+    column: $table.mimeType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get checksum => $composableBuilder(
+    column: $table.checksum,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$EncryptedXrayArtifactsTableOrderingComposer
+    extends Composer<_$AppDatabase, $EncryptedXrayArtifactsTable> {
+  $$EncryptedXrayArtifactsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get cipherText => $composableBuilder(
+    column: $table.cipherText,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get nonce => $composableBuilder(
+    column: $table.nonce,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get mac => $composableBuilder(
+    column: $table.mac,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get filename => $composableBuilder(
+    column: $table.filename,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mimeType => $composableBuilder(
+    column: $table.mimeType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get checksum => $composableBuilder(
+    column: $table.checksum,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$EncryptedXrayArtifactsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $EncryptedXrayArtifactsTable> {
+  $$EncryptedXrayArtifactsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<Uint8List> get cipherText => $composableBuilder(
+    column: $table.cipherText,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<Uint8List> get nonce =>
+      $composableBuilder(column: $table.nonce, builder: (column) => column);
+
+  GeneratedColumn<Uint8List> get mac =>
+      $composableBuilder(column: $table.mac, builder: (column) => column);
+
+  GeneratedColumn<String> get filename =>
+      $composableBuilder(column: $table.filename, builder: (column) => column);
+
+  GeneratedColumn<String> get mimeType =>
+      $composableBuilder(column: $table.mimeType, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get checksum =>
+      $composableBuilder(column: $table.checksum, builder: (column) => column);
+
+  GeneratedColumn<int> get sizeBytes =>
+      $composableBuilder(column: $table.sizeBytes, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get tenantId =>
+      $composableBuilder(column: $table.tenantId, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+}
+
+class $$EncryptedXrayArtifactsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $EncryptedXrayArtifactsTable,
+          EncryptedXrayArtifact,
+          $$EncryptedXrayArtifactsTableFilterComposer,
+          $$EncryptedXrayArtifactsTableOrderingComposer,
+          $$EncryptedXrayArtifactsTableAnnotationComposer,
+          $$EncryptedXrayArtifactsTableCreateCompanionBuilder,
+          $$EncryptedXrayArtifactsTableUpdateCompanionBuilder,
+          (
+            EncryptedXrayArtifact,
+            BaseReferences<
+              _$AppDatabase,
+              $EncryptedXrayArtifactsTable,
+              EncryptedXrayArtifact
+            >,
+          ),
+          EncryptedXrayArtifact,
+          PrefetchHooks Function()
+        > {
+  $$EncryptedXrayArtifactsTableTableManager(
+    _$AppDatabase db,
+    $EncryptedXrayArtifactsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$EncryptedXrayArtifactsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$EncryptedXrayArtifactsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$EncryptedXrayArtifactsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<Uint8List> cipherText = const Value.absent(),
+                Value<Uint8List> nonce = const Value.absent(),
+                Value<Uint8List> mac = const Value.absent(),
+                Value<String> filename = const Value.absent(),
+                Value<String> mimeType = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String> checksum = const Value.absent(),
+                Value<int> sizeBytes = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> tenantId = const Value.absent(),
+                Value<String?> userId = const Value.absent(),
+                Value<String?> deviceId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => EncryptedXrayArtifactsCompanion(
+                id: id,
+                cipherText: cipherText,
+                nonce: nonce,
+                mac: mac,
+                filename: filename,
+                mimeType: mimeType,
+                source: source,
+                checksum: checksum,
+                sizeBytes: sizeBytes,
+                createdAt: createdAt,
+                tenantId: tenantId,
+                userId: userId,
+                deviceId: deviceId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required Uint8List cipherText,
+                required Uint8List nonce,
+                required Uint8List mac,
+                required String filename,
+                required String mimeType,
+                required String source,
+                required String checksum,
+                required int sizeBytes,
+                required DateTime createdAt,
+                Value<String?> tenantId = const Value.absent(),
+                Value<String?> userId = const Value.absent(),
+                Value<String?> deviceId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => EncryptedXrayArtifactsCompanion.insert(
+                id: id,
+                cipherText: cipherText,
+                nonce: nonce,
+                mac: mac,
+                filename: filename,
+                mimeType: mimeType,
+                source: source,
+                checksum: checksum,
+                sizeBytes: sizeBytes,
+                createdAt: createdAt,
+                tenantId: tenantId,
+                userId: userId,
+                deviceId: deviceId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$EncryptedXrayArtifactsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $EncryptedXrayArtifactsTable,
+      EncryptedXrayArtifact,
+      $$EncryptedXrayArtifactsTableFilterComposer,
+      $$EncryptedXrayArtifactsTableOrderingComposer,
+      $$EncryptedXrayArtifactsTableAnnotationComposer,
+      $$EncryptedXrayArtifactsTableCreateCompanionBuilder,
+      $$EncryptedXrayArtifactsTableUpdateCompanionBuilder,
+      (
+        EncryptedXrayArtifact,
+        BaseReferences<
+          _$AppDatabase,
+          $EncryptedXrayArtifactsTable,
+          EncryptedXrayArtifact
+        >,
+      ),
+      EncryptedXrayArtifact,
+      PrefetchHooks Function()
+    >;
+typedef $$ClinicalAuditEventsTableCreateCompanionBuilder =
+    ClinicalAuditEventsCompanion Function({
+      required String id,
+      required String entityType,
+      required String entityId,
+      required String action,
+      Value<String> details,
+      required DateTime createdAt,
+      Value<String?> tenantId,
+      Value<String?> userId,
+      Value<String?> deviceId,
+      Value<int> rowid,
+    });
+typedef $$ClinicalAuditEventsTableUpdateCompanionBuilder =
+    ClinicalAuditEventsCompanion Function({
+      Value<String> id,
+      Value<String> entityType,
+      Value<String> entityId,
+      Value<String> action,
+      Value<String> details,
+      Value<DateTime> createdAt,
+      Value<String?> tenantId,
+      Value<String?> userId,
+      Value<String?> deviceId,
+      Value<int> rowid,
+    });
+
+class $$ClinicalAuditEventsTableFilterComposer
+    extends Composer<_$AppDatabase, $ClinicalAuditEventsTable> {
+  $$ClinicalAuditEventsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get entityType => $composableBuilder(
+    column: $table.entityType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get entityId => $composableBuilder(
+    column: $table.entityId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get action => $composableBuilder(
+    column: $table.action,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get details => $composableBuilder(
+    column: $table.details,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ClinicalAuditEventsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ClinicalAuditEventsTable> {
+  $$ClinicalAuditEventsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get entityType => $composableBuilder(
+    column: $table.entityType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get entityId => $composableBuilder(
+    column: $table.entityId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get action => $composableBuilder(
+    column: $table.action,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get details => $composableBuilder(
+    column: $table.details,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ClinicalAuditEventsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ClinicalAuditEventsTable> {
+  $$ClinicalAuditEventsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get entityType => $composableBuilder(
+    column: $table.entityType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get entityId =>
+      $composableBuilder(column: $table.entityId, builder: (column) => column);
+
+  GeneratedColumn<String> get action =>
+      $composableBuilder(column: $table.action, builder: (column) => column);
+
+  GeneratedColumn<String> get details =>
+      $composableBuilder(column: $table.details, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get tenantId =>
+      $composableBuilder(column: $table.tenantId, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+}
+
+class $$ClinicalAuditEventsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ClinicalAuditEventsTable,
+          ClinicalAuditEvent,
+          $$ClinicalAuditEventsTableFilterComposer,
+          $$ClinicalAuditEventsTableOrderingComposer,
+          $$ClinicalAuditEventsTableAnnotationComposer,
+          $$ClinicalAuditEventsTableCreateCompanionBuilder,
+          $$ClinicalAuditEventsTableUpdateCompanionBuilder,
+          (
+            ClinicalAuditEvent,
+            BaseReferences<
+              _$AppDatabase,
+              $ClinicalAuditEventsTable,
+              ClinicalAuditEvent
+            >,
+          ),
+          ClinicalAuditEvent,
+          PrefetchHooks Function()
+        > {
+  $$ClinicalAuditEventsTableTableManager(
+    _$AppDatabase db,
+    $ClinicalAuditEventsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ClinicalAuditEventsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ClinicalAuditEventsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ClinicalAuditEventsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> entityType = const Value.absent(),
+                Value<String> entityId = const Value.absent(),
+                Value<String> action = const Value.absent(),
+                Value<String> details = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> tenantId = const Value.absent(),
+                Value<String?> userId = const Value.absent(),
+                Value<String?> deviceId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ClinicalAuditEventsCompanion(
+                id: id,
+                entityType: entityType,
+                entityId: entityId,
+                action: action,
+                details: details,
+                createdAt: createdAt,
+                tenantId: tenantId,
+                userId: userId,
+                deviceId: deviceId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String entityType,
+                required String entityId,
+                required String action,
+                Value<String> details = const Value.absent(),
+                required DateTime createdAt,
+                Value<String?> tenantId = const Value.absent(),
+                Value<String?> userId = const Value.absent(),
+                Value<String?> deviceId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ClinicalAuditEventsCompanion.insert(
+                id: id,
+                entityType: entityType,
+                entityId: entityId,
+                action: action,
+                details: details,
+                createdAt: createdAt,
+                tenantId: tenantId,
+                userId: userId,
+                deviceId: deviceId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ClinicalAuditEventsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ClinicalAuditEventsTable,
+      ClinicalAuditEvent,
+      $$ClinicalAuditEventsTableFilterComposer,
+      $$ClinicalAuditEventsTableOrderingComposer,
+      $$ClinicalAuditEventsTableAnnotationComposer,
+      $$ClinicalAuditEventsTableCreateCompanionBuilder,
+      $$ClinicalAuditEventsTableUpdateCompanionBuilder,
+      (
+        ClinicalAuditEvent,
+        BaseReferences<
+          _$AppDatabase,
+          $ClinicalAuditEventsTable,
+          ClinicalAuditEvent
+        >,
+      ),
+      ClinicalAuditEvent,
       PrefetchHooks Function()
     >;
 typedef $$AppSettingsTableCreateCompanionBuilder =
@@ -4791,6 +7075,13 @@ class $AppDatabaseManager {
       $$LocalDiagnosesTableTableManager(_db, _db.localDiagnoses);
   $$SyncQueueTableTableManager get syncQueue =>
       $$SyncQueueTableTableManager(_db, _db.syncQueue);
+  $$EncryptedXrayArtifactsTableTableManager get encryptedXrayArtifacts =>
+      $$EncryptedXrayArtifactsTableTableManager(
+        _db,
+        _db.encryptedXrayArtifacts,
+      );
+  $$ClinicalAuditEventsTableTableManager get clinicalAuditEvents =>
+      $$ClinicalAuditEventsTableTableManager(_db, _db.clinicalAuditEvents);
   $$AppSettingsTableTableManager get appSettings =>
       $$AppSettingsTableTableManager(_db, _db.appSettings);
 }

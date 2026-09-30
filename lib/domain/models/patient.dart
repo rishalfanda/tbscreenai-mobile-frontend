@@ -2,6 +2,7 @@
 class Patient {
   const Patient({
     required this.id,
+    this.serverId,
     required this.name,
     required this.age,
     required this.gender,
@@ -12,6 +13,10 @@ class Patient {
   });
 
   final String id;
+
+  /// Backend UUID. [id] remains the human-readable patient code used by the
+  /// existing UI; clinical writes must use this server identifier.
+  final String? serverId;
   final String name;
   final int age;
   final String gender;
@@ -22,6 +27,7 @@ class Patient {
 
   Patient copyWith({
     String? id,
+    String? serverId,
     String? name,
     int? age,
     String? gender,
@@ -32,6 +38,7 @@ class Patient {
   }) {
     return Patient(
       id: id ?? this.id,
+      serverId: serverId ?? this.serverId,
       name: name ?? this.name,
       age: age ?? this.age,
       gender: gender ?? this.gender,
