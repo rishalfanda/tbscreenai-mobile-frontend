@@ -1,7 +1,7 @@
 # Handover Tim Frontend TBScreenAI
 
-**Update terbaru:** baca [handoff Sprint 1 — 28 September
-2026](SPRINT_1_2026-09-28.md) lebih dahulu. Status 31 Agustus tetap tersedia di
+**Update terbaru:** baca [handoff Sprint 2 — 30 September
+2026](SPRINT_2_2026-09-30.md), lalu [Sprint 1](SPRINT_1_2026-09-28.md). Status 31 Agustus tetap tersedia di
 [STATUS_2026-08-31.md](STATUS_2026-08-31.md) sebagai baseline historis.
 Handbook dan backlog di bawah menyimpan baseline 20 Agustus; sebagian masalah
 form, kamera, navigasi, session, migration, sync, patient list, dan validation

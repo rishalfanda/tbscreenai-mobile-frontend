@@ -9,10 +9,13 @@ import 'package:myapp/core/config/scroll_behavior.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/data/http/http_repositories.dart';
 import 'package:myapp/data/local/app_database.dart';
+import 'package:myapp/data/local/encrypted_xray_store.dart';
 import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/mock/mock_repositories.dart';
 import 'package:myapp/data/offline/offline_patient_repository.dart';
+import 'package:myapp/data/offline/offline_screening_store.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
+import 'package:myapp/data/offline/offline_validation_repository.dart';
 import 'package:myapp/data/secure/secure_token_storage.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/repositories/repositories.dart';
@@ -41,8 +44,8 @@ class TBScreenApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Toggle Mock ↔ Http/Offline per repository via --dart-define=USE_HTTP=true.
-    // Dashboard/Validation/Dataset stay mock — those backend endpoints do not
-    // exist yet. Diagnosis no longer does: /diagnoses/infer is live.
+    // HTTP mode uses live inference and durable offline doctor validation.
+    // Dashboard/Dataset remain mock pending their Sprint 3 API contracts.
     final useHttp = useHttpOverride ?? AppConfig.useHttp;
     final db = database ?? AppDatabase();
     final secureStorage = secureTokenStorage ?? MemorySecureTokenStorage();
@@ -68,6 +71,22 @@ class TBScreenApp extends StatelessWidget {
             settings: c.read<SettingsStore>(),
           ),
         ),
+        if (useHttp)
+          Provider<EncryptedXrayStore>(
+            create: (c) => EncryptedXrayStore(
+              db: db,
+              secureStorage: c.read<SecureTokenStorage>(),
+            ),
+          ),
+        if (useHttp)
+          Provider<ScreeningStore>(
+            create: (c) => OfflineScreeningStore(
+              db: db,
+              syncEngine: c.read<SyncEngine>(),
+              xrayStore: c.read<EncryptedXrayStore>(),
+              deviceId: c.read<SettingsStore>().readOrCreateDeviceId,
+            ),
+          ),
         // === Section: Repositories ===
         Provider<AuthRepository>(
           create: (c) => useHttp
@@ -100,7 +119,13 @@ class TBScreenApp extends StatelessWidget {
               : MockDiagnosisRepository(),
         ),
         Provider<ValidationRepository>(
-          create: (_) => MockValidationRepository(),
+          create: (c) => useHttp
+              ? OfflineValidationRepository(
+                  db: db,
+                  client: c.read<ApiClient>(),
+                  syncEngine: c.read<SyncEngine>(),
+                )
+              : MockValidationRepository(),
         ),
         Provider<DatasetRepository>(create: (_) => MockDatasetRepository()),
         // === Section: State providers (depend on interfaces only) ===
@@ -108,10 +133,16 @@ class TBScreenApp extends StatelessWidget {
           create: (context) => AuthProvider(context.read<AuthRepository>()),
         ),
         ChangeNotifierProvider(
-          create: (context) => DiagnosisProvider(
-            context.read<DiagnosisRepository>(),
-            session: context.read<AuthProvider>(),
-          ),
+          create: (context) {
+            final auth = context.read<AuthProvider>();
+            return DiagnosisProvider(
+              context.read<DiagnosisRepository>(),
+              screeningStore: useHttp ? context.read<ScreeningStore>() : null,
+              deviceId: context.read<SettingsStore>().readOrCreateDeviceId,
+              session: auth,
+              hasActiveSession: () => auth.isLoggedIn,
+            );
+          },
         ),
         ChangeNotifierProvider(
           create: (context) =>

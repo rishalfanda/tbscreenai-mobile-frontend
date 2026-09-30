@@ -26,6 +26,11 @@ class ValidationCase {
     required this.aiScore,
     required this.diagnosisDate,
     required this.status,
+    this.patientId,
+    this.serverVersion,
+    this.hasConflict = false,
+    this.syncState = 'saved',
+    this.isMock = false,
     this.doctorNote,
     this.xrayUrl,
     this.heatmapUrl,
@@ -42,6 +47,11 @@ class ValidationCase {
 
   /// "pending" | "agreed" | "disagreed"
   final String status;
+  final String? patientId;
+  final int? serverVersion;
+  final bool hasConflict;
+  final String syncState;
+  final bool isMock;
   final String? doctorNote;
   final String? xrayUrl;
   final String? heatmapUrl;
@@ -50,6 +60,9 @@ class ValidationCase {
   ValidationCase copyWith({
     String? status,
     String? doctorNote,
+    bool? hasConflict,
+    String? syncState,
+    int? serverVersion,
   }) {
     return ValidationCase(
       id: id,
@@ -60,6 +73,11 @@ class ValidationCase {
       aiScore: aiScore,
       diagnosisDate: diagnosisDate,
       status: status ?? this.status,
+      patientId: patientId,
+      serverVersion: serverVersion ?? this.serverVersion,
+      hasConflict: hasConflict ?? this.hasConflict,
+      syncState: syncState ?? this.syncState,
+      isMock: isMock,
       doctorNote: doctorNote ?? this.doctorNote,
       xrayUrl: xrayUrl,
       heatmapUrl: heatmapUrl,

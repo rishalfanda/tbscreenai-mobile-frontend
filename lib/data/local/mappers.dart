@@ -32,6 +32,7 @@ LocalPatientsCompanion patientRowFromJson(Map<String, dynamic> json) {
 Patient patientFromRow(LocalPatient row) {
   return Patient(
     id: row.code,
+    serverId: row.id,
     name: row.name,
     age: row.age,
     gender: row.gender,
@@ -75,13 +76,19 @@ LocalDiagnosesCompanion diagnosisRowFromJson(Map<String, dynamic> json) {
     tenantId: Value(json['tenant_id'] as String?),
     serverVersion: Value((json['version'] as num?)?.toInt()),
     tombstone: Value(json['deleted_at'] != null),
-    imageReference: Value(json['image_path'] as String?),
-    provenance: Value(
-      jsonEncode({
-        'model_version': json['model_version'],
-        'created_by': json['created_by'],
-      }),
-    ),
-    isMock: Value(json['is_mock'] != false),
+    // A null server image_path must not erase an encrypted local reference.
+    imageReference: json['image_path'] is String
+        ? Value(json['image_path'] as String)
+        : const Value.absent(),
+    // The current backend DiagnosisOut has no is_mock/provenance fields. Keep
+    // local provenance when updating an existing row; a new remote-only row
+    // falls back to the table's fail-closed is_mock=true default.
+    provenance: json['provenance'] is Map
+        ? Value(jsonEncode(json['provenance']))
+        : const Value.absent(),
+    isMock: json['is_mock'] is bool
+        ? Value(json['is_mock'] as bool)
+        : const Value.absent(),
+    saveStatus: const Value('saved'),
   );
 }

@@ -102,7 +102,25 @@ class SyncEngine {
     );
   }
 
-  Future<void> enqueueDiagnosisStatus(
+  Future<String> enqueueDiagnosisCreate(
+    String entityId,
+    Map<String, dynamic> payload,
+  ) async {
+    final clientOpId = uuidV4();
+    await _db.enqueue(
+      SyncQueueCompanion.insert(
+        clientOpId: clientOpId,
+        entityType: 'diagnosis',
+        entityId: entityId,
+        operation: 'create',
+        payload: jsonEncode(payload),
+        createdAt: _now().toUtc(),
+      ),
+    );
+    return clientOpId;
+  }
+
+  Future<String> enqueueDiagnosisStatus(
     String entityId, {
     required String status,
     String? doctorNote,
@@ -112,9 +130,10 @@ class SyncEngine {
     final cached = baseVersion == null
         ? await _db.findDiagnosis(entityId)
         : null;
+    final clientOpId = uuidV4();
     await _db.enqueue(
       SyncQueueCompanion.insert(
-        clientOpId: uuidV4(),
+        clientOpId: clientOpId,
         entityType: 'diagnosis',
         entityId: entityId,
         operation: 'update',
@@ -124,6 +143,7 @@ class SyncEngine {
         createdAt: _now().toUtc(),
       ),
     );
+    return clientOpId;
   }
 
   Future<int> pendingCount() => _db.countPending();
@@ -220,9 +240,15 @@ class SyncEngine {
           case 'applied':
             applied++;
             await _db.markOp(opId, syncSynced);
+            if (op.entityType == 'diagnosis' && op.operation == 'create') {
+              await _db.updateDiagnosisSaveStatus(op.entityId, 'saved');
+            }
           case 'skipped':
             skipped++;
             await _db.markOp(opId, syncSynced, detail: detail);
+            if (op.entityType == 'diagnosis' && op.operation == 'create') {
+              await _db.updateDiagnosisSaveStatus(op.entityId, 'saved');
+            }
           case 'conflict':
             conflicts++;
             await _db.markOp(opId, syncConflict, detail: detail);
@@ -230,6 +256,9 @@ class SyncEngine {
               await _db.markPatientConflict(op.entityId, true);
             } else if (op.entityType == 'diagnosis') {
               await _db.markDiagnosisConflict(op.entityId, true);
+              if (op.operation == 'create') {
+                await _db.updateDiagnosisSaveStatus(op.entityId, 'conflict');
+              }
             }
         }
       });
@@ -337,10 +366,12 @@ class SyncEngine {
     String detail,
   ) async {
     for (final op in ops) {
-      await _db.writeForSession(
-        session,
-        () => _db.markOp(op.clientOpId, syncPermanentFailure, detail: detail),
-      );
+      await _db.writeForSession(session, () async {
+        await _db.markOp(op.clientOpId, syncPermanentFailure, detail: detail);
+        if (op.entityType == 'diagnosis' && op.operation == 'create') {
+          await _db.updateDiagnosisSaveStatus(op.entityId, 'failed');
+        }
+      });
     }
   }
 

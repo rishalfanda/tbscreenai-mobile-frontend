@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/patient.dart';
 import 'package:myapp/domain/repositories/patient_repository.dart';
 import 'package:myapp/features/shared/presentation/widgets/widgets.dart';
+import 'package:myapp/state/diagnosis_provider.dart';
 
 class PatientsScreen extends StatefulWidget {
   const PatientsScreen({super.key});
@@ -270,7 +272,38 @@ class _PatientsScreenState extends State<PatientsScreen> {
                                         ],
                                       ),
                                     ),
-                                    StatusBadge.forStatus(_selected!.status),
+                                    Flexible(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          OutlinedButton.icon(
+                                            onPressed:
+                                                _selected!.serverId == null
+                                                ? null
+                                                : () {
+                                                    context
+                                                        .read<
+                                                          DiagnosisProvider
+                                                        >()
+                                                        .selectPatient(
+                                                          _selected!,
+                                                        );
+                                                    context.go('/diagnosis');
+                                                  },
+                                            icon: const Icon(
+                                              Icons.biotech_rounded,
+                                              size: 18,
+                                            ),
+                                            label: const Text('Screen patient'),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          StatusBadge.forStatus(
+                                            _selected!.status,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),

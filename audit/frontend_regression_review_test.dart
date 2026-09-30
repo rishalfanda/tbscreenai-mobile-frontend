@@ -195,6 +195,10 @@ void main() {
     addTearDown(provider.dispose);
     client.dio.httpClientAdapter = Adapter((_) => jsonBody(responseJson));
     provider.updatePatientName('Patient A');
+    provider.updateGender('Female');
+    provider.updateAge(34);
+    provider.updateHeight(160);
+    provider.updateWeight(55);
     provider.attachPlaceholderImage('audit.png');
     expect(await provider.runDiagnosis(), isTrue);
     provider.updatePatientName('Patient B');
@@ -204,6 +208,11 @@ void main() {
   test('R06 completion after reset cannot restore an old outcome', () async {
     final repo = DelayedInference();
     final provider = DiagnosisProvider(repo)
+      ..updatePatientName('Patient A')
+      ..updateGender('Female')
+      ..updateAge(34)
+      ..updateHeight(160)
+      ..updateWeight(55)
       ..attachPlaceholderImage('audit.png');
     addTearDown(provider.dispose);
     final running = provider.runDiagnosis();
@@ -389,6 +398,11 @@ void main() {
       );
       try {
         final provider = DiagnosisProvider(HttpDiagnosisRepository(local))
+          ..updatePatientName('Patient A')
+          ..updateGender('Female')
+          ..updateAge(34)
+          ..updateHeight(160)
+          ..updateWeight(55)
           ..attachPlaceholderImage('audit.png');
         final success = await provider.runDiagnosis();
         provider.dispose();
@@ -444,6 +458,11 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final provider = DiagnosisProvider(MockDiagnosisRepository())
+      ..updatePatientName('Patient A')
+      ..updateGender('Female')
+      ..updateAge(34)
+      ..updateHeight(160)
+      ..updateWeight(55)
       ..attachPlaceholderImage('audit.png');
     final running = provider.runDiagnosis();
     await tester.pump(const Duration(seconds: 3));

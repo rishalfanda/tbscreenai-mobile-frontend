@@ -1,36 +1,66 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:myapp/domain/models/diagnosis_draft.dart';
+import 'package:myapp/domain/models/diagnosis_inference_request.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
+import 'package:myapp/domain/models/patient.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/domain/models/screening_result.dart';
 import 'package:myapp/domain/repositories/diagnosis_repository.dart';
+import 'package:myapp/domain/repositories/screening_store.dart';
 
 class DiagnosisProvider extends ChangeNotifier {
-  DiagnosisProvider(this._diagnosisRepository, {Listenable? session})
-    : _session = session {
-    _session?.addListener(resetForNewDiagnosis);
+  DiagnosisProvider(
+    this._diagnosisRepository, {
+    ScreeningStore? screeningStore,
+    Future<String> Function()? deviceId,
+    Listenable? session,
+    bool Function()? hasActiveSession,
+  }) : _screeningStore = screeningStore,
+       _deviceId = deviceId,
+       _session = session,
+       _hasActiveSession = hasActiveSession {
+    _session?.addListener(_onSessionChanged);
   }
 
   final Listenable? _session;
+  final bool Function()? _hasActiveSession;
 
   final DiagnosisRepository _diagnosisRepository;
+  final ScreeningStore? _screeningStore;
+  final Future<String> Function()? _deviceId;
 
   DiagnosisDraft _draft = const DiagnosisDraft();
   ScreeningResult? _lastResult;
   int _generation = 0;
   bool _disposed = false;
+  StreamSubscription<ScreeningSaveStatus>? _saveSubscription;
 
   ScreeningResult? get lastResult => _lastResult;
   DiagnosisOutcome? get lastOutcome => _lastResult?.outcome;
+  ScreeningSaveStatus get saveStatus =>
+      _lastResult?.saveStatus ?? ScreeningSaveStatus.unsaved;
+  String? get persistenceError => _lastResult?.persistenceError;
+  bool get requiresLeaveConfirmation =>
+      _lastResult?.requiresLeaveConfirmation ?? false;
 
   @visibleForTesting
   set lastOutcome(DiagnosisOutcome? value) {
     _lastResult = value == null
         ? null
-        : ScreeningResult(draft: _draft, outcome: value);
+        : ScreeningResult(
+            draft: _draft,
+            outcome: value,
+            saveStatus: value.isMock
+                ? ScreeningSaveStatus.demo
+                : ScreeningSaveStatus.unsaved,
+          );
   }
 
   bool isRunning = false;
+  bool isSaving = false;
+  bool isRestoring = false;
   String? lastError;
 
   DiagnosisDraft get draft => _draft;
@@ -59,6 +89,18 @@ class DiagnosisProvider extends ChangeNotifier {
   String? get imageLabel => image?.filename;
   bool get requiresPediatricScore => _draft.requiresPediatricScore;
   bool get canAnalyze => _draft.canAnalyze && !isRunning;
+
+  void selectPatient(Patient patient) {
+    _replace(
+      _draft.copyWith(
+        patientId: patient.serverId,
+        patientCode: patient.id,
+        patientName: patient.name,
+        age: patient.age,
+        gender: patient.gender,
+      ),
+    );
+  }
 
   double? get bmi {
     if (heightCm == null || weightKg == null || heightCm == 0) return null;
@@ -187,25 +229,49 @@ class DiagnosisProvider extends ChangeNotifier {
 
   Future<bool> runDiagnosis() async {
     if (_disposed || isRunning) return false;
-    final attached = image;
-    if (attached == null || attached.isEmpty) {
-      lastError = 'Select or capture a chest X-ray before analysis.';
+    final generation = ++_generation;
+    final input = _draft.copyWith();
+    isRunning = true;
+    lastError = null;
+    notifyListeners();
+    late final DiagnosisInferenceRequest request;
+    try {
+      request = DiagnosisInferenceRequest.fromDraft(
+        draft: input,
+        deviceId: _deviceId == null ? 'local-device' : await _deviceId(),
+      );
+    } catch (error) {
+      if (_disposed || generation != _generation) return false;
+      isRunning = false;
+      lastError = error is DiagnosisRequestValidationException
+          ? error.message
+          : 'Device registration failed. Reconnect and try again.';
       notifyListeners();
       return false;
     }
-
-    final generation = ++_generation;
-    final input = _draft.copyWith();
+    if (_disposed || generation != _generation) return false;
     _lastResult = null;
     isRunning = true;
     lastError = null;
     notifyListeners();
 
     try {
-      final outcome = await _diagnosisRepository.runInference(image: attached);
+      final outcome = _diagnosisRepository is TypedDiagnosisRepository
+          ? await (_diagnosisRepository as TypedDiagnosisRepository)
+                .runTypedInference(request)
+          : await _diagnosisRepository.runInference(image: request.image);
       if (_disposed || generation != _generation) return false;
-      _lastResult = ScreeningResult(draft: input, outcome: outcome);
-      return true;
+      _lastResult = ScreeningResult(
+        draft: input,
+        outcome: outcome,
+        saveStatus: outcome.isMock
+            ? ScreeningSaveStatus.demo
+            : ScreeningSaveStatus.unsaved,
+      );
+      if (!outcome.isMock && _screeningStore != null) {
+        await _persistCurrent(generation);
+      }
+      return !_disposed && generation == _generation;
     } catch (_) {
       if (_disposed || generation != _generation) return false;
       _lastResult = null;
@@ -219,16 +285,99 @@ class DiagnosisProvider extends ChangeNotifier {
     }
   }
 
+  Future<bool> saveCurrentResult() async {
+    if (_disposed ||
+        isSaving ||
+        _lastResult == null ||
+        _screeningStore == null) {
+      return false;
+    }
+    if (_lastResult!.outcome.isMock) return false;
+    if ({
+      ScreeningSaveStatus.pendingSync,
+      ScreeningSaveStatus.saved,
+    }.contains(_lastResult!.saveStatus)) {
+      return true;
+    }
+    final generation = _generation;
+    await _persistCurrent(generation);
+    return _lastResult != null &&
+        _lastResult!.saveStatus != ScreeningSaveStatus.failed;
+  }
+
+  Future<void> _persistCurrent(int generation) async {
+    final current = _lastResult;
+    final store = _screeningStore;
+    if (current == null || store == null) return;
+    isSaving = true;
+    _lastResult = current.copyWith(
+      saveStatus: ScreeningSaveStatus.saving,
+      persistenceError: null,
+    );
+    notifyListeners();
+    try {
+      final persisted = await store.persist(current);
+      if (_disposed || generation != _generation) return;
+      _lastResult = persisted;
+      _watchSaveStatus(persisted, generation);
+    } catch (error) {
+      if (_disposed || generation != _generation) return;
+      _lastResult = current.copyWith(
+        saveStatus: ScreeningSaveStatus.failed,
+        persistenceError: error.toString(),
+      );
+    } finally {
+      if (!_disposed && generation == _generation) {
+        isSaving = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> restoreLatest() async {
+    final store = _screeningStore;
+    if (_disposed || store == null || isRestoring) return;
+    final generation = _generation;
+    isRestoring = true;
+    try {
+      final restored = await store.restoreLatest();
+      if (_disposed || generation != _generation || restored == null) return;
+      _draft = restored.draft.copyWith();
+      _lastResult = restored;
+      _watchSaveStatus(restored, generation);
+      lastError = null;
+    } catch (error) {
+      if (_disposed || generation != _generation) return;
+      lastError = 'Saved screening could not be restored: $error';
+    } finally {
+      if (!_disposed && generation == _generation) {
+        isRestoring = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  void _onSessionChanged() {
+    resetForNewDiagnosis();
+    if (_hasActiveSession?.call() == true) unawaited(restoreLatest());
+  }
+
   void resetForNewDiagnosis() {
+    unawaited(_saveSubscription?.cancel());
+    _saveSubscription = null;
     _generation++;
     _draft = const DiagnosisDraft();
     _lastResult = null;
     lastError = null;
     isRunning = false;
+    isSaving = false;
+    isRestoring = false;
     notifyListeners();
   }
 
   void _replace(DiagnosisDraft value) {
+    unawaited(_saveSubscription?.cancel());
+    _saveSubscription = null;
     _generation++;
     _lastResult = null;
     isRunning = false;
@@ -239,11 +388,28 @@ class DiagnosisProvider extends ChangeNotifier {
 
   @override
   void dispose() {
-    _session?.removeListener(resetForNewDiagnosis);
+    unawaited(_saveSubscription?.cancel());
+    _session?.removeListener(_onSessionChanged);
     _disposed = true;
     _generation++;
     _lastResult = null;
     _draft = const DiagnosisDraft();
     super.dispose();
+  }
+
+  void _watchSaveStatus(ScreeningResult result, int generation) {
+    unawaited(_saveSubscription?.cancel());
+    if (result.id == null || _screeningStore == null) return;
+    _saveSubscription = _screeningStore.watchSaveStatus(result.id!).listen((
+      status,
+    ) {
+      if (_disposed ||
+          generation != _generation ||
+          _lastResult?.id != result.id) {
+        return;
+      }
+      _lastResult = _lastResult!.copyWith(saveStatus: status);
+      notifyListeners();
+    }, onError: (Object _) {});
   }
 }

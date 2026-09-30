@@ -48,9 +48,19 @@ class DataOwner {
 
 /// Offline-first device database.
 ///
-/// v2 adds explicit owner/version/retry metadata. Session secrets live in
-/// platform secure storage and are never written here.
-@DriftDatabase(tables: [LocalPatients, LocalDiagnoses, SyncQueue, AppSettings])
+/// v2 adds explicit owner/version/retry metadata. v3 adds durable screening
+/// snapshots, encrypted X-ray artifacts and conflict-resolution audit events.
+/// Session secrets and artifact keys live in platform secure storage.
+@DriftDatabase(
+  tables: [
+    LocalPatients,
+    LocalDiagnoses,
+    SyncQueue,
+    EncryptedXrayArtifacts,
+    ClinicalAuditEvents,
+    AppSettings,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
     : super(
@@ -67,7 +77,7 @@ class AppDatabase extends _$AppDatabase {
       );
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   int _sessionGeneration = 0;
   DataOwner? _activeOwner;
@@ -82,6 +92,7 @@ class AppDatabase extends _$AppDatabase {
     onCreate: (m) => m.createAll(),
     onUpgrade: (m, from, to) async {
       if (from < 2) await _migrateV1ToV2(m);
+      if (from < 3) await _migrateV2ToV3(m);
     },
     beforeOpen: (details) async {
       // A process crash can leave an op in sending. The same client_op_id is
@@ -176,6 +187,17 @@ class AppDatabase extends _$AppDatabase {
       updates: {syncQueue},
     );
     await _deleteLegacyTokenRows();
+  }
+
+  Future<void> _migrateV2ToV3(Migrator m) async {
+    // Expand-only migration: existing clinical rows and queue entries remain
+    // readable while new fields receive safe defaults.
+    await m.addColumn(localDiagnoses, localDiagnoses.patientSnapshot);
+    await m.addColumn(localDiagnoses, localDiagnoses.clinicalSnapshot);
+    await m.addColumn(localDiagnoses, localDiagnoses.saveStatus);
+    await m.addColumn(syncQueue, syncQueue.serverPayload);
+    await m.createTable(encryptedXrayArtifacts);
+    await m.createTable(clinicalAuditEvents);
   }
 
   Future<String?> _rawSetting(String key) async {
@@ -381,6 +403,44 @@ class AppDatabase extends _$AppDatabase {
     return query.get();
   }
 
+  Stream<List<LocalDiagnose>> watchDiagnoses() {
+    final query = select(localDiagnoses)
+      ..where((t) => t.tombstone.equals(false))
+      ..orderBy([(t) => OrderingTerm.desc(t.diagnosedAt)]);
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query.watch();
+  }
+
+  Future<LocalDiagnose?> latestDurableDiagnosis() {
+    final query = select(localDiagnoses)
+      ..where(
+        (t) =>
+            t.tombstone.equals(false) &
+            t.patientSnapshot.equals('{}').not() &
+            t.clinicalSnapshot.equals('{}').not(),
+      )
+      ..orderBy([(t) => OrderingTerm.desc(t.diagnosedAt)])
+      ..limit(1);
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query.getSingleOrNull();
+  }
+
   Future<void> upsertDiagnosis(LocalDiagnosesCompanion row) {
     return into(localDiagnoses).insertOnConflictUpdate(_ownDiagnosis(row));
   }
@@ -468,7 +528,100 @@ class AppDatabase extends _$AppDatabase {
     return statement.write(LocalDiagnosesCompanion(hasConflict: Value(value)));
   }
 
+  Future<void> updateDiagnosisSaveStatus(String id, String status) {
+    final statement = update(localDiagnoses)..where((t) => t.id.equals(id));
+    final owner = _activeOwner;
+    if (owner != null) {
+      statement.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return statement.write(LocalDiagnosesCompanion(saveStatus: Value(status)));
+  }
+
+  Future<void> updateDiagnosisValidation(
+    String id, {
+    required String status,
+    String? doctorNote,
+    int? serverVersion,
+    DateTime? updatedAt,
+    bool? hasConflict,
+  }) {
+    final statement = update(localDiagnoses)..where((t) => t.id.equals(id));
+    final owner = _activeOwner;
+    if (owner != null) {
+      statement.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return statement.write(
+      LocalDiagnosesCompanion(
+        status: Value(status),
+        doctorNote: Value(doctorNote),
+        serverVersion: serverVersion == null
+            ? const Value.absent()
+            : Value(serverVersion),
+        updatedAt: updatedAt == null
+            ? const Value.absent()
+            : Value(updatedAt.toUtc()),
+        hasConflict: hasConflict == null
+            ? const Value.absent()
+            : Value(hasConflict),
+      ),
+    );
+  }
+
   Future<int> countDiagnoses() async => (await allDiagnoses()).length;
+
+  // === Section: Encrypted clinical artifacts ===
+
+  Future<void> upsertEncryptedArtifact(EncryptedXrayArtifactsCompanion row) {
+    return into(
+      encryptedXrayArtifacts,
+    ).insertOnConflictUpdate(_ownArtifact(row));
+  }
+
+  Future<EncryptedXrayArtifact?> findEncryptedArtifact(String id) {
+    final query = select(encryptedXrayArtifacts)..where((t) => t.id.equals(id));
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query.getSingleOrNull();
+  }
+
+  // === Section: Clinical audit evidence ===
+
+  Future<void> appendClinicalAudit(ClinicalAuditEventsCompanion event) {
+    return into(clinicalAuditEvents).insert(_ownAuditEvent(event));
+  }
+
+  Future<List<ClinicalAuditEvent>> clinicalAuditFor(String entityId) {
+    final query = select(clinicalAuditEvents)
+      ..where((t) => t.entityId.equals(entityId))
+      ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]);
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query.get();
+  }
 
   // === Section: Sync queue ===
 
@@ -560,6 +713,28 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  Future<SyncQueueData?> findOperation(String clientOpId) {
+    final query = select(syncQueue)
+      ..where((t) => t.clientOpId.equals(clientOpId));
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query.getSingleOrNull();
+  }
+
+  Future<void> saveConflictServerPayload(String clientOpId, String payload) {
+    final statement = update(syncQueue)
+      ..where((t) => t.clientOpId.equals(clientOpId));
+    _scopeOperation(statement);
+    return statement.write(SyncQueueCompanion(serverPayload: Value(payload)));
+  }
+
   Future<void> markOpSending(String clientOpId) {
     final statement = update(syncQueue)
       ..where((t) => t.clientOpId.equals(clientOpId));
@@ -631,6 +806,8 @@ class AppDatabase extends _$AppDatabase {
     b.deleteWhere(localPatients, (_) => const Constant(true));
     b.deleteWhere(localDiagnoses, (_) => const Constant(true));
     b.deleteWhere(syncQueue, (_) => const Constant(true));
+    b.deleteWhere(encryptedXrayArtifacts, (_) => const Constant(true));
+    b.deleteWhere(clinicalAuditEvents, (_) => const Constant(true));
   });
 
   Future<void> _deleteIdentitySettings() async {
@@ -652,7 +829,13 @@ class AppDatabase extends _$AppDatabase {
       Variable.withString(owner.userId),
       Variable.withString(owner.deviceId),
     ];
-    for (final table in ['local_patients', 'local_diagnoses', 'sync_queue']) {
+    for (final table in [
+      'local_patients',
+      'local_diagnoses',
+      'sync_queue',
+      'encrypted_xray_artifacts',
+      'clinical_audit_events',
+    ]) {
       await customUpdate(
         'UPDATE $table SET tenant_id = ?, user_id = ?, device_id = ? '
         'WHERE tenant_id IS NULL AND user_id IS NULL',
@@ -682,6 +865,30 @@ class AppDatabase extends _$AppDatabase {
   }
 
   SyncQueueCompanion _ownOperation(SyncQueueCompanion row) {
+    final owner = _activeOwner;
+    if (owner == null) return row;
+    return row.copyWith(
+      tenantId: Value(owner.tenantId),
+      userId: Value(owner.userId),
+      deviceId: Value(owner.deviceId),
+    );
+  }
+
+  EncryptedXrayArtifactsCompanion _ownArtifact(
+    EncryptedXrayArtifactsCompanion row,
+  ) {
+    final owner = _activeOwner;
+    if (owner == null) return row;
+    return row.copyWith(
+      tenantId: Value(owner.tenantId),
+      userId: Value(owner.userId),
+      deviceId: Value(owner.deviceId),
+    );
+  }
+
+  ClinicalAuditEventsCompanion _ownAuditEvent(
+    ClinicalAuditEventsCompanion row,
+  ) {
     final owner = _activeOwner;
     if (owner == null) return row;
     return row.copyWith(

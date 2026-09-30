@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
+import 'package:myapp/state/diagnosis_provider.dart';
 
 /// Persistent navigation shell shared by all primary screens (ShellRoute).
 /// Collapsible tablet rail and modal navigation on compact Android windows.
@@ -39,17 +42,24 @@ class _AppShellState extends State<AppShell> {
   int _pendingCount = 0;
   bool _railVisible = true;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  StreamSubscription<int>? _pendingSubscription;
 
   @override
   void initState() {
     super.initState();
-    // Mock repository resolves synchronously, so the badge is correct on the
-    // very first frame — same as reading the static list pre-refactor.
-    context.read<ValidationRepository>().getCases().then((cases) {
-      final count = cases.where((c) => c.status == 'pending').length;
-      if (!mounted) return;
-      setState(() => _pendingCount = count);
-    });
+    _pendingSubscription = context
+        .read<ValidationRepository>()
+        .watchPendingCount()
+        .listen((count) {
+          if (!mounted) return;
+          setState(() => _pendingCount = count);
+        }, onError: (Object _) {});
+  }
+
+  @override
+  void dispose() {
+    unawaited(_pendingSubscription?.cancel());
+    super.dispose();
   }
 
   @override
@@ -60,7 +70,31 @@ class _AppShellState extends State<AppShell> {
 
     final compact = MediaQuery.sizeOf(context).width < 840;
     final index = selectedIndex < 0 ? 0 : selectedIndex;
-    void navigate(String route) {
+    Future<void> navigate(String route) async {
+      if (route == widget.location) return;
+      if (widget.location == '/result' &&
+          context.read<DiagnosisProvider>().requiresLeaveConfirmation) {
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Leave this screening?'),
+            content: const Text(
+              'This result is not yet synced. Pending local data stays in the queue; an unsaved result needs saving before starting another screening.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Stay'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Continue'),
+              ),
+            ],
+          ),
+        );
+        if (proceed != true || !context.mounted) return;
+      }
       _scaffoldKey.currentState?.closeDrawer();
       context.go(route);
     }

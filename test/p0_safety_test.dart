@@ -115,6 +115,10 @@ void main() {
     final repo = _Inference();
     final provider = DiagnosisProvider(repo)
       ..updatePatientName('Patient A')
+      ..updateGender('Female')
+      ..updateAge(34)
+      ..updateHeight(160)
+      ..updateWeight(55)
       ..attachPlaceholderImage('A.png');
     addTearDown(provider.dispose);
     final running = provider.runDiagnosis();
@@ -129,11 +133,23 @@ void main() {
 
   test('F01 old completion cannot replace a newer run after reset', () async {
     final repo = _Inference();
-    final provider = DiagnosisProvider(repo)..attachPlaceholderImage('A.png');
+    final provider = DiagnosisProvider(repo)
+      ..updatePatientName('Patient A')
+      ..updateGender('Female')
+      ..updateAge(34)
+      ..updateHeight(160)
+      ..updateWeight(55)
+      ..attachPlaceholderImage('A.png');
     addTearDown(provider.dispose);
     final first = provider.runDiagnosis();
     provider.resetForNewDiagnosis();
-    provider.attachPlaceholderImage('B.png');
+    provider
+      ..updatePatientName('Patient B')
+      ..updateGender('Female')
+      ..updateAge(35)
+      ..updateHeight(160)
+      ..updateWeight(55)
+      ..attachPlaceholderImage('B.png');
     final second = provider.runDiagnosis();
     repo.calls.first.complete(_outcome());
     expect(await first, isFalse);
@@ -146,7 +162,13 @@ void main() {
 
   test('F01 disposed provider ignores completion without notifying', () async {
     final repo = _Inference();
-    final provider = DiagnosisProvider(repo)..attachPlaceholderImage('A.png');
+    final provider = DiagnosisProvider(repo)
+      ..updatePatientName('Patient A')
+      ..updateGender('Female')
+      ..updateAge(34)
+      ..updateHeight(160)
+      ..updateWeight(55)
+      ..attachPlaceholderImage('A.png');
     final running = provider.runDiagnosis();
     provider.dispose();
     repo.calls.single.complete(_outcome());
@@ -295,20 +317,25 @@ void main() {
 
   for (final flag in [true, false, null]) {
     test(
-      'F03 HTTP preserves provenance is_mock=$flag; unknown is demo',
+      'F03 HTTP preserves provenance is_mock=$flag; missing provenance rejected',
       () async {
         client.dio.httpClientAdapter = _Adapter(
           (_) => _json({
             'is_positive': true,
             'confidence': 87,
             'model_version': 'test',
+            'processing_time_ms': 1000,
             'is_mock': ?flag,
           }),
         );
-        final result = await HttpDiagnosisRepository(
+        final pending = HttpDiagnosisRepository(
           client,
         ).runInference(image: XrayImage.placeholder());
-        expect(result.isMock, flag != false);
+        if (flag == null) {
+          await expectLater(pending, throwsFormatException);
+        } else {
+          expect((await pending).isMock, flag);
+        }
       },
     );
   }
@@ -343,7 +370,13 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       final repo = _Inference();
-      final provider = DiagnosisProvider(repo)..attachPlaceholderImage('A.png');
+      final provider = DiagnosisProvider(repo)
+        ..updatePatientName('Patient A')
+        ..updateGender('Female')
+        ..updateAge(34)
+        ..updateHeight(160)
+        ..updateWeight(55)
+        ..attachPlaceholderImage('A.png');
       final pending = provider.runDiagnosis();
       repo.calls.single.complete(_outcome());
       await pending;

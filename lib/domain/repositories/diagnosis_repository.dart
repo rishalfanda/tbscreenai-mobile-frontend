@@ -1,3 +1,4 @@
+import 'package:myapp/domain/models/diagnosis_inference_request.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 
@@ -12,4 +13,10 @@ abstract class DiagnosisRepository {
   /// the backend's `/diagnoses/infer` had never been called by any client,
   /// despite both sides claiming to implement it.
   Future<DiagnosisOutcome> runInference({required XrayImage image});
+}
+
+/// Opt-in typed contract used by repositories that can carry the full draft.
+/// Legacy/demo fakes keep implementing [DiagnosisRepository] unchanged.
+abstract interface class TypedDiagnosisRepository {
+  Future<DiagnosisOutcome> runTypedInference(DiagnosisInferenceRequest request);
 }

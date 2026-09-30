@@ -60,6 +60,14 @@ class LocalDiagnoses extends Table {
   TextColumn get provenance => text().withDefault(const Constant('{}'))();
   BoolColumn get isMock => boolean().withDefault(const Constant(true))();
 
+  /// Versioned snapshots keep the displayed Result tied to the exact patient
+  /// and clinical inputs used for inference, even after a process restart.
+  TextColumn get patientSnapshot => text().withDefault(const Constant('{}'))();
+  TextColumn get clinicalSnapshot => text().withDefault(const Constant('{}'))();
+
+  /// unsaved | pending_sync | saved | conflict | failed
+  TextColumn get saveStatus => text().withDefault(const Constant('unsaved'))();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -94,6 +102,10 @@ class SyncQueue extends Table {
 
   /// Server or protocol explanation for conflict/failure.
   TextColumn get detail => text().nullable()();
+
+  /// Authoritative server snapshot fetched for manual conflict resolution.
+  /// Never auto-applied to clinical fields.
+  TextColumn get serverPayload => text().nullable()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
   DateTimeColumn get nextAttemptAt => dateTime().nullable()();
   DateTimeColumn get createdAt => dateTime()();
@@ -101,6 +113,46 @@ class SyncQueue extends Table {
 
   @override
   Set<Column> get primaryKey => {clientOpId};
+}
+
+/// Encrypted-at-rest X-ray payloads referenced by [LocalDiagnoses].
+///
+/// The AES key is held in platform secure storage. SQLite only receives the
+/// ciphertext, nonce and authentication tag; logout deletes these rows with
+/// the rest of the owner-scoped clinical cache.
+class EncryptedXrayArtifacts extends Table {
+  TextColumn get id => text()();
+  BlobColumn get cipherText => blob()();
+  BlobColumn get nonce => blob()();
+  BlobColumn get mac => blob()();
+  TextColumn get filename => text()();
+  TextColumn get mimeType => text()();
+  TextColumn get source => text()();
+  TextColumn get checksum => text()();
+  IntColumn get sizeBytes => integer()();
+  DateTimeColumn get createdAt => dateTime()();
+  TextColumn get tenantId => text().nullable()();
+  TextColumn get userId => text().nullable()();
+  TextColumn get deviceId => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Append-only local audit evidence for explicit conflict decisions.
+class ClinicalAuditEvents extends Table {
+  TextColumn get id => text()();
+  TextColumn get entityType => text()();
+  TextColumn get entityId => text()();
+  TextColumn get action => text()();
+  TextColumn get details => text().withDefault(const Constant('{}'))();
+  DateTimeColumn get createdAt => dateTime()();
+  TextColumn get tenantId => text().nullable()();
+  TextColumn get userId => text().nullable()();
+  TextColumn get deviceId => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 /// Key/value store for non-secret device/session metadata. JWT token keys are
