@@ -8,13 +8,12 @@ X-ray, run an (simulated) AI analysis, review the result, validate the AI's
 prediction, manage training datasets, and sync the model — all from a single
 tablet-optimized interface.
 
-> **Current status (31 August 2026): technical demo with partial backend integration,
-> not a clinical release.** Default builds use mock repositories. With
-> `USE_HTTP=true`, auth and inference use HTTP while patients/sync use offline
-> repositories; dashboard, validation and datasets still use mocks.
-> See the [current handoff status](docs/handoff/STATUS_2026-08-31.md) for verified
-> changes and remaining limitations. Historical UI descriptions below are not
-> evidence of end-to-end persistence or clinical readiness.
+> **Sprint 3 status: technical demo / guarded staging, not a clinical release.**
+> Demo uses synthetic repositories only. Staging uses HTTPS HTTP/offline adapters;
+> dashboard/dataset APIs, model installation and PHI export remain unavailable.
+> Production variants are disabled until the clinical gate is approved.
+> See [Sprint 3 status](docs/sprint-3-status.md) and the
+> [review patch checklist](docs/sprint-3-patch-checklist.md).
 
 > 📘 **New here / non-developer?** A step-by-step, printable **Setup & Run Guide**
 > (clone from GitHub → run on your own computer or tablet → view the interface) is
@@ -104,26 +103,27 @@ flutter run -d chrome
 
 ```bash
 flutter devices          # find your device id
-flutter run -d <device>
+flutter run -d <device> --flavor demo --dart-define=APP_ENV=demo
 ```
 
-**HTTP mode on Android emulator (requires a running local backend):**
+**Staging on Android emulator (requires an approved HTTPS backend):**
 
 ```bash
-flutter run -d emulator-5554 --dart-define=USE_HTTP=true --dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1
+flutter run -d emulator-5554 --flavor staging --dart-define=APP_ENV=staging --dart-define=API_BASE_URL=https://YOUR-STAGING-HOST/api/v1
 ```
 
-These are build-time settings, not remote config. HTTP mode does not remove all
-mock screens and is not sufficient to make a production-safe build.
+These are build-time settings. Demo cannot connect to a backend. Staging does
+not establish clinical readiness.
 
 ### Build a demo artifact
 
 ```bash
-flutter build web       # or: flutter build apk / appbundle
+flutter build web
+flutter build apk --flavor demo --dart-define=APP_ENV=demo
 ```
 
-Without explicit configuration these commands retain mock mode, even in release.
-Do not distribute them for clinical use; production flavor and safety gates remain open.
+Demo artifacts contain synthetic data and are not for clinical use. Production
+variants are disabled and production builds are rejected.
 
 ### Lint / analyze
 

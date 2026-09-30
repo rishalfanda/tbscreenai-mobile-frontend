@@ -12,6 +12,7 @@ import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/encrypted_xray_store.dart';
 import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/mock/mock_repositories.dart';
+import 'package:myapp/data/unavailable_repositories.dart';
 import 'package:myapp/data/offline/offline_patient_repository.dart';
 import 'package:myapp/data/offline/offline_screening_store.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
@@ -43,10 +44,11 @@ class TBScreenApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Toggle Mock ↔ Http/Offline per repository via --dart-define=USE_HTTP=true.
-    // HTTP mode uses live inference and durable offline doctor validation.
-    // Dashboard/Dataset remain mock pending their Sprint 3 API contracts.
+    // Live environments bind only HTTP/offline or unavailable repositories.
     final useHttp = useHttpOverride ?? AppConfig.useHttp;
+    if (useHttp != AppConfig.useHttp) {
+      throw StateError('Repository override must match APP_ENV.');
+    }
     final db = database ?? AppDatabase();
     final secureStorage = secureTokenStorage ?? MemorySecureTokenStorage();
 
@@ -112,7 +114,11 @@ class TBScreenApp extends StatelessWidget {
                 )
               : MockSyncRepository(),
         ),
-        Provider<DashboardRepository>(create: (_) => MockDashboardRepository()),
+        Provider<DashboardRepository>(
+          create: (_) => useHttp
+              ? UnavailableDashboardRepository()
+              : MockDashboardRepository(),
+        ),
         Provider<DiagnosisRepository>(
           create: (c) => useHttp
               ? HttpDiagnosisRepository(c.read<ApiClient>())
@@ -127,7 +133,11 @@ class TBScreenApp extends StatelessWidget {
                 )
               : MockValidationRepository(),
         ),
-        Provider<DatasetRepository>(create: (_) => MockDatasetRepository()),
+        Provider<DatasetRepository>(
+          create: (_) => useHttp
+              ? UnavailableDatasetRepository()
+              : MockDatasetRepository(),
+        ),
         // === Section: State providers (depend on interfaces only) ===
         ChangeNotifierProvider(
           create: (context) => AuthProvider(context.read<AuthRepository>()),
@@ -195,7 +205,7 @@ class _RouterViewState extends State<_RouterView> {
       theme: AppTheme.lightTheme,
       routerConfig: _router,
       builder: (context, child) => Banner(
-        message: 'DEMO',
+        message: AppConfig.isDemo ? 'DEMO - SYNTHETIC' : 'STAGING',
         location: BannerLocation.topEnd,
         child: child!,
       ),

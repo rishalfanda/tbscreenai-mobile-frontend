@@ -6,8 +6,18 @@ import 'package:myapp/domain/models/sync_summary.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 
 const _monthsId = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
 ];
 
 /// "2025-06-10" → "10 Juni 2025" (display format the mock already used).
@@ -17,28 +27,22 @@ String _formatDateId(String isoDate) {
   return '${parsed.day} ${_monthsId[parsed.month - 1]} ${parsed.year}';
 }
 
-/// Live Sync Center backend.
-///
-/// SCOPE FASE 3 (explicit cuts, wired for real in FASE 4):
-/// - installed model version is a device-local fact; without local storage it
-///   is fixed at v1.2.0 here.
-/// - downloadModel / uploadPatients still emit the same simulated progress as
-///   the mock — the real file download (download_url) and the /sync/push queue
-///   need the FASE 4 local database.
+/// Legacy HTTP adapter; artifact installation and unqueued uploads are disabled.
 class HttpSyncRepository implements SyncRepository {
   HttpSyncRepository(this._client);
 
   final ApiClient _client;
 
-  static const _installedVersion = 'v1.2.0';
+  static const _installedVersion = 'Not installed';
 
   @override
   Future<String> getInstalledModelVersion() async => _installedVersion;
 
   @override
   Future<ModelVersionInfo> checkForUpdate() async {
-    final response =
-        await _client.dio.get<Map<String, dynamic>?>('/sync/model-version');
+    final response = await _client.dio.get<Map<String, dynamic>?>(
+      '/sync/model-version',
+    );
     final data = response.data;
     if (data == null) {
       // No release published yet — report "up to date".
@@ -61,13 +65,9 @@ class HttpSyncRepository implements SyncRepository {
 
   @override
   Stream<double> downloadModel() async* {
-    // Simulated progress (see class doc) — cadence identical to the mock.
-    var progress = 0.0;
-    while (progress < 1.0) {
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      progress += 0.05;
-      yield progress.clamp(0.0, 1.0);
-    }
+    throw UnsupportedError(
+      'Model installation disabled: signed artifact distribution unavailable.',
+    );
   }
 
   @override
@@ -96,12 +96,6 @@ class HttpSyncRepository implements SyncRepository {
 
   @override
   Stream<int> uploadPatients(List<String> patientIds) async* {
-    // Simulated per-patient progress (see class doc) — real push queue in FASE 4.
-    var uploaded = 0;
-    while (uploaded < patientIds.length) {
-      await Future<void>.delayed(const Duration(milliseconds: 800));
-      uploaded++;
-      yield uploaded;
-    }
+    throw UnsupportedError('Use the durable offline sync queue.');
   }
 }

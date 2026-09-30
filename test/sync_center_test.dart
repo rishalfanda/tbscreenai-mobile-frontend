@@ -28,35 +28,17 @@ void main() {
     addTearDown(tester.view.reset);
   }
 
-  group('ModelUpdateCard state machine', () {
-    testWidgets('starts idle with a check button', (tester) async {
-      sizeTablet(tester);
-      await tester.pumpWidget(_wrap());
-      await tester.pump();
-
-      expect(find.text('Periksa Pembaruan Model'), findsOneWidget);
-      expect(find.text('Perbarui Sekarang'), findsNothing);
-    });
-
-    testWidgets('idle → checking → updateAvailable shows version table',
-        (tester) async {
-      sizeTablet(tester);
-      await tester.pumpWidget(_wrap());
-      await tester.pump();
-
-      await tester.tap(find.text('Periksa Pembaruan Model'));
-      await tester.pump(); // enter checking
-
-      expect(find.text('Memeriksa server...'), findsOneWidget);
-
-      // Mock resolves the check after 2s.
-      await tester.pump(const Duration(seconds: 2));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Versi Baru Tersedia'), findsOneWidget);
-      expect(find.text('Perbarui Sekarang'), findsOneWidget);
-      expect(find.text('v1.3.1'), findsOneWidget);
-    });
+  testWidgets('model installation disabled until verified artifacts exist', (
+    tester,
+  ) async {
+    sizeTablet(tester);
+    await tester.pumpWidget(_wrap());
+    await tester.pump();
+    final button = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, 'Download unavailable'),
+    );
+    expect(button.onPressed, isNull);
+    expect(find.text('Perbarui Sekarang'), findsNothing);
   });
 
   group('DataBackupCard consent dialog', () {
@@ -68,8 +50,9 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('opens with Lanjutkan disabled until consent is checked',
-        (tester) async {
+    testWidgets('opens with Lanjutkan disabled until consent is checked', (
+      tester,
+    ) async {
       await openDialog(tester);
 
       expect(find.text('Konfirmasi Pengiriman Data'), findsOneWidget);

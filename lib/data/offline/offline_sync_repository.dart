@@ -85,25 +85,11 @@ class OfflineSyncRepository implements SyncRepository {
     );
   }
 
-  /// Emits download progress, then records the new version on this device.
-  ///
-  /// SCOPE: the model binary itself is not fetched yet — the backend exposes
-  /// `download_url` but serves no file. What IS real now is that the installed
-  /// version persists, so the next check compares against the right baseline.
+  /// Fail closed until verified artifact distribution is available.
   @override
   Stream<double> downloadModel() async* {
-    final session = _db.sessionGeneration;
-    final info = await checkForUpdate();
-    var progress = 0.0;
-    while (progress < 1.0) {
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      if (session != _db.sessionGeneration) return;
-      progress += 0.05;
-      yield progress.clamp(0.0, 1.0);
-    }
-    await _db.writeForSession(
-      session,
-      () => _settings.saveInstalledModelVersion(info.latestVersion),
+    throw UnsupportedError(
+      'Model installation disabled: signed artifact distribution unavailable.',
     );
   }
 

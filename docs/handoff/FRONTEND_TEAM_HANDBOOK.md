@@ -17,17 +17,16 @@ C:\Users\devel\flutter\bin\flutter.bat test
 Demo UI berbasis mock — bukan uji integrasi:
 
 ```powershell
-C:\Users\devel\flutter\bin\flutter.bat run -d emulator-5554
+C:\Users\devel\flutter\bin\flutter.bat run -d emulator-5554 --flavor demo --dart-define=APP_ENV=demo
 ```
 
 Integrasi backend melalui Android emulator:
 
 ```powershell
-adb reverse tcp:8000 tcp:8000
-C:\Users\devel\flutter\bin\flutter.bat run -d emulator-5554 --dart-define=USE_HTTP=true --dart-define=API_BASE_URL=http://127.0.0.1:8000/api/v1
+C:\Users\devel\flutter\bin\flutter.bat run -d emulator-5554 --flavor staging --dart-define=APP_ENV=staging --dart-define=API_BASE_URL=https://YOUR-STAGING-HOST/api/v1
 ```
 
-Alternatif tanpa `adb reverse`: gunakan `http://10.0.2.2:8000/api/v1`. Pastikan backend sudah berjalan dan health check lulus.
+Staging wajib memakai HTTPS dan API versioned. Demo hanya memakai data sintetis; production masih terkunci.
 
 Baseline saat handover: 40 test lulus. Baseline bukan bukti flow klinis sudah production-ready.
 

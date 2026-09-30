@@ -36,12 +36,7 @@ class DashboardProvider extends ChangeNotifier {
     'Last 6 months',
   ];
 
-  final List<String> institutions = [
-    'All Institutions',
-    'RS. Sardjito',
-    'RS. Bethesda',
-    'RS. PKU Muhammadiyah',
-  ];
+  final List<String> institutions = ['All Institutions'];
 
   final List<String> distributionFilters = [
     'All Cases',
@@ -98,7 +93,7 @@ class DashboardProvider extends ChangeNotifier {
     notifyListeners();
 
     // Simulate API delay
-    await Future.delayed(const Duration(milliseconds: 800));
+    _loadDashboardData();
 
     _isLoading = false;
     notifyListeners();

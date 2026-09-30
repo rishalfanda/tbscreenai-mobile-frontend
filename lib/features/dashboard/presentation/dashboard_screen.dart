@@ -1,3 +1,4 @@
+import 'package:myapp/core/config/app_config.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +11,16 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!AppConfig.isDemo || AppConfig.useHttp) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Dashboard aggregation and institution filters unavailable: backend contract pending.',
+          ),
+        ),
+      );
+    }
     return Consumer<DashboardProvider>(
       builder: (context, dashboard, child) {
         return LayoutBuilder(
@@ -705,9 +716,9 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 ),
                 TextButton(
-                  onPressed: () {},
+                  onPressed: null,
                   child: const Text(
-                    'View All',
+                    'Full history unavailable',
                     style: TextStyle(color: AppTheme.primary),
                   ),
                 ),
