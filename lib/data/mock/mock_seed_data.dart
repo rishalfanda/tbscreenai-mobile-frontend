@@ -46,28 +46,28 @@ class MockSeedData {
       timestamp: '2026-04-02 14:30',
       result: 'Negative',
       confidence: 95,
-      institution: 'RS. Sardjito',
+      institution: 'Synthetic Clinic A',
     ),
     ActivityItem(
       name: 'Jane Smith',
       timestamp: '2026-04-02 13:15',
       result: 'Positive',
       confidence: 87,
-      institution: 'RS. Bethesda',
+      institution: 'Synthetic Clinic B',
     ),
     ActivityItem(
       name: 'Mike Johnson',
       timestamp: '2026-04-02 11:45',
       result: 'Negative',
       confidence: 92,
-      institution: 'RS. PKU Muhammadiyah',
+      institution: 'Synthetic Clinic C',
     ),
     ActivityItem(
       name: 'Sarah Williams',
       timestamp: '2026-04-02 10:20',
       result: 'Negative',
       confidence: 89,
-      institution: 'RS. Sardjito',
+      institution: 'Synthetic Clinic A',
     ),
   ];
 

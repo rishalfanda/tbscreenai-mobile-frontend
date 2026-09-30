@@ -1,3 +1,4 @@
+import 'package:myapp/core/config/app_config.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
@@ -56,6 +57,16 @@ class _DatasetScreenState extends State<DatasetScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!AppConfig.isDemo || AppConfig.useHttp) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Dataset access and CRUD unavailable: backend contract and role permissions pending.',
+          ),
+        ),
+      );
+    }
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
         physics: const ClampingScrollPhysics(),
@@ -323,8 +334,8 @@ class _DatasetScreenState extends State<DatasetScreen> {
                   _RowAction(
                     icon: Icons.download_outlined,
                     color: AppTheme.subtitleGrey,
-                    tooltip: "Download",
-                    onPressed: () {},
+                    tooltip: "Download unavailable: export policy pending",
+                    onPressed: null,
                   ),
                   _RowAction(
                     icon: Icons.delete_outline_rounded,
@@ -486,8 +497,8 @@ class _DatasetScreenState extends State<DatasetScreen> {
                 _RowAction(
                   icon: Icons.download_outlined,
                   color: AppTheme.subtitleGrey,
-                  tooltip: "Download",
-                  onPressed: () {},
+                  tooltip: "Download unavailable: export policy pending",
+                  onPressed: null,
                 ),
                 _RowAction(
                   icon: Icons.delete_outline_rounded,
@@ -1726,7 +1737,7 @@ class _RowAction extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String tooltip;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {

@@ -56,7 +56,7 @@ class SettingsStore {
   }
 
   Future<String> readInstalledModelVersion() async =>
-      await _db.getSetting(kInstalledModelVersion) ?? 'v1.2.0';
+      await _db.getSetting('verified_active_model_version') ?? 'Not installed';
 
   Future<void> saveInstalledModelVersion(String version) =>
       _db.putSetting(kInstalledModelVersion, version);

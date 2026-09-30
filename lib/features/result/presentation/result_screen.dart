@@ -1,3 +1,4 @@
+import 'package:myapp/core/config/app_config.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -26,7 +27,21 @@ class ResultScreen extends StatelessWidget {
     // sample unmistakably labelled as dummy data; a real inference outcome
     // always replaces it.
     if (result == null || snapshot == null) {
-      return const _DummyScreeningResultState();
+      if (AppConfig.isDemo) return const _DummyScreeningResultState();
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('No screening result yet.'),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () => context.go('/diagnosis'),
+              icon: const Icon(Icons.biotech_rounded),
+              label: const Text('Mulai Screening'),
+            ),
+          ],
+        ),
+      );
     }
 
     final isPositive = result.isPositive;
