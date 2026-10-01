@@ -2,9 +2,11 @@ import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show DeviceOrientation;
 import 'package:go_router/go_router.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/xray_image.dart';
+import 'package:myapp/features/camera/application/xray_capture_processor.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 import 'package:provider/provider.dart';
 
@@ -105,7 +107,8 @@ class _CameraScreenState extends State<CameraScreen>
     setState(() => _takingPicture = true);
     try {
       final capture = await controller.takePicture();
-      final bytes = await capture.readAsBytes();
+      final rawBytes = await capture.readAsBytes();
+      final bytes = processCapturedXray(rawBytes);
       XrayImage.fromBytes(
         bytes: bytes,
         filename: capture.name,
@@ -202,23 +205,6 @@ class _CameraScreenState extends State<CameraScreen>
                 onPressed: () => context.pop(),
               ),
             ),
-            Positioned(
-              top: 24,
-              left: 0,
-              right: 0,
-              child: const IgnorePointer(
-                child: Text(
-                  'Align the complete chest X-ray inside the frame',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    shadows: [Shadow(color: Colors.black, blurRadius: 8)],
-                  ),
-                ),
-              ),
-            ),
             if (_error != null)
               Positioned(
                 left: 24,
@@ -266,42 +252,86 @@ class _CameraScreenState extends State<CameraScreen>
       children: [
         _coverCameraPreview(_controller!),
         IgnorePointer(
-          child: Center(
-            child: FractionallySizedBox(
-              widthFactor: 0.64,
-              heightFactor: 0.72,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.white70, width: 2),
-                  borderRadius: BorderRadius.circular(20),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final box = maximalCenteredBox(
+                constraints.maxWidth * 0.92,
+                constraints.maxHeight * 0.92,
+                kXrayCropAspectW,
+                kXrayCropAspectH,
+              );
+              return Center(
+                child: SizedBox(
+                  width: box.width,
+                  height: box.height,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white70, width: 2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       ],
     );
   }
 
+  /// Keys the preview's rotation off the camera's live `deviceOrientation`
+  /// (true sensor/accelerometer data) rather than `MediaQuery`, which always
+  /// reports landscape here since the activity is orientation-locked and
+  /// never actually rotates — that mismatch is why the preview used to look
+  /// stretched whenever the tablet was physically held in portrait.
   Widget _coverCameraPreview(CameraController controller) {
     final previewSize = controller.value.previewSize;
     if (previewSize == null) return CameraPreview(controller);
 
-    final landscape =
-        MediaQuery.orientationOf(context) == Orientation.landscape;
-    final width = landscape ? previewSize.height : previewSize.width;
-    final height = landscape ? previewSize.width : previewSize.height;
-
-    return ClipRect(
-      child: FittedBox(
-        fit: BoxFit.cover,
-        child: SizedBox(
-          width: width,
-          height: height,
-          child: CameraPreview(controller),
-        ),
-      ),
+    return ValueListenableBuilder<CameraValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final quarterTurns = _previewQuarterTurns(
+          controller.description,
+          value.deviceOrientation,
+        );
+        return ClipRect(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: RotatedBox(
+              quarterTurns: quarterTurns,
+              child: SizedBox(
+                width: previewSize.width,
+                height: previewSize.height,
+                child: CameraPreview(controller),
+              ),
+            ),
+          ),
+        );
+      },
     );
+  }
+
+  /// Standard sensor-orientation compensation formula (the one Google
+  /// documents for ML Kit camera integration): how many quarter-turns the
+  /// raw camera buffer needs to appear upright for the device's current
+  /// physical orientation, independent of the app's own (locked) UI
+  /// orientation.
+  int _previewQuarterTurns(
+    CameraDescription description,
+    DeviceOrientation orientation,
+  ) {
+    const degreesByOrientation = {
+      DeviceOrientation.portraitUp: 0,
+      DeviceOrientation.landscapeLeft: 90,
+      DeviceOrientation.portraitDown: 180,
+      DeviceOrientation.landscapeRight: 270,
+    };
+    final deviceDegrees = degreesByOrientation[orientation] ?? 0;
+    final compensation = description.lensDirection == CameraLensDirection.front
+        ? (description.sensorOrientation + deviceDegrees) % 360
+        : (description.sensorOrientation - deviceDegrees + 360) % 360;
+    return compensation ~/ 90;
   }
 
   Widget _captureControls() {
