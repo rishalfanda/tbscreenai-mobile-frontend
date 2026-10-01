@@ -33,10 +33,10 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Screening Result (Dummy)'), findsOneWidget);
+    expect(find.text('Hasil Screening (Contoh)'), findsOneWidget);
     expect(find.text('DUMMY / DEMO — BUKAN HASIL KLINIS'), findsOneWidget);
-    expect(find.text('TB Suspected'), findsOneWidget);
-    expect(find.text('TB Detected'), findsNothing);
+    expect(find.text('Diduga TB'), findsOneWidget);
+    expect(find.text('Terdeteksi TB'), findsNothing);
     expect(find.text('85%'), findsNothing);
   });
 
@@ -59,11 +59,39 @@ void main() {
     await tester.pumpWidget(_wrap(provider));
     await tester.pump();
 
-    expect(find.text('Screening Result (Dummy)'), findsNothing);
+    expect(find.text('Hasil Screening (Contoh)'), findsNothing);
     // 73 comes from the outcome; the old code would have shown a hardcoded 85.
     expect(find.text('73%'), findsOneWidget);
     expect(find.text('85%'), findsNothing);
   });
+
+  testWidgets(
+    'a negative verdict displays confidence in "Normal", not confidence in TB',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final provider = DiagnosisProvider(MockDiagnosisRepository())
+        ..lastOutcome = DiagnosisOutcome(
+          isPositive: false,
+          confidence: 73,
+          processingTime: '2.9s',
+          modelVersion: 'TBScreen v2.1.0',
+          createdAt: DateTime(2026, 7, 24, 10, 30),
+        );
+
+      await tester.pumpWidget(_wrap(provider));
+      await tester.pump();
+
+      // The stored value (73, confidence of the TB class) is flipped only
+      // for display since the verdict is Normal — the model stays untouched.
+      expect(find.text('Normal'), findsOneWidget);
+      expect(find.text('27%'), findsOneWidget);
+      expect(find.text('73%'), findsNothing);
+      expect(provider.lastOutcome?.confidence, 73);
+    },
+  );
 
   testWidgets(
     'shows the segmentation toggle and legend when the outcome carries one',
@@ -101,7 +129,7 @@ void main() {
       await tester.pump();
 
       expect(find.byType(SegmentedButton<int>), findsOneWidget);
-      expect(find.text('consolidation · 12 px'), findsOneWidget);
+      expect(find.text('Konsolidasi · 12 px'), findsOneWidget);
     },
   );
 

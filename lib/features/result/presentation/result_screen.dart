@@ -14,6 +14,17 @@ const Color _border = Color(0x1FFFFFFF); // white 12%
 const Color _textHi = Color(0xFFF1F5F9);
 const Color _textLo = Color(0xFF94A3B8);
 
+/// Display-label translation for known lesion classes. `entry.name` itself
+/// (sourced from the bundle manifest) stays in English — only what's shown
+/// is Bahasa Indonesia; an unrecognized class name just falls back as-is.
+const Map<String, String> _lesionNameLabels = {
+  'consolidation': 'Konsolidasi',
+  'cavity': 'Kavitas',
+  'effusion': 'Efusi',
+  'fibrotic': 'Fibrotik',
+  'calcification': 'Kalsifikasi',
+};
+
 class ResultScreen extends StatelessWidget {
   const ResultScreen({super.key});
 
@@ -31,6 +42,12 @@ class ResultScreen extends StatelessWidget {
     }
 
     final isPositive = result.isPositive;
+    // `result.confidence` is stored as-is (the data model is untouched) —
+    // only the displayed figure flips for a negative verdict, so it always
+    // reads as "confidence in the shown verdict" rather than "confidence TB".
+    final displayedConfidence = isPositive
+        ? result.confidence
+        : 100 - result.confidence;
 
     return ColoredBox(
       color: _bg,
@@ -58,7 +75,7 @@ class ResultScreen extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      'Screening Result',
+                      'Hasil Screening',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w800,
@@ -67,14 +84,14 @@ class ResultScreen extends StatelessWidget {
                     ),
                     Row(
                       children: [
-                        _headerButton(Icons.save_rounded, 'Save'),
+                        _headerButton(Icons.save_rounded, 'Simpan'),
                         const SizedBox(width: 12),
                         _headerButton(
                           Icons.picture_as_pdf_rounded,
-                          'Export PDF',
+                          'Ekspor PDF',
                         ),
                         const SizedBox(width: 12),
-                        _headerButton(Icons.print_rounded, 'Print'),
+                        _headerButton(Icons.print_rounded, 'Cetak'),
                       ],
                     ),
                   ],
@@ -106,29 +123,29 @@ class ResultScreen extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const _SectionTitle('Patient Summary'),
+                                const _SectionTitle('Ringkasan Pasien'),
                                 const SizedBox(height: 20),
                                 Wrap(
                                   spacing: 16,
                                   runSpacing: 16,
                                   children: [
-                                    _summaryField('Name', snapshot.patientName),
+                                    _summaryField('Nama', snapshot.patientName),
                                     _summaryField(
-                                      'Gender',
-                                      snapshot.gender ?? 'Not provided',
+                                      'Jenis Kelamin',
+                                      snapshot.gender ?? 'Tidak diisi',
                                     ),
                                     _summaryField(
-                                      'Age',
+                                      'Usia',
                                       snapshot.age?.toString() ?? '-',
                                     ),
                                     _summaryField(
-                                      'Height',
+                                      'Tinggi Badan',
                                       snapshot.heightCm != null
                                           ? '${snapshot.heightCm} cm'
                                           : '-',
                                     ),
                                     _summaryField(
-                                      'Weight',
+                                      'Berat Badan',
                                       snapshot.weightKg != null
                                           ? '${snapshot.weightKg} kg'
                                           : '-',
@@ -151,7 +168,7 @@ class ResultScreen extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const _SectionTitle('Clinical Data'),
+                                const _SectionTitle('Data Klinis'),
                                 const SizedBox(height: 20),
                                 if (snapshot.symptoms.isNotEmpty)
                                   Wrap(
@@ -194,24 +211,24 @@ class ResultScreen extends StatelessWidget {
                                   },
                                   children: [
                                     _clinicalRow(
-                                      'Comorbidity',
-                                      snapshot.comorbidity ?? 'Not provided',
+                                      'Komorbiditas',
+                                      snapshot.comorbidity ?? 'Tidak diisi',
                                     ),
                                     _clinicalRow(
-                                      'Smoking Status',
-                                      snapshot.smoking ?? 'Not provided',
+                                      'Status Merokok',
+                                      snapshot.smoking ?? 'Tidak diisi',
                                     ),
                                     _clinicalRow(
-                                      'TB Contact',
-                                      snapshot.tbContact ?? 'Not provided',
+                                      'Kontak TB',
+                                      snapshot.tbContact ?? 'Tidak diisi',
                                     ),
                                     _clinicalRow(
-                                      'Sputum (BTA)',
-                                      snapshot.bta ?? 'Not provided',
+                                      'Dahak (BTA)',
+                                      snapshot.bta ?? 'Tidak diisi',
                                     ),
                                     _clinicalRow(
-                                      'Culture',
-                                      snapshot.culture ?? 'Not provided',
+                                      'Kultur',
+                                      snapshot.culture ?? 'Tidak diisi',
                                     ),
                                   ],
                                 ),
@@ -266,7 +283,7 @@ class ResultScreen extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 12),
                                   Text(
-                                    isPositive ? 'TB Detected' : 'Normal',
+                                    isPositive ? 'Terdeteksi TB' : 'Normal',
                                     style: const TextStyle(
                                       fontSize: 22,
                                       fontWeight: FontWeight.w800,
@@ -289,7 +306,7 @@ class ResultScreen extends StatelessWidget {
                                     child: Column(
                                       children: [
                                         Text(
-                                          '${result.confidence}%',
+                                          '$displayedConfidence%',
                                           style: const TextStyle(
                                             fontSize: 40,
                                             fontWeight: FontWeight.w800,
@@ -297,7 +314,7 @@ class ResultScreen extends StatelessWidget {
                                           ),
                                         ),
                                         const Text(
-                                          'AI Confidence',
+                                          'Persentase TB',
                                           style: TextStyle(
                                             color: Colors.white70,
                                             fontSize: 12,
@@ -308,7 +325,8 @@ class ResultScreen extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 16),
                                   const Text(
-                                    'AI results are screening tools only.\nConfirmation by a qualified medical professional is required.',
+                                    'Hasil AI hanya alat bantu screening.\n'
+                                    'Konfirmasi oleh tenaga medis profesional tetap diperlukan.',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
                                       color: Colors.white70,
@@ -326,18 +344,18 @@ class ResultScreen extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const _SectionTitle('Recommendations'),
+                                const _SectionTitle('Rekomendasi'),
                                 const SizedBox(height: 16),
                                 ...(isPositive
                                         ? [
-                                            'Refer to pulmonologist immediately',
-                                            'Start contact tracing',
-                                            'Order additional screening tests',
+                                            'Segera rujuk ke dokter spesialis paru',
+                                            'Mulai pelacakan kontak',
+                                            'Lakukan pemeriksaan tambahan',
                                           ]
                                         : [
-                                            'Monitor symptoms',
-                                            'Schedule follow-up in 6 months',
-                                            'Maintain healthy lifestyle',
+                                            'Pantau gejala',
+                                            'Jadwalkan tindak lanjut dalam 6 bulan',
+                                            'Jaga gaya hidup sehat',
                                           ])
                                     .map(
                                       (item) => Padding(
@@ -386,7 +404,7 @@ class ResultScreen extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const _SectionTitle('Analysis Details'),
+                                const _SectionTitle('Detail Analisis'),
                                 const SizedBox(height: 16),
                                 Table(
                                   columnWidths: const {
@@ -395,15 +413,15 @@ class ResultScreen extends StatelessWidget {
                                   },
                                   children: [
                                     _analysisRow(
-                                      'Analysis Date',
+                                      'Tanggal Analisis',
                                       result.createdAt.toString().split(' ')[0],
                                     ),
                                     _analysisRow(
-                                      'Model Version',
+                                      'Versi Model',
                                       result.modelVersion,
                                     ),
                                     _analysisRow(
-                                      'Processing Time',
+                                      'Waktu Proses',
                                       result.processingTime,
                                     ),
                                   ],
@@ -422,7 +440,7 @@ class ResultScreen extends StatelessWidget {
                                 context.go('/diagnosis');
                               },
                               icon: const Icon(Icons.add_rounded),
-                              label: const Text('New Screening'),
+                              label: const Text('Screening Baru'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.primary,
                                 foregroundColor: Colors.white,
@@ -580,7 +598,7 @@ class _DummyScreeningResultState extends StatelessWidget {
                     ),
                     const SizedBox(height: 20),
                     const Text(
-                      'Screening Result (Dummy)',
+                      'Hasil Screening (Contoh)',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 26,
@@ -602,7 +620,7 @@ class _DummyScreeningResultState extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'TB Suspected',
+                              'Diduga TB',
                               style: TextStyle(
                                 color: _textHi,
                                 fontSize: 22,
@@ -610,7 +628,7 @@ class _DummyScreeningResultState extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              'Confidence 78% · Demo Model v0.1',
+                              'Keyakinan 78% · Model Demo v0.1',
                               style: TextStyle(color: _textLo, fontSize: 14),
                             ),
                           ],
@@ -681,7 +699,7 @@ class _XrayImageCardState extends State<_XrayImageCard> {
     if (image?.canPreview != true) {
       return const AspectRatio(
         aspectRatio: 16 / 9,
-        child: Center(child: Text('Image preview unavailable')),
+        child: Center(child: Text('Pratinjau gambar tidak tersedia')),
       );
     }
 
@@ -692,7 +710,7 @@ class _XrayImageCardState extends State<_XrayImageCard> {
           image!.bytes,
           fit: BoxFit.contain,
           errorBuilder: (_, _, _) =>
-              const Center(child: Text('Image unavailable')),
+              const Center(child: Text('Gambar tidak tersedia')),
         ),
       );
     }
@@ -713,7 +731,7 @@ class _XrayImageCardState extends State<_XrayImageCard> {
             fit: BoxFit.contain,
             gaplessPlayback: true,
             errorBuilder: (_, _, _) =>
-                const Center(child: Text('Image unavailable')),
+                const Center(child: Text('Gambar tidak tersedia')),
           ),
         ),
         Padding(
@@ -736,9 +754,9 @@ class _XrayImageCardState extends State<_XrayImageCard> {
                     }),
                   ),
                   segments: const [
-                    ButtonSegment(value: 0, label: Text('X-ray')),
-                    ButtonSegment(value: 1, label: Text('Lung')),
-                    ButtonSegment(value: 2, label: Text('Lesion')),
+                    ButtonSegment(value: 0, label: Text('Rontgen')),
+                    ButtonSegment(value: 1, label: Text('Paru')),
+                    ButtonSegment(value: 2, label: Text('Lesi')),
                   ],
                   selected: {_view},
                   showSelectedIcon: false,
@@ -785,7 +803,8 @@ class _LesionLegendChip extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         Text(
-          '${entry.name} · ${entry.pixelCount} px',
+          '${_lesionNameLabels[entry.name.toLowerCase()] ?? entry.name} · '
+          '${entry.pixelCount} px',
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
