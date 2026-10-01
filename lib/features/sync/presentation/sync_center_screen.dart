@@ -434,7 +434,11 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         Chip(
           label: const Text(
             'Versi Baru Tersedia',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              color: AppTheme.warning,
+            ),
           ),
           backgroundColor: AppTheme.warning.withValues(alpha: 0.15),
           side: BorderSide(color: AppTheme.warning.withValues(alpha: 0.5)),

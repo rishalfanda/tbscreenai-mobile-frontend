@@ -10,7 +10,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
 
     <application
-        android:label="myapp"
+        android:label="TBScreen.AI"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <!-- The diagnosis workspace is landscape-first and its camera preview

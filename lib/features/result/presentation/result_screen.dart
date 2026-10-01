@@ -723,12 +723,25 @@ class _XrayImageCardState extends State<_XrayImageCard> {
             children: [
               Center(
                 child: SegmentedButton<int>(
+                  style: ButtonStyle(
+                    foregroundColor: WidgetStateProperty.resolveWith<Color>((
+                      states,
+                    ) {
+                      if (states.contains(WidgetState.selected)) {
+                        return Colors.black; // Warna teks saat dipilih
+                      }
+                      return Colors.white.withAlpha(
+                        150,
+                      ); // Warna teks saat tidak dipilih
+                    }),
+                  ),
                   segments: const [
                     ButtonSegment(value: 0, label: Text('X-ray')),
                     ButtonSegment(value: 1, label: Text('Lung')),
                     ButtonSegment(value: 2, label: Text('Lesion')),
                   ],
                   selected: {_view},
+                  showSelectedIcon: false,
                   onSelectionChanged: (selection) =>
                       setState(() => _view = selection.first),
                 ),
