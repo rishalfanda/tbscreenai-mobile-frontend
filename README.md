@@ -143,17 +143,18 @@ the `AppShell` (persistent navigation rail).
 | `/login` | LoginScreen | — | — |
 | `/dashboard` | DashboardScreen | ✅ | 0 |
 | `/patients` | PatientsScreen | ✅ | 1 |
-| `/diagnosis` | DiagnosisScreen | ✅ | 2 |
-| `/result` | ResultScreen | ✅ | 3 |
-| `/validation` | ValidationScreen | ✅ | 4 |
-| `/dataset` | DatasetScreen | ✅ | 5 |
-| `/sync` | SyncCenterScreen | ✅ | 6 |
-| `/account` | AccountScreen | ✅ | 7 |
+| `/diagnosis` | DiagnosisScreen (tabbed: Input Data / Hasil Analisis) | ✅ | 2 |
+| `/validation` | ValidationScreen | ✅ | 3 |
+| `/dataset` | DatasetScreen | ✅ | 4 |
+| `/sync` | SyncCenterScreen | ✅ | 5 |
+| `/account` | AccountScreen | ✅ | 6 |
 | `/camera` | CameraScreen | — (full screen) | — |
 
-**Primary flow:** `Login → Dashboard → Screening → (Camera) → Result`, with
+**Primary flow:** `Login → Dashboard → Screening → (Camera) → Result tab`, with
 `Patients`, `Validation`, `Dataset`, `Sync`, and `Account` reachable any time from
-the rail.
+the rail. The standalone `/result` route was merged into `/diagnosis` as its
+second tab, which stays disabled until an analysis exists and is selected
+automatically right after one succeeds.
 
 Internal route/class/API identifiers retain `diagnosis` for compatibility;
 user-facing terminology is screening.
@@ -186,9 +187,8 @@ lib/
     ├── auth/          · login_screen.dart
     ├── dashboard/     · dashboard_screen.dart
     ├── patients/      · patients_screen.dart
-    ├── diagnosis/     · diagnosis_screen.dart
+    ├── diagnosis/     · diagnosis_screen.dart (tab host), widgets/diagnosis_input_tab.dart, widgets/diagnosis_result_tab.dart
     ├── camera/        · camera_screen.dart
-    ├── result/        · result_screen.dart
     ├── validation/    · validation_screen.dart
     ├── dataset/       · dataset_screen.dart
     ├── sync/          · sync_center_screen.dart

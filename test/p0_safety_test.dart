@@ -17,7 +17,7 @@ import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/domain/repositories/diagnosis_repository.dart';
-import 'package:myapp/features/result/presentation/result_screen.dart';
+import 'package:myapp/features/diagnosis/presentation/widgets/diagnosis_result_tab.dart';
 import 'package:myapp/state/auth_provider.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 
@@ -333,7 +333,9 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider.value(
           value: provider,
-          child: const MaterialApp(home: Scaffold(body: ResultScreen())),
+          child: MaterialApp(
+            home: Scaffold(body: DiagnosisResultTab(onNewScreening: () {})),
+          ),
         ),
       );
       await tester.pumpAndSettle();

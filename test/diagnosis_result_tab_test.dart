@@ -1,4 +1,4 @@
-// Safety test: the Result screen must never show a verdict it did not compute.
+// Safety test: the result tab must never show a verdict it did not compute.
 // Before this guard existed it rendered a hardcoded "TB Detected / 85%" even
 // when no analysis had been run.
 
@@ -10,20 +10,20 @@ import 'package:myapp/data/mock/mock_repositories.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
 import 'package:myapp/domain/models/segmentation_overlays.dart';
 import 'package:myapp/domain/models/xray_image.dart';
-import 'package:myapp/features/result/presentation/result_screen.dart';
+import 'package:myapp/features/diagnosis/presentation/widgets/diagnosis_result_tab.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 
 Widget _wrap(DiagnosisProvider provider) {
   return ChangeNotifierProvider.value(
     value: provider,
-    child: const MaterialApp(home: Scaffold(body: ResultScreen())),
+    child: MaterialApp(
+      home: Scaffold(body: DiagnosisResultTab(onNewScreening: () {})),
+    ),
   );
 }
 
 void main() {
-  testWidgets('shows a clearly labelled dummy result before any run', (
-    tester,
-  ) async {
+  testWidgets('shows a neutral empty state before any run', (tester) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -33,9 +33,8 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Hasil Screening (Contoh)'), findsOneWidget);
-    expect(find.text('DUMMY / DEMO — BUKAN HASIL KLINIS'), findsOneWidget);
-    expect(find.text('Diduga TB'), findsOneWidget);
+    expect(find.text('Belum ada hasil analisis.'), findsOneWidget);
+    expect(find.text('Hasil Screening'), findsNothing);
     expect(find.text('Terdeteksi TB'), findsNothing);
     expect(find.text('85%'), findsNothing);
   });
@@ -59,7 +58,7 @@ void main() {
     await tester.pumpWidget(_wrap(provider));
     await tester.pump();
 
-    expect(find.text('Hasil Screening (Contoh)'), findsNothing);
+    expect(find.text('Belum ada hasil analisis.'), findsNothing);
     // 73 comes from the outcome; the old code would have shown a hardcoded 85.
     expect(find.text('73%'), findsOneWidget);
     expect(find.text('85%'), findsNothing);

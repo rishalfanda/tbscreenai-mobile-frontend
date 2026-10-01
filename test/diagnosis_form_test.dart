@@ -36,7 +36,10 @@ void main() {
     await tester.scrollUntilVisible(
       find.text('Paparan Sinar Matahari Langsung'),
       300,
-      scrollable: find.byType(Scrollable).first,
+      // The tab host's TabBarView/PageView contributes its own Scrollable
+      // ahead of the form's own in the tree — target the form's (the last
+      // one), not the tab-paging one.
+      scrollable: find.byType(Scrollable).last,
     );
     await tester.tap(find.byKey(const Key('sunlight-dropdown')));
     await tester.pumpAndSettle();
@@ -61,7 +64,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.text('Jenis Model'),
       300,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: find.byType(Scrollable).last,
     );
     await tester.tap(find.byKey(const Key('model-type-dropdown')));
     await tester.pumpAndSettle();

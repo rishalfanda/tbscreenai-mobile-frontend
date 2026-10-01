@@ -33,11 +33,6 @@ Widget _app({
         ),
       ),
       GoRoute(
-        path: '/result',
-        builder: (context, state) =>
-            const Scaffold(body: Center(child: Text('verified-result-route'))),
-      ),
-      GoRoute(
         path: '/camera',
         builder: (context, state) =>
             const Scaffold(body: Center(child: Text('camera-route'))),
@@ -104,11 +99,13 @@ void main() {
     expect(find.text('Nama wajib diisi'), findsOneWidget);
     expect(find.text('Jenis kelamin wajib dipilih'), findsOneWidget);
     expect(find.text('Wajib diisi'), findsWidgets);
-    expect(find.text('verified-result-route'), findsNothing);
+    // The result tab only ever renders the real-outcome header once an
+    // outcome exists; otherwise it's the neutral empty-state placeholder.
+    expect(find.text('Hasil Screening'), findsNothing);
   });
 
   testWidgets(
-    'chosen image is attached and successful inference opens Result',
+    'chosen image is attached and successful inference switches to the result tab',
     (tester) async {
       tester.view.physicalSize = const Size(1600, 1000);
       tester.view.devicePixelRatio = 1;
@@ -131,7 +128,7 @@ void main() {
       await tester.tap(find.byKey(const Key('analyze-button')));
       await tester.pumpAndSettle();
 
-      expect(find.text('verified-result-route'), findsOneWidget);
+      expect(find.text('Hasil Screening').hitTestable(), findsOneWidget);
     },
   );
 
@@ -151,7 +148,7 @@ void main() {
     await tester.tap(find.byKey(const Key('analyze-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('verified-result-route'), findsNothing);
+    expect(find.text('Hasil Screening'), findsNothing);
     expect(find.text('Analisis Rontgen TB dengan AI'), findsOneWidget);
     expect(provider.lastOutcome, isNull);
     expect(provider.lastError, contains('Check the server connection'));

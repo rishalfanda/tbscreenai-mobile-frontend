@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/segmentation_overlays.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 
-// === Section: Dark palette (Result screen only) ===
+// === Section: Dark palette (Result tab only) ===
 const Color _bg = Color(0xFF0F1117);
 const Color _surface = Color(0xFF1A1E2B);
 const Color _surfaceAlt = Color(0xFF232838);
@@ -25,8 +24,17 @@ const Map<String, String> _lesionNameLabels = {
   'calcification': 'Kalsifikasi',
 };
 
-class ResultScreen extends StatelessWidget {
-  const ResultScreen({super.key});
+/// The "Hasil Analisis" tab of the combined diagnosis screen. [DiagnosisScreen]
+/// only lets the user reach this tab once an outcome exists, but it still
+/// renders a safe, neutral placeholder for the brief moment it exists
+/// off-screen before that (it's built eagerly as the second `TabBarView`
+/// child).
+class DiagnosisResultTab extends StatelessWidget {
+  const DiagnosisResultTab({super.key, required this.onNewScreening});
+
+  /// Called after the user confirms "Screening Baru" so the tab host can
+  /// switch back to the input tab.
+  final VoidCallback onNewScreening;
 
   @override
   Widget build(BuildContext context) {
@@ -34,11 +42,8 @@ class ResultScreen extends StatelessWidget {
     final result = diagnosis.lastOutcome;
     final snapshot = diagnosis.lastResult?.draft;
 
-    // The direct Result route is useful during stakeholder demos. Keep the
-    // sample unmistakably labelled as dummy data; a real inference outcome
-    // always replaces it.
     if (result == null || snapshot == null) {
-      return const _DummyScreeningResultState();
+      return const _EmptyResultState();
     }
 
     final isPositive = result.isPositive;
@@ -314,7 +319,7 @@ class ResultScreen extends StatelessWidget {
                                           ),
                                         ),
                                         const Text(
-                                          'Persentase TB',
+                                          'Tingkat Keyakinan AI',
                                           style: TextStyle(
                                             color: Colors.white70,
                                             fontSize: 12,
@@ -435,9 +440,10 @@ class ResultScreen extends StatelessWidget {
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton.icon(
+                              key: const Key('new-screening-button'),
                               onPressed: () {
                                 diagnosis.resetForNewDiagnosis();
-                                context.go('/diagnosis');
+                                onNewScreening();
                               },
                               icon: const Icon(Icons.add_rounded),
                               label: const Text('Screening Baru'),
@@ -554,10 +560,13 @@ class ResultScreen extends StatelessWidget {
   }
 }
 
-/// Stakeholder-demo sample shown only when no analysis outcome exists.
-/// Every clinical-looking value is visibly marked as dummy data.
-class _DummyScreeningResultState extends StatelessWidget {
-  const _DummyScreeningResultState();
+/// Shown while this tab has no outcome to render. Reachable in practice
+/// only as an inert, off-screen `TabBarView` child — [DiagnosisScreen] keeps
+/// this tab disabled until a real analysis exists — so it deliberately
+/// carries no fabricated clinical numbers, unlike the old standalone
+/// `/result` route's demo placeholder.
+class _EmptyResultState extends StatelessWidget {
+  const _EmptyResultState();
 
   @override
   Widget build(BuildContext context) {
@@ -565,107 +574,30 @@ class _DummyScreeningResultState extends StatelessWidget {
       color: _bg,
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
+          constraints: const BoxConstraints(maxWidth: 480),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                padding: const EdgeInsets.all(28),
-                decoration: BoxDecoration(
-                  color: _surface,
-                  borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-                  border: Border.all(color: AppTheme.warning, width: 2),
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppTheme.warning.withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        'DUMMY / DEMO — BUKAN HASIL KLINIS',
-                        style: TextStyle(
-                          color: AppTheme.warning,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Hasil Screening (Contoh)',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        color: _textHi,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.warning_amber_rounded,
-                          color: AppTheme.warning,
-                          size: 38,
-                        ),
-                        SizedBox(width: 14),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Diduga TB',
-                              style: TextStyle(
-                                color: _textHi,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            Text(
-                              'Keyakinan 78% · Model Demo v0.1',
-                              style: TextStyle(color: _textLo, fontSize: 14),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Contoh ini hanya untuk mempresentasikan layout halaman. '
-                      'Hasil nyata hanya muncul setelah X-ray dianalisis dan '
-                      'wajib dikonfirmasi tenaga medis.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: _textLo,
-                        height: 1.5,
-                      ),
-                    ),
-                  ],
+              const Icon(
+                Icons.analytics_outlined,
+                size: 56,
+                color: _textLo,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Belum ada hasil analisis.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _textHi,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 32),
-              FilledButton.icon(
-                onPressed: () => context.go('/diagnosis'),
-                icon: const Icon(Icons.biotech_rounded, size: 20),
-                label: const Text('Mulai Screening'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 28,
-                    vertical: 18,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                  ),
-                ),
+              const SizedBox(height: 8),
+              const Text(
+                'Lengkapi data pasien dan jalankan analisis pada tab Input Data.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: _textLo, fontSize: 13, height: 1.5),
               ),
             ],
           ),
@@ -816,7 +748,7 @@ class _LesionLegendChip extends StatelessWidget {
   }
 }
 
-/// Dark surface card used across the Result screen.
+/// Dark surface card used across the Result tab.
 class _DarkCard extends StatelessWidget {
   const _DarkCard({
     required this.child,
