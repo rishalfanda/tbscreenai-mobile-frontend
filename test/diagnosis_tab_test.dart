@@ -1,7 +1,9 @@
 // Tab-navigation behavior of the combined diagnosis screen: the result tab
 // is unreachable until a real analysis exists, a successful analysis jumps
 // there automatically, and the input tab locks (and the view snaps back)
-// once an outcome is cleared.
+// once an outcome is cleared. There's no visible tab bar, so tests reach
+// the hidden tab boundary the same way a user would: swiping the body
+// (blocked by NeverScrollableScrollPhysics while no outcome exists).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -45,11 +47,17 @@ void main() {
     await tester.pumpWidget(_app(DiagnosisProvider(MockDiagnosisRepository())));
     await tester.pump();
 
-    await tester.tap(find.byKey(const Key('diagnosis-tab-result')));
+    // Swiping is the only navigation path now that the tab bar is hidden;
+    // NeverScrollableScrollPhysics should still block it with no outcome.
+    await tester.fling(
+      find.byKey(const Key('diagnosis-tab-view')),
+      const Offset(-500, 0),
+      1000,
+    );
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Analisis Rontgen TB dengan AI').hitTestable(),
+      find.byKey(const Key('diagnosis-input-content')).hitTestable(),
       findsOneWidget,
     );
     expect(find.text('Belum ada hasil analisis.').hitTestable(), findsNothing);
@@ -71,9 +79,12 @@ void main() {
     await tester.tap(find.byKey(const Key('analyze-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Hasil Screening').hitTestable(), findsOneWidget);
     expect(
-      find.text('Analisis Rontgen TB dengan AI').hitTestable(),
+      find.byKey(const Key('diagnosis-result-content')).hitTestable(),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('diagnosis-input-content')).hitTestable(),
       findsNothing,
     );
   });
@@ -93,7 +104,10 @@ void main() {
       await tester.ensureVisible(find.byKey(const Key('analyze-button')));
       await tester.tap(find.byKey(const Key('analyze-button')));
       await tester.pumpAndSettle();
-      expect(find.text('Hasil Screening').hitTestable(), findsOneWidget);
+      expect(
+        find.byKey(const Key('diagnosis-result-content')).hitTestable(),
+        findsOneWidget,
+      );
 
       // Bypasses the UI reset button (covered by reset_confirmation_test.dart)
       // to isolate the tab host's own generic "snap back when the outcome
@@ -102,10 +116,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('Analisis Rontgen TB dengan AI').hitTestable(),
+        find.byKey(const Key('diagnosis-input-content')).hitTestable(),
         findsOneWidget,
       );
-      expect(find.text('Hasil Screening').hitTestable(), findsNothing);
+      expect(
+        find.byKey(const Key('diagnosis-result-content')).hitTestable(),
+        findsNothing,
+      );
     },
   );
 
@@ -125,11 +142,16 @@ void main() {
       await tester.tap(find.byKey(const Key('analyze-button')));
       await tester.pumpAndSettle();
 
-      // Back to the input tab to inspect its locked state.
-      await tester.tap(find.byKey(const Key('diagnosis-tab-input')));
+      // Back to the input tab to inspect its locked state — swipe right,
+      // since there's no tab bar and the result tab unlocked swiping once
+      // an outcome exists.
+      await tester.fling(
+        find.byKey(const Key('diagnosis-tab-view')),
+        const Offset(500, 0),
+        1000,
+      );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('diagnosis-locked-banner')), findsOneWidget);
       expect(
         find.byKey(const Key('upload-xray')).hitTestable(),
         findsNothing,

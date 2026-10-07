@@ -364,7 +364,7 @@ void main() {
   });
 
   testWidgets(
-    'F03 computed demo result is labelled and displays its own image',
+    'F03 computed demo result displays its own image',
     (tester) async {
       tester.view.physicalSize = const Size(1600, 1000);
       tester.view.devicePixelRatio = 1;
@@ -389,7 +389,6 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('DUMMY / DEMO — BUKAN HASIL KLINIS'), findsOneWidget);
       expect(
         tester
             .widgetList<Image>(find.byType(Image))

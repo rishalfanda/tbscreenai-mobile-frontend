@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:myapp/features/diagnosis/presentation/diagnosis_palette.dart';
 import 'package:myapp/features/diagnosis/presentation/widgets/diagnosis_input_tab.dart';
 import 'package:myapp/features/diagnosis/presentation/widgets/diagnosis_result_tab.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 import 'package:provider/provider.dart';
 
 /// Combined Screening + Result screen. Tab 1 is the patient/X-ray input
-/// form; tab 2 is the AI result. Tab 2 stays disabled until an analysis
-/// exists, and the view jumps there automatically right after one succeeds.
+/// form; tab 2 is the AI result. There's no visible tab bar — the view
+/// jumps to tab 2 automatically right after a successful analysis, and
+/// back to tab 1 on reset/"Screening Baru", so content stays full-height.
+/// Swiping the body still moves between tabs (blocked into tab 2 until a
+/// result exists), which is why the `TabController`/`TabBarView` stay.
 class DiagnosisScreen extends StatefulWidget {
   const DiagnosisScreen({super.key, this.pickImage, this.hasModelOverride});
 
@@ -37,13 +39,6 @@ class _DiagnosisScreenState extends State<DiagnosisScreen>
     super.dispose();
   }
 
-  // TabBar.onTap fires after the controller's index has already moved —
-  // vetoing it back here, in the same event pass, is the standard way to
-  // make a tab "disabled" since TabBar/Tab have no first-class API for it.
-  void _handleTabTap(int index, bool hasResult) {
-    if (index == 1 && !hasResult) _tabController.index = 0;
-  }
-
   @override
   Widget build(BuildContext context) {
     final diagnosis = context.watch<DiagnosisProvider>();
@@ -60,58 +55,21 @@ class _DiagnosisScreenState extends State<DiagnosisScreen>
       });
     }
 
-    return Column(
+    return TabBarView(
+      key: const Key('diagnosis-tab-view'),
+      controller: _tabController,
+      // Also blocks swipe-navigation into the disabled tab.
+      physics: hasResult
+          ? const ClampingScrollPhysics()
+          : const NeverScrollableScrollPhysics(),
       children: [
-        Material(
-          color: diagnosisPanel,
-          child: TabBar(
-            key: const Key('diagnosis-tab-bar'),
-            controller: _tabController,
-            onTap: (index) => _handleTabTap(index, hasResult),
-            indicatorColor: diagnosisAccent,
-            labelColor: diagnosisAccent,
-            unselectedLabelColor: diagnosisMuted,
-            tabs: [
-              const Tab(
-                key: Key('diagnosis-tab-input'),
-                icon: Icon(Icons.edit_note_rounded),
-                text: 'Input Data',
-              ),
-              Tab(
-                key: const Key('diagnosis-tab-result'),
-                icon: Icon(
-                  Icons.analytics_rounded,
-                  color: hasResult ? null : diagnosisMuted.withValues(
-                    alpha: 0.5,
-                  ),
-                ),
-                child: Opacity(
-                  opacity: hasResult ? 1 : 0.45,
-                  child: const Text('Hasil Analisis'),
-                ),
-              ),
-            ],
-          ),
+        DiagnosisInputTab(
+          pickImage: widget.pickImage,
+          hasModelOverride: widget.hasModelOverride,
+          onAnalyzeSuccess: () => _tabController.animateTo(1),
         ),
-        Expanded(
-          child: TabBarView(
-            key: const Key('diagnosis-tab-view'),
-            controller: _tabController,
-            // Also blocks swipe-navigation into the disabled tab.
-            physics: hasResult
-                ? const ClampingScrollPhysics()
-                : const NeverScrollableScrollPhysics(),
-            children: [
-              DiagnosisInputTab(
-                pickImage: widget.pickImage,
-                hasModelOverride: widget.hasModelOverride,
-                onAnalyzeSuccess: () => _tabController.animateTo(1),
-              ),
-              DiagnosisResultTab(
-                onNewScreening: () => _tabController.animateTo(0),
-              ),
-            ],
-          ),
+        DiagnosisResultTab(
+          onNewScreening: () => _tabController.animateTo(0),
         ),
       ],
     );

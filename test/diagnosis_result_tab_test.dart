@@ -34,7 +34,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Belum ada hasil analisis.'), findsOneWidget);
-    expect(find.text('Hasil Screening'), findsNothing);
+    expect(find.byKey(const Key('diagnosis-result-content')), findsNothing);
     expect(find.text('Terdeteksi TB'), findsNothing);
     expect(find.text('85%'), findsNothing);
   });

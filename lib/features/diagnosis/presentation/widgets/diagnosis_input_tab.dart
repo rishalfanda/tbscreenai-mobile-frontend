@@ -349,6 +349,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     final locked = diagnosis.lastOutcome != null;
 
     return ColoredBox(
+      key: const Key('diagnosis-input-content'),
       color: diagnosisPage,
       child: Scrollbar(
         controller: _scrollController,
@@ -364,19 +365,6 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
                 key: _formKey,
                 child: Column(
                   children: [
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 18),
-                      child: Text(
-                        'Analisis Rontgen TB dengan AI',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: diagnosisAccent,
-                          fontSize: 30,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                    ),
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.fromLTRB(28, 30, 28, 28),
@@ -386,10 +374,6 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
                       ),
                       child: Column(
                         children: [
-                          if (locked) ...[
-                            const _LockedBanner(),
-                            const SizedBox(height: 18),
-                          ],
                           LayoutBuilder(
                             builder: (context, constraints) {
                               final left = IgnorePointer(
@@ -921,38 +905,6 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
           ],
         ),
       ],
-    );
-  }
-}
-
-class _LockedBanner extends StatelessWidget {
-  const _LockedBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('diagnosis-locked-banner'),
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: diagnosisInput,
-        border: Border.all(color: diagnosisBorder),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.lock_outline_rounded, color: diagnosisMuted),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Data terkunci karena hasil analisis sudah ada. Atur ulang '
-              'untuk mengubah data.',
-              style: TextStyle(color: diagnosisMuted, fontSize: 13),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

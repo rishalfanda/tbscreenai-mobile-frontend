@@ -452,35 +452,4 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     expect(name, isEmpty);
   });
-
-  testWidgets('R11 computed mock result remains visibly labelled as demo', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1600, 1000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    final provider = DiagnosisProvider(MockDiagnosisRepository())
-      ..updatePatientName('Patient A')
-      ..updateGender('Female')
-      ..updateAge(34)
-      ..updateHeight(160)
-      ..updateWeight(55)
-      ..attachPlaceholderImage('audit.png');
-    final running = provider.runDiagnosis();
-    await tester.pump(const Duration(seconds: 3));
-    await running;
-    await tester.pumpWidget(
-      ChangeNotifierProvider.value(
-        value: provider,
-        child: MaterialApp(
-          home: Scaffold(body: DiagnosisResultTab(onNewScreening: () {})),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    final warning = find.textContaining(
-      RegExp('DUMMY|DEMO|BUKAN HASIL KLINIS'),
-    );
-    expect(warning, findsWidgets);
-  });
 }

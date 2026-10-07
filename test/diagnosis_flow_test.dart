@@ -71,7 +71,7 @@ void main() {
     await tester.tap(find.byKey(const Key('optional-fields-panel')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Analisis Rontgen TB dengan AI'), findsOneWidget);
+    expect(find.byKey(const Key('diagnosis-input-content')), findsOneWidget);
     expect(find.text('Jenis Gejala'), findsOneWidget);
     expect(find.byKey(const Key('upload-xray')), findsOneWidget);
     expect(find.byKey(const Key('capture-xray')), findsOneWidget);
@@ -99,9 +99,9 @@ void main() {
     expect(find.text('Nama wajib diisi'), findsOneWidget);
     expect(find.text('Jenis kelamin wajib dipilih'), findsOneWidget);
     expect(find.text('Wajib diisi'), findsWidgets);
-    // The result tab only ever renders the real-outcome header once an
+    // The result tab only ever renders its real-outcome content once an
     // outcome exists; otherwise it's the neutral empty-state placeholder.
-    expect(find.text('Hasil Screening'), findsNothing);
+    expect(find.byKey(const Key('diagnosis-result-content')), findsNothing);
   });
 
   testWidgets(
@@ -128,7 +128,10 @@ void main() {
       await tester.tap(find.byKey(const Key('analyze-button')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Hasil Screening').hitTestable(), findsOneWidget);
+      expect(
+        find.byKey(const Key('diagnosis-result-content')).hitTestable(),
+        findsOneWidget,
+      );
     },
   );
 
@@ -148,8 +151,8 @@ void main() {
     await tester.tap(find.byKey(const Key('analyze-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Hasil Screening'), findsNothing);
-    expect(find.text('Analisis Rontgen TB dengan AI'), findsOneWidget);
+    expect(find.byKey(const Key('diagnosis-result-content')), findsNothing);
+    expect(find.byKey(const Key('diagnosis-input-content')), findsOneWidget);
     expect(provider.lastOutcome, isNull);
     expect(provider.lastError, contains('Check the server connection'));
   });

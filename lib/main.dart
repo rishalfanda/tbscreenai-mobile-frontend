@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart';
 import 'package:myapp/app/app.dart';
@@ -10,6 +11,7 @@ import 'package:myapp/data/secure/secure_token_storage.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   AppConfig.validate();
 
   // Fix: enable resampling to reduce mouse tracker assertion errors

@@ -56,6 +56,7 @@ class DiagnosisResultTab extends StatelessWidget {
         : 100 - result.confidence;
 
     return ColoredBox(
+      key: const Key('diagnosis-result-content'),
       color: _bg,
       child: SingleChildScrollView(
         physics: const ClampingScrollPhysics(),
@@ -63,426 +64,388 @@ class DiagnosisResultTab extends StatelessWidget {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1600),
-            child: Column(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (result.isMock) ...[
-                  const Text(
-                    'DUMMY / DEMO — BUKAN HASIL KLINIS',
-                    style: TextStyle(
-                      color: Colors.amber,
-                      fontWeight: FontWeight.bold,
-                    ),
+                // Left Column
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    children: [
+                      // X-ray Image Card (with lung/lesion segmentation
+                      // toggle when the on-device pipeline produced one)
+                      _DarkCard(
+                        padding: EdgeInsets.zero,
+                        child: _XrayImageCard(
+                          image: snapshot.image,
+                          segmentation: result.segmentation,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Patient Summary Card
+                      _DarkCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const _SectionTitle('Ringkasan Pasien'),
+                            const SizedBox(height: 20),
+                            Wrap(
+                              spacing: 16,
+                              runSpacing: 16,
+                              children: [
+                                _summaryField('Nama', snapshot.patientName),
+                                _summaryField(
+                                  'Jenis Kelamin',
+                                  snapshot.gender ?? 'Tidak diisi',
+                                ),
+                                _summaryField(
+                                  'Usia',
+                                  snapshot.age?.toString() ?? '-',
+                                ),
+                                _summaryField(
+                                  'Tinggi Badan',
+                                  snapshot.heightCm != null
+                                      ? '${snapshot.heightCm} cm'
+                                      : '-',
+                                ),
+                                _summaryField(
+                                  'Berat Badan',
+                                  snapshot.weightKg != null
+                                      ? '${snapshot.weightKg} kg'
+                                      : '-',
+                                ),
+                                _summaryField(
+                                  'BMI',
+                                  snapshot.bmi != null
+                                      ? snapshot.bmi!.toStringAsFixed(1)
+                                      : '-',
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Save status + action buttons
+                      _DarkCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _PersistenceBanner(
+                              status: diagnosis.saveStatus,
+                              error: diagnosis.persistenceError,
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                _actionButton(
+                                  Icons.save_rounded,
+                                  _saveButtonLabel(diagnosis.saveStatus),
+                                  onPressed:
+                                      result.isMock ||
+                                          diagnosis.isSaving ||
+                                          diagnosis.saveStatus ==
+                                              ScreeningSaveStatus.pendingSync ||
+                                          diagnosis.saveStatus ==
+                                              ScreeningSaveStatus.saved
+                                      ? null
+                                      : () => _save(context, diagnosis),
+                                ),
+                                const SizedBox(width: 12),
+                                _actionButton(
+                                  Icons.picture_as_pdf_rounded,
+                                  'Ekspor PDF',
+                                  tooltip:
+                                      'Dinonaktifkan sampai kebijakan PHI untuk hasil tersimpan disetujui.',
+                                ),
+                                const SizedBox(width: 12),
+                                _actionButton(
+                                  Icons.print_rounded,
+                                  'Cetak',
+                                  tooltip:
+                                      'Dinonaktifkan sampai kebijakan PHI untuk hasil tersimpan disetujui.',
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                ],
-                // === Section: Header Row ===
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Hasil Screening',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        color: _textHi,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        _headerButton(
-                          Icons.save_rounded,
-                          _saveButtonLabel(diagnosis.saveStatus),
-                          onPressed:
-                              result.isMock ||
-                                  diagnosis.isSaving ||
-                                  diagnosis.saveStatus ==
-                                      ScreeningSaveStatus.pendingSync ||
-                                  diagnosis.saveStatus ==
-                                      ScreeningSaveStatus.saved
-                              ? null
-                              : () => _save(context, diagnosis),
-                        ),
-                        const SizedBox(width: 12),
-                        _headerButton(
-                          Icons.picture_as_pdf_rounded,
-                          'Ekspor PDF',
-                          tooltip:
-                              'Dinonaktifkan sampai kebijakan PHI untuk hasil tersimpan disetujui.',
-                        ),
-                        const SizedBox(width: 12),
-                        _headerButton(
-                          Icons.print_rounded,
-                          'Cetak',
-                          tooltip:
-                              'Dinonaktifkan sampai kebijakan PHI untuk hasil tersimpan disetujui.',
-                        ),
-                      ],
-                    ),
-                  ],
                 ),
-                const SizedBox(height: 16),
-                _PersistenceBanner(
-                  status: diagnosis.saveStatus,
-                  error: diagnosis.persistenceError,
-                ),
-                const SizedBox(height: 32),
+                const SizedBox(width: 32),
 
-                // === Section: Main Content ===
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Left Column
-                    Expanded(
-                      flex: 2,
-                      child: Column(
-                        children: [
-                          // X-ray Image Card (with lung/lesion segmentation
-                          // toggle when the on-device pipeline produced one)
-                          _DarkCard(
-                            padding: EdgeInsets.zero,
-                            child: _XrayImageCard(
-                              image: snapshot.image,
-                              segmentation: result.segmentation,
+                // Right Column
+                SizedBox(
+                  width: 320,
+                  child: Column(
+                    children: [
+                      // Hasil TB Card
+                      _DarkCard(
+                        padding: EdgeInsets.zero,
+                        child: Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: isPositive
+                                  ? [AppTheme.error, AppTheme.errorDark]
+                                  : [AppTheme.success, AppTheme.successDark],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.cardRadius,
                             ),
                           ),
-                          const SizedBox(height: 16),
-
-                          // Patient Summary Card
-                          _DarkCard(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const _SectionTitle('Ringkasan Pasien'),
-                                const SizedBox(height: 20),
-                                Wrap(
-                                  spacing: 16,
-                                  runSpacing: 16,
-                                  children: [
-                                    _summaryField('Nama', snapshot.patientName),
-                                    _summaryField(
-                                      'Jenis Kelamin',
-                                      snapshot.gender ?? 'Tidak diisi',
-                                    ),
-                                    _summaryField(
-                                      'Usia',
-                                      snapshot.age?.toString() ?? '-',
-                                    ),
-                                    _summaryField(
-                                      'Tinggi Badan',
-                                      snapshot.heightCm != null
-                                          ? '${snapshot.heightCm} cm'
-                                          : '-',
-                                    ),
-                                    _summaryField(
-                                      'Berat Badan',
-                                      snapshot.weightKg != null
-                                          ? '${snapshot.weightKg} kg'
-                                          : '-',
-                                    ),
-                                    _summaryField(
-                                      'BMI',
-                                      snapshot.bmi != null
-                                          ? snapshot.bmi!.toStringAsFixed(1)
-                                          : '-',
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Clinical Data Card
-                          _DarkCard(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const _SectionTitle('Data Klinis'),
-                                const SizedBox(height: 20),
-                                if (snapshot.symptoms.isNotEmpty)
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: snapshot.symptoms
-                                        .map(
-                                          (s) => Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 6,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: AppTheme.primary
-                                                  .withValues(alpha: 0.18),
-                                              borderRadius:
-                                                  BorderRadius.circular(999),
-                                              border: Border.all(
-                                                color: AppTheme.primary
-                                                    .withValues(alpha: 0.4),
-                                              ),
-                                            ),
-                                            child: Text(
-                                              s,
-                                              style: const TextStyle(
-                                                color: AppTheme.primary,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                        )
-                                        .toList(),
-                                  ),
-                                const SizedBox(height: 20),
-                                Table(
-                                  columnWidths: const {
-                                    0: IntrinsicColumnWidth(),
-                                    1: FlexColumnWidth(),
-                                  },
-                                  children: [
-                                    _clinicalRow(
-                                      'Komorbiditas',
-                                      snapshot.comorbidity ?? 'Tidak diisi',
-                                    ),
-                                    _clinicalRow(
-                                      'Status Merokok',
-                                      snapshot.smoking ?? 'Tidak diisi',
-                                    ),
-                                    _clinicalRow(
-                                      'Kontak TB',
-                                      snapshot.tbContact ?? 'Tidak diisi',
-                                    ),
-                                    _clinicalRow(
-                                      'Dahak (BTA)',
-                                      snapshot.bta ?? 'Tidak diisi',
-                                    ),
-                                    _clinicalRow(
-                                      'Kultur',
-                                      snapshot.culture ?? 'Tidak diisi',
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 32),
-
-                    // Right Column
-                    SizedBox(
-                      width: 320,
-                      child: Column(
-                        children: [
-                          // AI Result Card
-                          Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: isPositive
-                                    ? [AppTheme.error, AppTheme.errorDark]
-                                    : [AppTheme.success, AppTheme.successDark],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(
-                                AppTheme.cardRadius,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color:
-                                      (isPositive
-                                              ? AppTheme.error
-                                              : AppTheme.success)
-                                          .withValues(alpha: 0.35),
-                                  blurRadius: 24,
-                                  offset: const Offset(0, 12),
-                                ),
-                              ],
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(24),
-                              child: Column(
-                                children: [
-                                  Icon(
-                                    isPositive
-                                        ? Icons.warning_rounded
-                                        : Icons.check_circle_rounded,
-                                    size: 64,
+                                Text(
+                                  isPositive ? 'Terdeteksi TB' : 'Normal',
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
                                     color: Colors.white,
                                   ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    isPositive ? 'Terdeteksi TB' : 'Normal',
-                                    style: const TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.white,
-                                    ),
+                                ),
+                                const SizedBox(height: 20),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
                                   ),
-                                  const SizedBox(height: 20),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 12,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.2,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        '$displayedConfidence%',
+                                        style: const TextStyle(
+                                          fontSize: 40,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.white,
+                                        ),
                                       ),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Column(
-                                      children: [
-                                        Text(
-                                          '$displayedConfidence%',
-                                          style: const TextStyle(
-                                            fontSize: 40,
-                                            fontWeight: FontWeight.w800,
-                                            color: Colors.white,
+                                      const Text(
+                                        'Tingkat Keyakinan AI',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'Hasil AI hanya alat bantu screening.\n'
+                                  'Konfirmasi oleh tenaga medis profesional tetap diperlukan.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Clinical Data Card
+                      _DarkCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const _SectionTitle('Data Klinis'),
+                            const SizedBox(height: 20),
+                            if (snapshot.symptoms.isNotEmpty)
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: snapshot.symptoms
+                                    .map(
+                                      (s) => Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.primary.withValues(
+                                            alpha: 0.18,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                          border: Border.all(
+                                            color: AppTheme.primary.withValues(
+                                              alpha: 0.4,
+                                            ),
                                           ),
                                         ),
-                                        const Text(
-                                          'Tingkat Keyakinan AI',
-                                          style: TextStyle(
-                                            color: Colors.white70,
+                                        child: Text(
+                                          s,
+                                          style: const TextStyle(
+                                            color: AppTheme.primary,
                                             fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                            const SizedBox(height: 20),
+                            Table(
+                              columnWidths: const {
+                                0: IntrinsicColumnWidth(),
+                                1: FlexColumnWidth(),
+                              },
+                              children: [
+                                _clinicalRow(
+                                  'Komorbiditas',
+                                  snapshot.comorbidity ?? 'Tidak diisi',
+                                ),
+                                _clinicalRow(
+                                  'Status Merokok',
+                                  snapshot.smoking ?? 'Tidak diisi',
+                                ),
+                                _clinicalRow(
+                                  'Kontak TB',
+                                  snapshot.tbContact ?? 'Tidak diisi',
+                                ),
+                                _clinicalRow(
+                                  'Dahak (BTA)',
+                                  snapshot.bta ?? 'Tidak diisi',
+                                ),
+                                _clinicalRow(
+                                  'Kultur',
+                                  snapshot.culture ?? 'Tidak diisi',
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Recommendations Card
+                      _DarkCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const _SectionTitle('Rekomendasi'),
+                            const SizedBox(height: 16),
+                            ...(isPositive
+                                    ? [
+                                        'Segera rujuk ke dokter spesialis paru',
+                                        'Mulai pelacakan kontak',
+                                        'Lakukan pemeriksaan tambahan',
+                                      ]
+                                    : [
+                                        'Pantau gejala',
+                                        'Jadwalkan tindak lanjut dalam 6 bulan',
+                                        'Jaga gaya hidup sehat',
+                                      ])
+                                .map(
+                                  (item) => Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 4,
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: 4,
+                                          ),
+                                          child: Icon(
+                                            isPositive
+                                                ? Icons.circle
+                                                : Icons.check_circle,
+                                            size: 8,
+                                            color: isPositive
+                                                ? AppTheme.error
+                                                : AppTheme.success,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            item,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              color: _textHi,
+                                            ),
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(height: 16),
-                                  const Text(
-                                    'Hasil AI hanya alat bantu screening.\n'
-                                    'Konfirmasi oleh tenaga medis profesional tetap diperlukan.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Recommendations Card
-                          _DarkCard(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const _SectionTitle('Rekomendasi'),
-                                const SizedBox(height: 16),
-                                ...(isPositive
-                                        ? [
-                                            'Segera rujuk ke dokter spesialis paru',
-                                            'Mulai pelacakan kontak',
-                                            'Lakukan pemeriksaan tambahan',
-                                          ]
-                                        : [
-                                            'Pantau gejala',
-                                            'Jadwalkan tindak lanjut dalam 6 bulan',
-                                            'Jaga gaya hidup sehat',
-                                          ])
-                                    .map(
-                                      (item) => Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 4,
-                                        ),
-                                        child: Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Padding(
-                                              padding: const EdgeInsets.only(
-                                                top: 4,
-                                              ),
-                                              child: Icon(
-                                                isPositive
-                                                    ? Icons.circle
-                                                    : Icons.check_circle,
-                                                size: 8,
-                                                color: isPositive
-                                                    ? AppTheme.error
-                                                    : AppTheme.success,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 10),
-                                            Expanded(
-                                              child: Text(
-                                                item,
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w600,
-                                                  color: _textHi,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Analysis Details
-                          _DarkCard(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const _SectionTitle('Detail Analisis'),
-                                const SizedBox(height: 16),
-                                Table(
-                                  columnWidths: const {
-                                    0: IntrinsicColumnWidth(),
-                                    1: FlexColumnWidth(),
-                                  },
-                                  children: [
-                                    _analysisRow(
-                                      'Tanggal Analisis',
-                                      result.createdAt.toString().split(' ')[0],
-                                    ),
-                                    _analysisRow(
-                                      'Versi Model',
-                                      result.modelVersion,
-                                    ),
-                                    _analysisRow(
-                                      'Waktu Proses',
-                                      result.processingTime,
-                                    ),
-                                  ],
                                 ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // New Screening Button
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              key: const Key('new-screening-button'),
-                              onPressed: () =>
-                                  _startNewScreening(context, diagnosis),
-                              icon: const Icon(Icons.add_rounded),
-                              label: const Text('Screening Baru'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.primary,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 16,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+
+                      // Analysis Details
+                      _DarkCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const _SectionTitle('Detail Analisis'),
+                            const SizedBox(height: 16),
+                            Table(
+                              columnWidths: const {
+                                0: IntrinsicColumnWidth(),
+                                1: FlexColumnWidth(),
+                              },
+                              children: [
+                                _analysisRow(
+                                  'Tanggal Analisis',
+                                  result.createdAt.toString().split(' ')[0],
+                                ),
+                                _analysisRow(
+                                  'Versi Model',
+                                  result.modelVersion,
+                                ),
+                                _analysisRow(
+                                  'Waktu Proses',
+                                  result.processingTime,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // New Screening Button
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          key: const Key('new-screening-button'),
+                          onPressed: () =>
+                              _startNewScreening(context, diagnosis),
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text('Screening Baru'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -492,7 +455,7 @@ class DiagnosisResultTab extends StatelessWidget {
     );
   }
 
-  Widget _headerButton(
+  Widget _actionButton(
     IconData icon,
     String label, {
     VoidCallback? onPressed,
@@ -527,7 +490,8 @@ class DiagnosisResultTab extends StatelessWidget {
         content: Text(
           saved
               ? 'Terenkripsi secara lokal dan dalam antrian sinkronisasi.'
-              : diagnosis.persistenceError ?? 'Screening tidak berhasil disimpan.',
+              : diagnosis.persistenceError ??
+                    'Screening tidak berhasil disimpan.',
         ),
         backgroundColor: saved ? AppTheme.success : AppTheme.error,
       ),
@@ -738,11 +702,7 @@ class _EmptyResultState extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
-                Icons.analytics_outlined,
-                size: 56,
-                color: _textLo,
-              ),
+              const Icon(Icons.analytics_outlined, size: 56, color: _textLo),
               const SizedBox(height: 16),
               const Text(
                 'Belum ada hasil analisis.',
@@ -891,28 +851,25 @@ class _LesionLegendChip extends StatelessWidget {
     final proportion = lungAreaPx == 0
         ? 0.0
         : entry.pixelCount / lungAreaPx * 100;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: Color.fromARGB(255, entry.red, entry.green, entry.blue),
-            borderRadius: BorderRadius.circular(3),
-          ),
+    final color = Color.fromARGB(255, entry.red, entry.green, entry.blue);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: dimmed ? _surfaceAlt : color.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: dimmed ? _border : color.withValues(alpha: 0.45),
         ),
-        const SizedBox(width: 6),
-        Text(
-          '${_lesionNameLabels[entry.name.toLowerCase()] ?? entry.name} · '
-          '${proportion.toStringAsFixed(1)}%',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: dimmed ? _textLo : _textHi,
-          ),
+      ),
+      child: Text(
+        '${_lesionNameLabels[entry.name.toLowerCase()] ?? entry.name} · '
+        '${proportion.toStringAsFixed(1)}%',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: dimmed ? _textLo : color,
         ),
-      ],
+      ),
     );
   }
 }
