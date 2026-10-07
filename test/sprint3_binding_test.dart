@@ -10,6 +10,8 @@ import 'package:myapp/data/http/http_repositories.dart';
 import 'package:myapp/data/offline/offline_patient_repository.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/offline/offline_validation_repository.dart';
+import 'package:myapp/data/models_ota/hybrid_sync_repository.dart';
+import 'package:myapp/data/onnx/hybrid_diagnosis_repository.dart';
 import 'package:myapp/data/unavailable_repositories.dart';
 import 'package:myapp/domain/repositories/repositories.dart';
 
@@ -38,7 +40,7 @@ void main() {
       );
       expect(
         context.read<DiagnosisRepository>(),
-        live ? isA<HttpDiagnosisRepository>() : isA<MockDiagnosisRepository>(),
+        isA<HybridDiagnosisRepository>(),
       );
       expect(
         context.read<PatientRepository>(),
@@ -46,7 +48,7 @@ void main() {
       );
       expect(
         context.read<SyncRepository>(),
-        live ? isA<OfflineSyncRepository>() : isA<MockSyncRepository>(),
+        live ? isA<OfflineSyncRepository>() : isA<HybridSyncRepository>(),
       );
       expect(
         context.read<ValidationRepository>(),

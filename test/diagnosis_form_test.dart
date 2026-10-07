@@ -14,7 +14,9 @@ import 'package:myapp/state/diagnosis_provider.dart';
 Widget _wrap() {
   return ChangeNotifierProvider(
     create: (_) => DiagnosisProvider(MockDiagnosisRepository()),
-    child: const MaterialApp(home: Scaffold(body: DiagnosisScreen())),
+    child: const MaterialApp(
+      home: Scaffold(body: DiagnosisScreen(hasModelOverride: true)),
+    ),
   );
 }
 
@@ -29,16 +31,21 @@ void main() {
     addTearDown(tester.view.reset);
 
     await tester.pumpWidget(_wrap());
+    await tester.tap(find.byKey(const Key('optional-fields-panel')));
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('Direct Sunlight'),
+      find.text('Paparan Sinar Matahari Langsung'),
       300,
-      scrollable: find.byType(Scrollable).first,
+      // The tab host's TabBarView/PageView contributes its own Scrollable
+      // ahead of the form's own in the tree — target the form's (the last
+      // one), not the tab-paging one.
+      scrollable: find.byType(Scrollable).last,
     );
     await tester.tap(find.byKey(const Key('sunlight-dropdown')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Yes').hitTestable(), findsOneWidget);
-    expect(find.text('No').hitTestable(), findsOneWidget);
+    expect(find.text('Ya').hitTestable(), findsOneWidget);
+    expect(find.text('Tidak').hitTestable(), findsOneWidget);
     expect(find.text('Adequate'), findsNothing);
     expect(find.text('Limited'), findsNothing);
   });
@@ -51,16 +58,18 @@ void main() {
     addTearDown(tester.view.reset);
 
     await tester.pumpWidget(_wrap());
+    await tester.tap(find.byKey(const Key('optional-fields-panel')));
+    await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.text('Model Type'),
+      find.text('Jenis Model'),
       300,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: find.byType(Scrollable).last,
     );
     await tester.tap(find.byKey(const Key('model-type-dropdown')));
     await tester.pumpAndSettle();
-    expect(find.text('Disability').hitTestable(), findsOneWidget);
-    expect(find.text('Non Disability').hitTestable(), findsOneWidget);
+    expect(find.text('Disabilitas').hitTestable(), findsOneWidget);
+    expect(find.text('Non-Disabilitas').hitTestable(), findsOneWidget);
     expect(find.text('Pediatric Model'), findsNothing);
     expect(find.text('Model Version'), findsNothing);
   });

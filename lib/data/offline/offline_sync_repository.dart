@@ -1,97 +1,54 @@
 import 'package:dio/dio.dart';
 
-import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/mappers.dart';
 import 'package:myapp/data/local/settings_store.dart';
+import 'package:myapp/data/models_ota/model_update_service.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/models/model_version_info.dart';
 import 'package:myapp/domain/models/patient.dart';
 import 'package:myapp/domain/models/sync_summary.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 
-const _monthsId = [
-  'Januari',
-  'Februari',
-  'Maret',
-  'April',
-  'Mei',
-  'Juni',
-  'Juli',
-  'Agustus',
-  'September',
-  'Oktober',
-  'November',
-  'Desember',
-];
-
-/// "2025-06-10" → "10 Juni 2025"
-String _formatDateId(String isoDate) {
-  final parsed = DateTime.tryParse(isoDate);
-  if (parsed == null) return isoDate;
-  return '${parsed.day} ${_monthsId[parsed.month - 1]} ${parsed.year}';
-}
-
 /// Sync Center backed by the local database and the real sync endpoints.
 ///
 /// Replaces the FASE 3 stub: the installed model version is now persisted per
 /// device, the backup summary counts real cached rows, and uploading pushes
-/// the sync queue instead of ticking a fake progress bar.
+/// the sync queue instead of ticking a fake progress bar. Model-update logic
+/// itself lives in `ModelUpdateService` (shared with `HybridSyncRepository`
+/// for mock/demo mode) — this class only owns the data-backup half.
 class OfflineSyncRepository implements SyncRepository {
   OfflineSyncRepository({
     required AppDatabase db,
-    required ApiClient client,
     required SettingsStore settings,
     required SyncEngine engine,
+    required ModelUpdateService modelUpdate,
   }) : _db = db,
-       _client = client,
        _settings = settings,
-       _engine = engine;
+       _engine = engine,
+       _modelUpdate = modelUpdate;
 
   final AppDatabase _db;
-  final ApiClient _client;
   final SettingsStore _settings;
   final SyncEngine _engine;
+  final ModelUpdateService _modelUpdate;
 
   /// Result of the most recent upload, surfaced to the UI after the stream ends.
   SyncReport? lastReport;
 
   @override
-  Future<String> getInstalledModelVersion() =>
-      _settings.readInstalledModelVersion();
+  Future<String?> getInstalledModelVersion() =>
+      _modelUpdate.getInstalledModelVersion();
 
   @override
-  Future<ModelVersionInfo> checkForUpdate() async {
-    final installed = await _settings.readInstalledModelVersion();
-    final response = await _client.dio.get<Map<String, dynamic>?>(
-      '/sync/model-version',
-    );
-    final data = response.data;
-    if (data == null) {
-      return ModelVersionInfo(
-        currentVersion: installed,
-        latestVersion: installed,
-        fileSize: '-',
-        releaseDate: '-',
-        changelog: const [],
-      );
-    }
-    return ModelVersionInfo(
-      currentVersion: installed,
-      latestVersion: data['version'] as String,
-      fileSize: '${data['file_size_mb']} MB',
-      releaseDate: _formatDateId(data['release_date'] as String),
-      changelog: List<String>.from(data['changelog'] as List? ?? const []),
-    );
-  }
+  Future<ModelVersionInfo> checkForUpdate() => _modelUpdate.checkForUpdate();
 
-  /// Fail closed until verified artifact distribution is available.
   @override
-  Stream<double> downloadModel() async* {
-    throw UnsupportedError(
-      'Model installation disabled: signed artifact distribution unavailable.',
-    );
-  }
+  Stream<double> downloadModel() => _modelUpdate.downloadModel();
+
+  @override
+  Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo() =>
+      _modelUpdate.readCachedCheck();
 
   @override
   Future<SyncSummary> getSyncSummary() async {

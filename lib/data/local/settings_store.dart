@@ -55,11 +55,24 @@ class SettingsStore {
     return created;
   }
 
-  Future<String> readInstalledModelVersion() async =>
-      await _db.getSetting('verified_active_model_version') ?? 'Not installed';
+  /// `null` means no model bundle is installed on this device yet — the app
+  /// ships without one.
+  Future<String?> readInstalledModelVersion() =>
+      _db.getSetting(kInstalledModelVersion);
 
   Future<void> saveInstalledModelVersion(String version) =>
       _db.putSetting(kInstalledModelVersion, version);
+
+  /// The last `/models/check` response, cached as JSON so the Sync Center can
+  /// restore its Model Update card without re-querying the server on every
+  /// open. `null` if no check has ever completed on this device.
+  Future<String?> readLastModelCheckJson() =>
+      _db.getSetting(kLastModelCheck);
+
+  Future<void> saveLastModelCheckJson(String json) =>
+      _db.putSetting(kLastModelCheck, json);
+
+  // === Section: Sync ===
 
   Future<DateTime?> readLastSyncAt() async {
     final raw = await _db.getSetting(kLastSyncAt);

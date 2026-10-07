@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:myapp/core/connectivity/connectivity_service.dart';
 import 'package:myapp/core/theme/app_theme.dart';
+import 'package:myapp/data/models_ota/model_update_pipeline.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
+import 'package:myapp/domain/models/model_version_info.dart';
 import 'package:myapp/domain/models/patient.dart';
 import 'package:myapp/domain/models/sync_summary.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
@@ -30,7 +33,7 @@ class SyncCenterScreen extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              const Chip(label: Text('Connection not verified')),
+              const _ConnectionChip(),
             ],
           ),
           const SizedBox(height: AppTheme.sp24),
@@ -63,24 +66,556 @@ class SyncCenterScreen extends StatelessWidget {
   }
 }
 
+// === Section: Connection Chip ===
+
+class _ConnectionChip extends StatefulWidget {
+  const _ConnectionChip();
+
+  @override
+  State<_ConnectionChip> createState() => _ConnectionChipState();
+}
+
+class _ConnectionChipState extends State<_ConnectionChip> {
+  final _connectivity = ConnectivityService();
+  bool _isOnline = true;
+  StreamSubscription<bool>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _connectivity.checkNow().then((online) {
+      if (!mounted) return;
+      setState(() => _isOnline = online);
+    });
+    _sub = _connectivity.onStatusChange.listen((online) {
+      if (!mounted) return;
+      setState(() => _isOnline = online);
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isOnline = _isOnline;
+    return Chip(
+      avatar: Icon(
+        isOnline ? Icons.circle : Icons.wifi_off_rounded,
+        size: 10,
+        color: isOnline ? AppTheme.success : AppTheme.textSecondary,
+      ),
+      label: Text(
+        isOnline ? 'Online' : 'Offline',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: isOnline ? AppTheme.success : AppTheme.textSecondary,
+        ),
+      ),
+      backgroundColor: isOnline
+          ? AppTheme.success.withValues(alpha: 0.1)
+          : AppTheme.textSecondary.withValues(alpha: 0.1),
+      side: BorderSide(
+        color: isOnline ? AppTheme.success : AppTheme.textSecondary,
+        width: 1,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    );
+  }
+}
+
 // === Section: Model Update Card ===
 
-class _ModelUpdateCard extends StatelessWidget {
+enum _ModelSyncState {
+  idle,
+  checking,
+  upToDate,
+  updateAvailable,
+  downloading,
+  installing,
+  done,
+  error,
+}
+
+class _ModelUpdateCard extends StatefulWidget {
   const _ModelUpdateCard();
+
   @override
-  Widget build(BuildContext context) => const Card(
-    child: Padding(
-      padding: EdgeInsets.all(24),
-      child: Column(
-        children: [
-          Text(
-            'Model installation unavailable: signed artifacts and verification contract pending.',
+  State<_ModelUpdateCard> createState() => _ModelUpdateCardState();
+}
+
+class _ModelUpdateCardState extends State<_ModelUpdateCard> {
+  _ModelSyncState _state = _ModelSyncState.idle;
+  double _progress = 0.0;
+  String _currentVersion = '';
+  ModelVersionInfo? _updateInfo;
+  DateTime? _lastChecked;
+  String? _errorMessage;
+  StreamSubscription<double>? _downloadSub;
+
+  final _connectivity = ConnectivityService();
+  bool _isOnline = true;
+  StreamSubscription<bool>? _connectivitySub;
+
+  @override
+  void initState() {
+    super.initState();
+    final repository = context.read<SyncRepository>();
+    repository.getInstalledModelVersion().then((version) {
+      if (!mounted) return;
+      setState(() => _currentVersion = version ?? '');
+    });
+    // Restore the last completed check (if any) so reopening this page
+    // doesn't reset back to a blank "no info yet" idle state.
+    repository.lastKnownUpdateInfo().then((cached) {
+      if (!mounted || cached == null) return;
+      final (info, checkedAt) = cached;
+      setState(() {
+        _updateInfo = info;
+        _lastChecked = checkedAt;
+        _state = info.hasUpdate
+            ? _ModelSyncState.updateAvailable
+            : _ModelSyncState.upToDate;
+      });
+    });
+    _connectivity.checkNow().then((online) {
+      if (!mounted) return;
+      setState(() => _isOnline = online);
+    });
+    _connectivitySub = _connectivity.onStatusChange.listen((online) {
+      if (!mounted) return;
+      setState(() => _isOnline = online);
+    });
+  }
+
+  @override
+  void dispose() {
+    _downloadSub?.cancel();
+    _connectivitySub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkForUpdate() async {
+    final repository = context.read<SyncRepository>();
+    setState(() {
+      _state = _ModelSyncState.checking;
+      _lastChecked = DateTime.now();
+    });
+    try {
+      final info = await repository.checkForUpdate();
+      if (!mounted) return;
+      setState(() {
+        _updateInfo = info;
+        _state = info.hasUpdate
+            ? _ModelSyncState.updateAvailable
+            : _ModelSyncState.upToDate;
+      });
+    } catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _state = _ModelSyncState.error;
+        _errorMessage =
+            'Gagal memeriksa pembaruan model — periksa koneksi internet Anda. (${err.toString()})';
+      });
+    }
+  }
+
+  void _startDownload() {
+    setState(() {
+      _state = _ModelSyncState.downloading;
+      _progress = 0.0;
+    });
+    _downloadSub = context.read<SyncRepository>().downloadModel().listen(
+      (progress) {
+        if (!mounted) return;
+        setState(() {
+          _progress = progress;
+          if (progress >= 1.0 && _state == _ModelSyncState.downloading) {
+            _state = _ModelSyncState.installing;
+          }
+        });
+      },
+      onDone: _onDownloadDone,
+      onError: _onDownloadError,
+    );
+  }
+
+  void _onDownloadDone() {
+    if (!mounted) return;
+    final newVersion = _updateInfo?.latestVersion ?? _currentVersion;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Model berhasil diperbarui ke $newVersion')),
+    );
+    setState(() {
+      _state = _ModelSyncState.idle;
+      _currentVersion = newVersion;
+      _progress = 0.0;
+    });
+  }
+
+  void _onDownloadError(Object error) {
+    if (!mounted) return;
+    final message = switch (error) {
+      ModelInstallException(:final phase) => switch (phase) {
+        ModelInstallPhase.downloading =>
+          'Gagal mengunduh model — periksa koneksi internet Anda.',
+        ModelInstallPhase.verifying =>
+          'Verifikasi model gagal — berkas model rusak atau tidak sah.',
+        ModelInstallPhase.activating =>
+          'Model tidak kompatibel dengan aplikasi ini.',
+        ModelInstallPhase.smokeTesting =>
+          'Model baru gagal diuji — sistem kembali ke versi sebelumnya secara otomatis.',
+      },
+      _ => 'Gagal menghubungi server',
+    };
+    setState(() {
+      _state = _ModelSyncState.error;
+      _errorMessage = message;
+      _progress = 0.0;
+    });
+  }
+
+  String _formatLastChecked() {
+    if (_lastChecked == null) return '—';
+    final h = _lastChecked!.hour.toString().padLeft(2, '0');
+    final m = _lastChecked!.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.sp24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Pembaruan Model AI',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppTheme.navy,
+              ),
+            ),
+            const SizedBox(height: AppTheme.sp16),
+            _buildBody(context),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    switch (_state) {
+      case _ModelSyncState.idle:
+        return _buildIdle(context);
+      case _ModelSyncState.checking:
+        return _buildChecking();
+      case _ModelSyncState.upToDate:
+        return _buildUpToDate(context);
+      case _ModelSyncState.updateAvailable:
+        return _buildUpdateAvailable(context);
+      case _ModelSyncState.downloading:
+        return _buildDownloading();
+      case _ModelSyncState.installing:
+        return _buildInstalling();
+      case _ModelSyncState.done:
+        return _buildIdle(context);
+      case _ModelSyncState.error:
+        return _buildError(context);
+    }
+  }
+
+  Widget _buildIdle(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _currentVersion.isEmpty
+              ? 'Belum ada model terpasang'
+              : 'Versi Saat Ini: $_currentVersion',
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
+        const SizedBox(height: AppTheme.sp4),
+        Text(
+          'Terakhir diperiksa: ${_formatLastChecked()}',
+          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+        ),
+        const SizedBox(height: AppTheme.sp16),
+        ElevatedButton.icon(
+          onPressed: _isOnline ? _checkForUpdate : null,
+          icon: const Icon(Icons.search_rounded, size: 18),
+          label: const Text('Periksa Pembaruan Model'),
+        ),
+        if (!_isOnline) ...[
+          const SizedBox(height: AppTheme.sp8),
+          const Text(
+            'Tidak ada koneksi internet',
+            style: TextStyle(fontSize: 12, color: AppTheme.error),
           ),
-          OutlinedButton(onPressed: null, child: Text('Download unavailable')),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildChecking() {
+    return const Column(
+      children: [
+        SizedBox(height: AppTheme.sp8),
+        Row(
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            SizedBox(width: AppTheme.sp12),
+            Text('Memeriksa server...'),
+          ],
+        ),
+        SizedBox(height: AppTheme.sp8),
+      ],
+    );
+  }
+
+  Widget _buildUpToDate(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(
+              Icons.check_circle_rounded,
+              color: AppTheme.success,
+              size: 32,
+            ),
+            const SizedBox(width: AppTheme.sp12),
+            Text(
+              _currentVersion.isEmpty
+                  ? 'Tidak ada pembaruan model tersedia'
+                  : 'Model sudah versi terbaru ($_currentVersion)',
+              style: const TextStyle(
+                color: AppTheme.success,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppTheme.sp16),
+        TextButton(
+          onPressed: _isOnline ? _checkForUpdate : null,
+          child: const Text('Periksa Ulang'),
+        ),
+        if (!_isOnline)
+          const Text(
+            'Tidak ada koneksi internet',
+            style: TextStyle(fontSize: 12, color: AppTheme.error),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildUpdateAvailable(BuildContext context) {
+    final info = _updateInfo;
+    if (info == null) return const SizedBox.shrink();
+    final changelog = info.changelog;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Chip(
+          label: const Text(
+            'Versi Baru Tersedia',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              color: AppTheme.warning,
+            ),
+          ),
+          backgroundColor: AppTheme.warning.withValues(alpha: 0.15),
+          side: BorderSide(color: AppTheme.warning.withValues(alpha: 0.5)),
+        ),
+        const SizedBox(height: AppTheme.sp16),
+        // Info table
+        _InfoRow('Versi Saat Ini', _currentVersion),
+        _InfoRow('Versi Baru', info.latestVersion),
+        _InfoRow('Ukuran File', info.fileSize),
+        _InfoRow('Tanggal Rilis', info.releaseDate),
+        const SizedBox(height: AppTheme.sp8),
+        ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          title: const Text(
+            'Lihat Changelog',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          children: changelog
+              .map(
+                (c) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '• ',
+                        style: TextStyle(color: AppTheme.textSecondary),
+                      ),
+                      Expanded(
+                        child: Text(c, style: const TextStyle(fontSize: 13)),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+        const SizedBox(height: AppTheme.sp16),
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton(
+                onPressed: _isOnline ? _startDownload : null,
+                child: const Text('Perbarui Sekarang'),
+              ),
+            ),
+            const SizedBox(width: AppTheme.sp12),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => setState(() => _state = _ModelSyncState.idle),
+                child: const Text('Lewati'),
+              ),
+            ),
+          ],
+        ),
+        if (!_isOnline) ...[
+          const SizedBox(height: AppTheme.sp8),
+          const Text(
+            'Tidak ada koneksi internet',
+            style: TextStyle(fontSize: 12, color: AppTheme.error),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildDownloading() {
+    final fileSizeLabel = _updateInfo?.fileSize ?? '';
+    final fileSizeMB =
+        double.tryParse(fileSizeLabel.replaceAll(' MB', '')) ?? 47.2;
+    final downloaded = (_progress * fileSizeMB).toStringAsFixed(1);
+    final percent = (_progress * 100).toInt();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Mengunduh pembaruan model...'),
+        const SizedBox(height: AppTheme.sp12),
+        LinearProgressIndicator(value: _progress),
+        const SizedBox(height: AppTheme.sp8),
+        Text(
+          '$percent% · $downloaded MB / $fileSizeLabel',
+          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInstalling() {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            SizedBox(width: AppTheme.sp12),
+            Expanded(child: Text('Memverifikasi dan memasang model...')),
+          ],
+        ),
+        SizedBox(height: AppTheme.sp8),
+        Text(
+          'Model sedang diverifikasi keasliannya dan diuji sebelum diaktifkan.',
+          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildError(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.error_rounded, color: AppTheme.error, size: 28),
+            const SizedBox(width: AppTheme.sp8),
+            Expanded(
+              child: Text(
+                _errorMessage ?? 'Gagal menghubungi server',
+                style: const TextStyle(
+                  color: AppTheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppTheme.sp12),
+        TextButton(
+          onPressed: () => setState(() {
+            _state = _ModelSyncState.idle;
+            _errorMessage = null;
+          }),
+          child: const Text('Coba Lagi'),
+        ),
+      ],
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow(this.label, this.value);
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 130,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ),
         ],
       ),
-    ),
-  );
+    );
+  }
 }
 
 // === Section: Data Backup Card ===

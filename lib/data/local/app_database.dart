@@ -23,6 +23,7 @@ const String syncFailed = syncRetryable;
 const String kAccessToken = 'access_token';
 const String kRefreshToken = 'refresh_token';
 const String kInstalledModelVersion = 'installed_model_version';
+const String kLastModelCheck = 'last_model_check';
 const String kLastSyncAt = 'last_sync_at';
 const String kDeviceId = 'device_id';
 const String kSessionOwner = 'session_owner';

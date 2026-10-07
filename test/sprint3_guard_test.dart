@@ -1,46 +1,9 @@
-import 'package:drift/native.dart';
-import 'package:myapp/data/http/api_client.dart';
-import 'package:myapp/data/local/app_database.dart';
-import 'package:myapp/data/local/settings_store.dart';
-import 'package:myapp/data/offline/offline_sync_repository.dart';
-import 'package:myapp/data/sync/sync_engine.dart';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/data/unavailable_repositories.dart';
 
 void main() {
-  test(
-    'disabled artifact install cannot alter active version across repository recreation',
-    () async {
-      final db = AppDatabase(NativeDatabase.memory());
-      final settings = SettingsStore(db);
-      final client = ApiClient(baseUrl: 'https://example.org/api/v1');
-      await settings.saveInstalledModelVersion('legacy-unverified');
-      await db.putSetting('verified_active_model_version', 'verified-existing');
-      OfflineSyncRepository repository() => OfflineSyncRepository(
-        db: db,
-        client: client,
-        settings: settings,
-        engine: SyncEngine(db: db, client: client, settings: settings),
-      );
-      expect(
-        await repository().getInstalledModelVersion(),
-        'verified-existing',
-      );
-      await expectLater(
-        repository().downloadModel().toList(),
-        throwsUnsupportedError,
-      );
-      expect(
-        await repository().getInstalledModelVersion(),
-        'verified-existing',
-      );
-      await client.close();
-      await db.close();
-    },
-  );
-
   test(
     'demo permitted; staging HTTPS and version required; production locked',
     () {

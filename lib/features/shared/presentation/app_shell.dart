@@ -23,7 +23,6 @@ class AppShell extends StatefulWidget {
     ),
     (route: '/patients', icon: Icons.people_alt_rounded, label: 'Patients'),
     (route: '/diagnosis', icon: Icons.biotech_rounded, label: 'Screening'),
-    (route: '/result', icon: Icons.analytics_rounded, label: 'Result'),
     (
       route: '/validation',
       icon: Icons.verified_user_rounded,

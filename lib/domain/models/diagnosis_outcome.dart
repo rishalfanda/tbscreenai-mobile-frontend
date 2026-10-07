@@ -1,3 +1,5 @@
+import 'package:myapp/domain/models/segmentation_overlays.dart';
+
 /// Result of one AI inference run over a chest X-ray.
 class DiagnosisOutcome {
   const DiagnosisOutcome({
@@ -13,6 +15,7 @@ class DiagnosisOutcome {
     this.effusion = 0,
     this.fibrotic = 0,
     this.calcification = 0,
+    this.segmentation,
   });
 
   final bool isPositive;
@@ -29,6 +32,10 @@ class DiagnosisOutcome {
   final double effusion;
   final double fibrotic;
   final double calcification;
+
+  /// Pre-rendered lung/lesion overlay visuals. Only the on-device path
+  /// produces these — mock/HTTP outcomes leave this `null`.
+  final SegmentationOverlays? segmentation;
 
   Map<String, double> get findings => {
     'consolidation': consolidation,

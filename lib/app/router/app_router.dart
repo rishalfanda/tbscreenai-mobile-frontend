@@ -7,7 +7,6 @@ import 'package:myapp/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:myapp/features/dataset/presentation/dataset_screen.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_screen.dart';
 import 'package:myapp/features/patients/presentation/patients_screen.dart';
-import 'package:myapp/features/result/presentation/result_screen.dart';
 import 'package:myapp/features/sync/presentation/sync_center_screen.dart';
 import 'package:myapp/features/validation/presentation/validation_screen.dart';
 import 'package:myapp/features/shared/presentation/app_shell.dart';
@@ -69,10 +68,6 @@ class AppRouter {
             GoRoute(
               path: '/account',
               builder: (context, state) => const AccountScreen(),
-            ),
-            GoRoute(
-              path: '/result',
-              builder: (context, state) => const ResultScreen(),
             ),
           ],
         ),

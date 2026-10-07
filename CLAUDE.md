@@ -67,23 +67,26 @@ RULE: Never hardcode hex in widgets. Always use Theme.of(context) or AppColors.
 | /login | LoginScreen | No | - |
 | /dashboard | DashboardScreen | Yes | 0 |
 | /patients | PatientsScreen | Yes | 1 |
-| /diagnosis | DiagnosisScreen | Yes | 2 |
-| /result | ResultScreen | Yes | 3 |
-| /validation | ValidationScreen | Yes | 4 |
-| /dataset | DatasetScreen | Yes | 5 |
-| /sync | SyncCenterScreen | Yes | 6 |
-| /account | AccountScreen | Yes | 7 |
+| /diagnosis | DiagnosisScreen (tabbed: Input Data / Hasil Analisis) | Yes | 2 |
+| /validation | ValidationScreen | Yes | 3 |
+| /dataset | DatasetScreen | Yes | 4 |
+| /sync | SyncCenterScreen | Yes | 5 |
+| /account | AccountScreen | Yes | 6 |
 | /camera | CameraScreen | No (full screen) | - |
+
+NOTE: the old standalone `/result` route/NavRail item was merged into
+`/diagnosis` as its second tab ("Hasil Analisis") — disabled until an
+analysis exists, auto-selected right after one succeeds. See
+`lib/features/diagnosis/presentation/diagnosis_screen.dart`.
 
 NavRail icons (in order) — source of truth: `lib/features/shared/presentation/app_shell.dart`:
 0: Icons.space_dashboard_rounded   (Dashboard)
 1: Icons.people_alt_rounded        (Patients)
 2: Icons.biotech_rounded           (Diagnose)
-3: Icons.analytics_rounded         (Result)
-4: Icons.verified_user_rounded     (Validation, shows a pending-count badge)
-5: Icons.table_chart_rounded       (Dataset)
-6: Icons.cloud_sync_rounded        (Sync)
-7: Icons.person_rounded            (Account)
+3: Icons.verified_user_rounded     (Validation, shows a pending-count badge)
+4: Icons.table_chart_rounded       (Dataset)
+5: Icons.cloud_sync_rounded        (Sync)
+6: Icons.person_rounded            (Account)
 
 ---
 

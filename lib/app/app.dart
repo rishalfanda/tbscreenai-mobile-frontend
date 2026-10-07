@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -12,12 +13,17 @@ import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/encrypted_xray_store.dart';
 import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/mock/mock_repositories.dart';
-import 'package:myapp/data/unavailable_repositories.dart';
+import 'package:myapp/data/models_ota/hybrid_sync_repository.dart';
+import 'package:myapp/data/models_ota/model_update_pipeline.dart';
+import 'package:myapp/data/models_ota/model_update_service.dart';
 import 'package:myapp/data/offline/offline_patient_repository.dart';
 import 'package:myapp/data/offline/offline_screening_store.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/offline/offline_validation_repository.dart';
+import 'package:myapp/data/onnx/hybrid_diagnosis_repository.dart';
+import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/data/secure/secure_token_storage.dart';
+import 'package:myapp/data/unavailable_repositories.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/repositories/repositories.dart';
 import 'package:myapp/state/auth_provider.dart';
@@ -89,6 +95,28 @@ class TBScreenApp extends StatelessWidget {
               deviceId: c.read<SettingsStore>().readOrCreateDeviceId,
             ),
           ),
+        // === Section: On-device inference ===
+        Provider<OnnxInferenceEngine>(
+          create: (_) {
+            final engine = OnnxInferenceEngine();
+            engine.ready; // fire-and-forget kick-off; await this to read hasBundle reliably
+            return engine;
+          },
+        ),
+        Provider<ModelUpdatePipeline>(
+          create: (c) => ModelUpdatePipeline(
+            downloadDio: Dio(),
+            engine: c.read<OnnxInferenceEngine>(),
+          ),
+        ),
+        Provider<ModelUpdateService>(
+          create: (c) => ModelUpdateService(
+            client: c.read<ApiClient>(),
+            settings: c.read<SettingsStore>(),
+            db: db,
+            modelPipeline: c.read<ModelUpdatePipeline>(),
+          ),
+        ),
         // === Section: Repositories ===
         Provider<AuthRepository>(
           create: (c) => useHttp
@@ -108,11 +136,14 @@ class TBScreenApp extends StatelessWidget {
           create: (c) => useHttp
               ? OfflineSyncRepository(
                   db: db,
-                  client: c.read<ApiClient>(),
                   settings: c.read<SettingsStore>(),
                   engine: c.read<SyncEngine>(),
+                  modelUpdate: c.read<ModelUpdateService>(),
                 )
-              : MockSyncRepository(),
+              : HybridSyncRepository(
+                  modelUpdate: c.read<ModelUpdateService>(),
+                  backup: MockSyncRepository(),
+                ),
         ),
         Provider<DashboardRepository>(
           create: (_) => useHttp
@@ -120,9 +151,12 @@ class TBScreenApp extends StatelessWidget {
               : MockDashboardRepository(),
         ),
         Provider<DiagnosisRepository>(
-          create: (c) => useHttp
-              ? HttpDiagnosisRepository(c.read<ApiClient>())
-              : MockDiagnosisRepository(),
+          create: (c) => HybridDiagnosisRepository(
+            engine: c.read<OnnxInferenceEngine>(),
+            fallback: useHttp
+                ? HttpDiagnosisRepository(c.read<ApiClient>())
+                : MockDiagnosisRepository(),
+          ),
         ),
         Provider<ValidationRepository>(
           create: (c) => useHttp

@@ -55,6 +55,19 @@ class AppConfig {
       }
     }
   }
+
+  /// Dev-time fallback bundle-zip URL, for exercising the real OTA model
+  /// download path before the backend serves `download_url` on
+  /// `/sync/model-version`. Empty/absent means "use whatever the backend
+  /// returns, or fall back to the old no-op simulation."
+  ///
+  ///   flutter run --dart-define=USE_HTTP=true \
+  ///     --dart-define=MODEL_BUNDLE_URL=https://.../bundle_v1.3.1.zip
+  static const String _modelBundleUrlRaw = String.fromEnvironment(
+    'MODEL_BUNDLE_URL',
+  );
+  static String? get modelBundleUrl =>
+      _modelBundleUrlRaw.isEmpty ? null : _modelBundleUrlRaw;
 }
 
 class _BuildGate {
