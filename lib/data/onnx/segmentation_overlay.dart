@@ -45,6 +45,7 @@ Future<SegmentationOverlays?> renderSegmentationOverlays({
     lungPng: rendered.lung,
     lesionPng: rendered.lesion,
     legend: legend,
+    lungAreaPx: result.lungAreaPx,
   );
 }
 

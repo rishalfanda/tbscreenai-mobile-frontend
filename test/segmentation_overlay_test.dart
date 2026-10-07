@@ -62,6 +62,7 @@ void main() {
       expect(overlays.legend[0].pixelCount, 1);
       expect(overlays.legend[1].name, 'cavity');
       expect(overlays.legend[1].pixelCount, 0);
+      expect(overlays.lungAreaPx, 16);
     });
 
     test('returns null when the X-ray bytes cannot be decoded as an image', () async {

@@ -9,6 +9,7 @@ class SegmentationOverlays {
     required this.lungPng,
     required this.lesionPng,
     required this.legend,
+    required this.lungAreaPx,
   });
 
   /// The X-ray resampled to the mask grid, no overlay — same base image the
@@ -22,6 +23,10 @@ class SegmentationOverlays {
   final Uint8List lesionPng;
 
   final List<LesionLegendEntry> legend;
+
+  /// Total lung-field pixel count for this run — the denominator for each
+  /// [LesionLegendEntry]'s area proportion.
+  final int lungAreaPx;
 }
 
 /// One row of the lesion color legend — plain RGB, no `dart:ui`/Flutter

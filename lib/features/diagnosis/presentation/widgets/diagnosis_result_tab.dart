@@ -862,7 +862,12 @@ class _XrayImageCardState extends State<_XrayImageCard> {
                   spacing: 12,
                   runSpacing: 8,
                   children: segmentation.legend
-                      .map((entry) => _LesionLegendChip(entry: entry))
+                      .map(
+                        (entry) => _LesionLegendChip(
+                          entry: entry,
+                          lungAreaPx: segmentation.lungAreaPx,
+                        ),
+                      )
                       .toList(),
                 ),
               ],
@@ -875,13 +880,17 @@ class _XrayImageCardState extends State<_XrayImageCard> {
 }
 
 class _LesionLegendChip extends StatelessWidget {
-  const _LesionLegendChip({required this.entry});
+  const _LesionLegendChip({required this.entry, required this.lungAreaPx});
 
   final LesionLegendEntry entry;
+  final int lungAreaPx;
 
   @override
   Widget build(BuildContext context) {
     final dimmed = entry.pixelCount == 0;
+    final proportion = lungAreaPx == 0
+        ? 0.0
+        : entry.pixelCount / lungAreaPx * 100;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -896,7 +905,7 @@ class _LesionLegendChip extends StatelessWidget {
         const SizedBox(width: 6),
         Text(
           '${_lesionNameLabels[entry.name.toLowerCase()] ?? entry.name} · '
-          '${entry.pixelCount} px',
+          '${proportion.toStringAsFixed(1)}%',
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,

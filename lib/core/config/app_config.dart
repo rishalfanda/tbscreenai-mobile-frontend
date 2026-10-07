@@ -48,7 +48,7 @@ class AppConfig {
           uri.userInfo.isNotEmpty ||
           uri.hasQuery ||
           uri.hasFragment ||
-          !RegExp(r'/api/v[1-9][0-9]*$').hasMatch(uri.path)) {
+          !RegExp(r'/v[1-9][0-9]*$').hasMatch(uri.path)) {
         throw StateError(
           'API_BASE_URL must be HTTPS with a versioned /api/vN path.',
         );

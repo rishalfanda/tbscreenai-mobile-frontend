@@ -121,6 +121,7 @@ void main() {
                 pixelCount: 12,
               ),
             ],
+            lungAreaPx: 1200,
           ),
         );
 
@@ -128,7 +129,7 @@ void main() {
       await tester.pump();
 
       expect(find.byType(SegmentedButton<int>), findsOneWidget);
-      expect(find.text('Konsolidasi · 12 px'), findsOneWidget);
+      expect(find.text('Konsolidasi · 1.0%'), findsOneWidget);
     },
   );
 

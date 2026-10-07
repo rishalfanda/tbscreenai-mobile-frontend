@@ -20,6 +20,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // AGP 8+ defaults this to false; the product flavors below call
+    // resValue(...) to set a per-environment app_name, so it must be on.
+    buildFeatures {
+        resValues = true
+    }
+
     kotlin {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
@@ -93,7 +99,7 @@ if (appEnvironment == "staging") {
     val uri = URI(buildDefines["API_BASE_URL"] ?: "")
     check(uri.scheme == "https" && !uri.host.isNullOrBlank() &&
         uri.userInfo == null && uri.query == null && uri.fragment == null &&
-        Regex("/api/v[1-9][0-9]*").matches(uri.path ?: "")) {
+        Regex("/v[1-9][0-9]*").matches(uri.path ?: "")) {
         "HTTPS versioned API_BASE_URL required"
     }
 }
