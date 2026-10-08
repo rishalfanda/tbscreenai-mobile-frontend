@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
+import 'package:myapp/domain/models/diagnosis_draft.dart';
 import 'package:myapp/domain/models/screening_result.dart';
 import 'package:myapp/domain/models/segmentation_overlays.dart';
 import 'package:myapp/domain/models/xray_image.dart';
@@ -200,23 +203,23 @@ class DiagnosisResultTab extends StatelessWidget {
                             ),
                           ),
                           child: Padding(
-                            padding: const EdgeInsets.all(24),
+                            padding: const EdgeInsets.all(16),
                             child: Column(
                               children: [
                                 Text(
                                   isPositive ? 'Terdeteksi TB' : 'Normal',
                                   style: const TextStyle(
-                                    fontSize: 22,
+                                    fontSize: 16,
                                     fontWeight: FontWeight.w800,
                                     color: Colors.white,
                                   ),
                                 ),
-                                const SizedBox(height: 20),
+                                const SizedBox(height: 12),
                                 Container(
                                   width: double.infinity,
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
+                                    horizontal: 12,
+                                    vertical: 8,
                                   ),
                                   decoration: BoxDecoration(
                                     color: Colors.white.withValues(alpha: 0.2),
@@ -227,7 +230,7 @@ class DiagnosisResultTab extends StatelessWidget {
                                       Text(
                                         '$displayedConfidence%',
                                         style: const TextStyle(
-                                          fontSize: 40,
+                                          fontSize: 26,
                                           fontWeight: FontWeight.w800,
                                           color: Colors.white,
                                         ),
@@ -236,20 +239,20 @@ class DiagnosisResultTab extends StatelessWidget {
                                         'Tingkat Keyakinan AI',
                                         style: TextStyle(
                                           color: Colors.white70,
-                                          fontSize: 12,
+                                          fontSize: 10,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 10),
                                 const Text(
                                   'Hasil AI hanya alat bantu screening.\n'
                                   'Konfirmasi oleh tenaga medis profesional tetap diperlukan.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 11,
+                                    fontSize: 9,
                                   ),
                                 ),
                               ],
@@ -257,92 +260,53 @@ class DiagnosisResultTab extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 10),
 
                       // Clinical Data Card
                       _DarkCard(
+                        padding: const EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const _SectionTitle('Data Klinis'),
-                            const SizedBox(height: 20),
-                            if (snapshot.symptoms.isNotEmpty)
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: snapshot.symptoms
-                                    .map(
-                                      (s) => Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.primary.withValues(
-                                            alpha: 0.18,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            999,
-                                          ),
-                                          border: Border.all(
-                                            color: AppTheme.primary.withValues(
-                                              alpha: 0.4,
-                                            ),
-                                          ),
-                                        ),
-                                        child: Text(
-                                          s,
-                                          style: const TextStyle(
-                                            color: AppTheme.primary,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                    )
-                                    .toList(),
+                            const _SectionTitle('Data Klinis', fontSize: 14),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                key: const Key('show-clinical-data-button'),
+                                onPressed: () =>
+                                    _showClinicalDataDialog(context, snapshot),
+                                icon: const Icon(
+                                  Icons.description_outlined,
+                                  size: 16,
+                                ),
+                                label: const Text(
+                                  'Tampilkan Data Klinis',
+                                  style: TextStyle(fontSize: 13),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: _textHi,
+                                  side: const BorderSide(color: _border),
+                                  backgroundColor: _surfaceAlt,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                  ),
+                                ),
                               ),
-                            const SizedBox(height: 20),
-                            Table(
-                              columnWidths: const {
-                                0: IntrinsicColumnWidth(),
-                                1: FlexColumnWidth(),
-                              },
-                              children: [
-                                _clinicalRow(
-                                  'Komorbiditas',
-                                  snapshot.comorbidity ?? 'Tidak diisi',
-                                ),
-                                _clinicalRow(
-                                  'Status Merokok',
-                                  snapshot.smoking ?? 'Tidak diisi',
-                                ),
-                                _clinicalRow(
-                                  'Kontak TB',
-                                  snapshot.tbContact ?? 'Tidak diisi',
-                                ),
-                                _clinicalRow(
-                                  'Dahak (BTA)',
-                                  snapshot.bta ?? 'Tidak diisi',
-                                ),
-                                _clinicalRow(
-                                  'Kultur',
-                                  snapshot.culture ?? 'Tidak diisi',
-                                ),
-                              ],
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 10),
 
                       // Recommendations Card
                       _DarkCard(
+                        padding: const EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const _SectionTitle('Rekomendasi'),
-                            const SizedBox(height: 16),
+                            const _SectionTitle('Rekomendasi', fontSize: 14),
+                            const SizedBox(height: 8),
                             ...(isPositive
                                     ? [
                                         'Segera rujuk ke dokter spesialis paru',
@@ -357,7 +321,7 @@ class DiagnosisResultTab extends StatelessWidget {
                                 .map(
                                   (item) => Padding(
                                     padding: const EdgeInsets.symmetric(
-                                      vertical: 4,
+                                      vertical: 2,
                                     ),
                                     child: Row(
                                       crossAxisAlignment:
@@ -365,23 +329,24 @@ class DiagnosisResultTab extends StatelessWidget {
                                       children: [
                                         Padding(
                                           padding: const EdgeInsets.only(
-                                            top: 4,
+                                            top: 3,
                                           ),
                                           child: Icon(
                                             isPositive
                                                 ? Icons.circle
                                                 : Icons.check_circle,
-                                            size: 8,
+                                            size: 6,
                                             color: isPositive
                                                 ? AppTheme.error
                                                 : AppTheme.success,
                                           ),
                                         ),
-                                        const SizedBox(width: 10),
+                                        const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
                                             item,
                                             style: const TextStyle(
+                                              fontSize: 13,
                                               fontWeight: FontWeight.w600,
                                               color: _textHi,
                                             ),
@@ -394,15 +359,19 @@ class DiagnosisResultTab extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 10),
 
                       // Analysis Details
                       _DarkCard(
+                        padding: const EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const _SectionTitle('Detail Analisis'),
-                            const SizedBox(height: 16),
+                            const _SectionTitle(
+                              'Detail Analisis',
+                              fontSize: 14,
+                            ),
+                            const SizedBox(height: 8),
                             Table(
                               columnWidths: const {
                                 0: IntrinsicColumnWidth(),
@@ -426,7 +395,7 @@ class DiagnosisResultTab extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 10),
 
                       // New Screening Button
                       SizedBox(
@@ -440,7 +409,7 @@ class DiagnosisResultTab extends StatelessWidget {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primary,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
                           ),
                         ),
                       ),
@@ -536,6 +505,99 @@ class DiagnosisResultTab extends StatelessWidget {
         false;
   }
 
+  Future<void> _showClinicalDataDialog(
+    BuildContext context,
+    DiagnosisDraft snapshot,
+  ) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        key: const Key('clinical-data-dialog'),
+        backgroundColor: _surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+          side: const BorderSide(color: _border),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _SectionTitle('Data Klinis'),
+                const SizedBox(height: 20),
+                if (snapshot.symptoms.isNotEmpty) ...[
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: snapshot.symptoms
+                        .map(
+                          (s) => Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primary.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: AppTheme.primary.withValues(alpha: 0.4),
+                              ),
+                            ),
+                            child: Text(
+                              s,
+                              style: const TextStyle(
+                                color: AppTheme.primary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+                Table(
+                  columnWidths: const {
+                    0: IntrinsicColumnWidth(),
+                    1: FlexColumnWidth(),
+                  },
+                  children: [
+                    _clinicalRow(
+                      'Komorbiditas',
+                      snapshot.comorbidity ?? 'Tidak diisi',
+                    ),
+                    _clinicalRow(
+                      'Status Merokok',
+                      snapshot.smoking ?? 'Tidak diisi',
+                    ),
+                    _clinicalRow(
+                      'Kontak TB',
+                      snapshot.tbContact ?? 'Tidak diisi',
+                    ),
+                    _clinicalRow('Dahak (BTA)', snapshot.bta ?? 'Tidak diisi'),
+                    _clinicalRow('Kultur', snapshot.culture ?? 'Tidak diisi'),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('Tutup'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _summaryField(String label, String value) {
     return Container(
       width: 160,
@@ -592,18 +654,18 @@ class DiagnosisResultTab extends StatelessWidget {
     return TableRow(
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.symmetric(vertical: 3),
           child: Text(
             label,
-            style: const TextStyle(fontSize: 12, color: _textLo),
+            style: const TextStyle(fontSize: 11, color: _textLo),
           ),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.symmetric(vertical: 3),
           child: Text(
             value,
             style: const TextStyle(
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
               color: _textHi,
             ),
@@ -756,13 +818,20 @@ class _XrayImageCardState extends State<_XrayImageCard> {
     }
 
     if (segmentation == null) {
-      return AspectRatio(
-        aspectRatio: 16 / 9,
-        child: Image.memory(
-          image!.bytes,
-          fit: BoxFit.contain,
-          errorBuilder: (_, _, _) =>
-              const Center(child: Text('Gambar tidak tersedia')),
+      return MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          key: const Key('xray-image-viewer-trigger'),
+          onTap: () => _openImageViewer(context, image.bytes),
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Image.memory(
+              image!.bytes,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) =>
+                  const Center(child: Text('Gambar tidak tersedia')),
+            ),
+          ),
         ),
       );
     }
@@ -776,14 +845,21 @@ class _XrayImageCardState extends State<_XrayImageCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AspectRatio(
-          aspectRatio: 16 / 9,
-          child: Image.memory(
-            bytes,
-            fit: BoxFit.contain,
-            gaplessPlayback: true,
-            errorBuilder: (_, _, _) =>
-                const Center(child: Text('Gambar tidak tersedia')),
+        MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            key: const Key('xray-image-viewer-trigger'),
+            onTap: () => _openImageViewer(context, bytes),
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Image.memory(
+                bytes,
+                fit: BoxFit.contain,
+                gaplessPlayback: true,
+                errorBuilder: (_, _, _) =>
+                    const Center(child: Text('Gambar tidak tersedia')),
+              ),
+            ),
           ),
         ),
         Padding(
@@ -837,6 +913,40 @@ class _XrayImageCardState extends State<_XrayImageCard> {
       ],
     );
   }
+}
+
+/// Opens the currently-selected X-ray view (Rontgen/Paru/Lesi) full-size,
+/// with pinch/drag zoom and pan, over a dark modal overlay.
+void _openImageViewer(BuildContext context, Uint8List bytes) {
+  showDialog<void>(
+    context: context,
+    barrierColor: Colors.black87,
+    builder: (dialogContext) => Dialog(
+      key: const Key('xray-image-viewer-dialog'),
+      backgroundColor: Colors.black,
+      insetPadding: const EdgeInsets.all(16),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: InteractiveViewer(
+              minScale: 1,
+              maxScale: 5,
+              child: Center(child: Image.memory(bytes, fit: BoxFit.contain)),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: IconButton(
+              key: const Key('xray-image-viewer-close-button'),
+              icon: const Icon(Icons.close, color: Colors.white),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _LesionLegendChip extends StatelessWidget {
@@ -900,15 +1010,16 @@ class _DarkCard extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text);
+  const _SectionTitle(this.text, {this.fontSize = 18});
   final String text;
+  final double fontSize;
 
   @override
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
-        fontSize: 18,
+      style: TextStyle(
+        fontSize: fontSize,
         fontWeight: FontWeight.w700,
         color: _textHi,
       ),
