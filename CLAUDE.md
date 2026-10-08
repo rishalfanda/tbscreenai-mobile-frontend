@@ -9,22 +9,39 @@ Other roles: Admin RS (web, separate repo), Super Admin (web, separate repo).
 - Flutter + Dart (SDK ^3.11.4)
 - go_router: ^15.1.2 — ShellRoute for NavRail persistence
 - provider: ^6.1.2 — state management
-- camera: ^0.10.6 — chest X-ray capture
+- camera: ^0.12.0+2 / image_picker — chest X-ray capture and gallery selection
+- dio — HTTP client; drift/drift_flutter — local DB + offline sync queue
+- flutter_onnxruntime — on-device inference engine for an installed model bundle
+- ed25519_edwards + crypto — model-bundle signature/checksum verification
+- flutter_secure_storage — session tokens (never plaintext SQLite)
+- connectivity_plus, archive, image, path_provider — OTA/model-bundle support
 - Material Design 3 (useMaterial3: true)
 
 ## Current Phase
-REPOSITORY PATTERN + OPTIONAL BACKEND (FASE 3).
+HYBRID REPOSITORIES + ON-DEVICE INFERENCE + SIGNED OTA MODEL UPDATES.
 - Domain models: lib/domain/models/ (immutable, no Flutter imports)
 - Interfaces: lib/domain/repositories/ — screens/providers depend on these only
-- Mock impl: lib/data/mock/ (default; SynchronousFuture = no loading flash)
-- Http impl: lib/data/http/ (dio; auth/patients/sync only — rest still mock)
-- Toggle: --dart-define=USE_HTTP=true (+ API_BASE_URL=...), see lib/core/config/app_config.dart
+- Mock impl: lib/data/mock/ (demo flavor; SynchronousFuture = no loading flash)
+- Http/offline impl: lib/data/http/, lib/data/offline/, lib/data/local/ (dio + Drift;
+  auth/patients/sync are durable offline-first — dashboard/dataset APIs still unavailable)
+- On-device impl: lib/data/onnx/ (OnnxInferenceEngine, segmentation overlay) and
+  lib/data/models_ota/ (signed bundle download/verify/activate/rollback pipeline)
+- `DiagnosisRepository` is `HybridDiagnosisRepository`: tries the on-device ONNX
+  bundle first, falls back to HTTP or mock only when no verified bundle is installed.
+- `SyncRepository`'s model-update half (`ModelUpdateService`) is real in every flavor,
+  including demo (`HybridSyncRepository`) — only the data-backup half stays mock/offline-queued.
+- Toggle HTTP/offline vs demo: --dart-define=USE_HTTP=true (+ API_BASE_URL=...), see
+  lib/core/config/app_config.dart. Production flavor stays locked regardless.
 - Backend repo: C:\Users\devel\tbscreenai-backend (FastAPI, kontrak docs/openapi.json)
-AI inference: MOCK (3s delay) — in mock repo AND backend /diagnoses/infer.
 
 ## Testing Environment
-Running on: flutter run -d chrome (web/desktop browser preview)
-Reason: No tablet emulator hardware available.
+Fast iteration: `flutter run -d chrome` (web/desktop browser preview).
+Real-device debugging also happens on Android now. Since product flavors
+(demo/staging/production) were added, `flutter run`/`flutter build apk` on
+Android **requires** `--flavor demo --dart-define=APP_ENV=demo` (or `staging`
+with its `API_BASE_URL`) — a plain `flutter run` with no flavor fails the
+`build.gradle.kts` safety check ("Native artifact flavor must match APP_ENV")
+because it implicitly targets every flavor's debug variant at once.
 Final deploy target: Android tablet, landscape orientation, 10–12 inch screen.
 
 ---
@@ -67,7 +84,7 @@ RULE: Never hardcode hex in widgets. Always use Theme.of(context) or AppColors.
 | /login | LoginScreen | No | - |
 | /dashboard | DashboardScreen | Yes | 0 |
 | /patients | PatientsScreen | Yes | 1 |
-| /diagnosis | DiagnosisScreen (tabbed: Input Data / Hasil Analisis) | Yes | 2 |
+| /diagnosis | DiagnosisScreen (Input Data / Hasil Analisis — no visible tab bar) | Yes | 2 |
 | /validation | ValidationScreen | Yes | 3 |
 | /dataset | DatasetScreen | Yes | 4 |
 | /sync | SyncCenterScreen | Yes | 5 |
@@ -75,9 +92,17 @@ RULE: Never hardcode hex in widgets. Always use Theme.of(context) or AppColors.
 | /camera | CameraScreen | No (full screen) | - |
 
 NOTE: the old standalone `/result` route/NavRail item was merged into
-`/diagnosis` as its second tab ("Hasil Analisis") — disabled until an
-analysis exists, auto-selected right after one succeeds. See
-`lib/features/diagnosis/presentation/diagnosis_screen.dart`.
+`/diagnosis` as its second internal view ("Hasil Analisis"). There is no
+visible `TabBar` — the view switches automatically right after a successful
+analysis, and back again on "Screening Baru"/reset; a `TabController` +
+`TabBarView` still back it, so swiping the body also moves between views
+(blocked into Hasil Analisis until a real outcome exists). See
+`lib/features/diagnosis/presentation/diagnosis_screen.dart`. The result view
+itself (`widgets/diagnosis_result_tab.dart`) is a two-column dashboard: X-ray
+viewer (tap to zoom/pan; lung/lesion segmentation toggle with a per-class
+area-percentage legend) + patient summary on the left; AI verdict, a
+dialog-gated clinical-data button, recommendations, and analysis metadata on
+the right.
 
 NavRail icons (in order) — source of truth: `lib/features/shared/presentation/app_shell.dart`:
 0: Icons.space_dashboard_rounded   (Dashboard)
@@ -90,80 +115,29 @@ NavRail icons (in order) — source of truth: `lib/features/shared/presentation/
 
 ---
 
-## SyncCenterScreen — Spec Detail
+## SyncCenterScreen — Current Implementation
 
-### Purpose
-Allow doctor to: (1) check & update AI model version, (2) optionally backup medical data to server.
-Offline-first: app works without internet. Sync is always user-initiated, never automatic.
+Purpose unchanged: (1) check & update the AI model, (2) optionally back up
+medical data. Offline-first — sync is always user-initiated, never automatic.
+`lib/features/sync/presentation/sync_center_screen.dart`: header with a real
+`_ConnectionChip` (backed by `ConnectivityService`), then `_ModelUpdateCard` and
+`_DataBackupCard` side by side (stacked below 880px).
 
-### Layout (tablet landscape)
-```
-AppShell(navIndex: 5)
-└── SingleChildScrollView
-    └── Column
-        ├── Header Row
-        │   ├── Text "Sync Center" (titleLarge)
-        │   └── Chip: status koneksi (Online/Offline, icon dot)
-        └── Row(crossAxisAlignment: start, gap: 24)
-            ├── Expanded — ModelUpdateCard
-            └── Expanded — DataBackupCard
-```
-
-### ModelUpdateCard — States & UI
-State machine: idle → checking → upToDate | updateAvailable → downloading → done | error
-
-- **idle**: Button [Periksa Pembaruan Model], info versi saat ini, last checked timestamp
-- **checking**: CircularProgressIndicator + "Memeriksa server..."
-- **upToDate**: Icon check_circle hijau + "Model sudah versi terbaru (v{current})"
-- **updateAvailable**: 
-  - Badge chip "Versi Baru Tersedia"
-  - Tabel: Versi Saat Ini vs Versi Baru, Ukuran File, Tanggal Rilis
-  - Ekspandable changelog (mock: list string)
-  - Row buttons: [Perbarui Sekarang] (primary) + [Lewati] (outlined)
-- **downloading**: LinearProgressIndicator + persentase + ukuran downloaded
-- **done**: Snackbar "Model berhasil diperbarui ke v{new}"
-- **error**: Icon error merah + pesan + Button [Coba Lagi]
-
-Mock data for update:
-```dart
-const mockModelUpdate = {
-  'currentVersion': 'v1.2.0',
-  'latestVersion': 'v1.3.1',
-  'fileSize': '47.2 MB',
-  'releaseDate': '10 Juni 2025',
-  'changelog': [
-    'Peningkatan akurasi deteksi TB aktif sebesar 3.2%',
-    'Perbaikan false positive pada pasien pediatrik',
-    'Optimasi kecepatan inferensi pada perangkat low-end',
-  ],
-};
-```
-
-### DataBackupCard — States & UI
-Sifat: opsional penuh. Data medis sensitif — perlu consent eksplisit sebelum upload.
-
-- **idle**: 
-  - Warning chip merah: "⚠ Data Medis Sensitif"
-  - Summary mock: "32 Pasien · 89 Diagnosis · ~128 MB"
-  - Button [Pilih Data & Unggah]
-  - Last sync info: timestamp atau "Belum pernah disinkronkan"
-- **consent dialog** (muncul saat tombol ditekan):
-  - AlertDialog, tidak bisa dismiss klik luar
-  - Teks penjelasan perlindungan data (singkat)
-  - Checkbox: "Saya menyetujui pengiriman data medis ke server"
-  - Buttons: [Batal] + [Lanjutkan] (disabled sampai checkbox dicentang)
-- **selection** (setelah consent):
-  - List pasien mock dengan Checkbox per baris
-  - Button [Pilih Semua] / [Batal Pilih]
-  - Footer: "X pasien dipilih" + Button [Mulai Unggah]
-- **uploading**: LinearProgressIndicator + "Mengunggah X/Y pasien..."
-- **done**: Summary: X berhasil, Y gagal. Tombol [Coba Ulang Gagal] jika ada.
-- **error / offline**: Pesan "Tidak ada koneksi internet. Hubungkan perangkat dan coba lagi."
+- **`_ModelUpdateCard`** is real, not mock: `idle → checking → upToDate |
+  updateAvailable → downloading → installing → done | error`. Calls
+  `SyncRepository.checkForUpdate()`/`downloadModel()`, backed by
+  `ModelUpdateService` (`/models/check`) and `ModelUpdatePipeline`
+  (download → Ed25519 signature + per-file SHA-256 verification →
+  activate → smoke-test → automatic rollback on failure). See
+  `lib/data/models_ota/` and `lib/data/onnx/bundle_verifier.dart`.
+- **`_DataBackupCard`** stays the simulated/offline-queued flow described
+  before: consent dialog (non-dismissible, checkbox-gated "Lanjutkan"),
+  patient selection, upload progress, done/error summary.
 
 ---
 
 ## Code Rules
-- Extract reusable widgets ke lib/widgets/
+- Extract reusable widgets ke lib/features/shared/presentation/widgets/
 - Use const constructors wherever possible
 - Theme-driven: Theme.of(context), never hardcoded hex in widget files
 - Mouse hover (web preview): MouseRegion + AnimatedContainer
@@ -174,8 +148,8 @@ Sifat: opsional penuh. Data medis sensitif — perlu consent eksplisit sebelum u
 
 ## Packages FORBIDDEN in this phase
 supabase, firebase_core, sqflite, hive, shared_preferences
-(dio DIIZINKAN sejak FASE 3 — hanya di lib/data/http/. Local storage
-menyusul FASE 4 lewat drift, jangan tambah paket storage lain tanpa izin.)
+(dio sudah dipakai di lib/data/http/; drift sudah dipakai di lib/data/local/
+untuk DB lokal + offline queue. Jangan tambah paket storage lain tanpa izin.)
 
 ---
 
@@ -195,28 +169,23 @@ void _setHovered(bool value) {
 Saat test di browser, set window width ≥ 1024px agar layout tablet aktif.
 Jika layout mobile muncul, bukan bug — itu LayoutBuilder bekerja benar.
 
+### Android Gradle flavor gotchas (RESOLVED)
+- `A problem occurred configuring project ':app' > ... contains custom
+  resource values, but the feature is disabled` — AGP 8+ defaults
+  `android.buildFeatures.resValues` to `false`, but `android/app/build.gradle.kts`'s
+  product flavors call `resValue(...)` to set a per-environment app name. Fixed
+  by adding `buildFeatures { resValues = true }` there.
+- `Native artifact flavor must match APP_ENV` — see Testing Environment above;
+  always pass `--flavor <demo|staging>` on Android.
+
 ---
 
 ## File Structure Convention
-```
-lib/
-├── main.dart
-├── app_theme.dart          ← color & typography constants
-├── router.dart             ← go_router config, semua routes
-├── screens/
-│   ├── login_screen.dart
-│   ├── dashboard_screen.dart
-│   ├── patients_screen.dart
-│   ├── diagnosis_screen.dart
-│   ├── camera_screen.dart
-│   ├── result_screen.dart
-│   ├── dataset_screen.dart
-│   ├── sync_center_screen.dart   ← NEW
-│   └── account_screen.dart
-├── widgets/
-│   ├── app_shell.dart      ← NavRail + ShellRoute wrapper
-│   ├── nav_rail.dart
-│   └── [reusable widgets]
-└── mock/
-    └── mock_data.dart      ← semua mock data terpusat
-```
+Feature-first, not screen-first — there is no `lib/screens/`, `lib/widgets/`,
+or `lib/mock/` at the top level. Each feature owns a folder under
+`lib/features/<name>/`, with its screen(s) in `presentation/` (and
+`application/` for feature-local non-UI logic, e.g. `diagnosis/application/
+xray_image_picker.dart`). Shared data/domain/state layers live in
+`lib/data/`, `lib/domain/`, `lib/state/`. See the "Project Structure" tree in
+`README.md` for the full, current layout — keep that tree in sync instead of
+duplicating it here.
