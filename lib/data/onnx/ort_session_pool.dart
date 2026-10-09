@@ -14,13 +14,22 @@ const Map<String, OrtProvider> _providerByName = {
   'cpu': OrtProvider.CPU,
 };
 
+typedef OrtSessionFactory =
+    Future<OrtSessionHandle> Function(
+      String filePath, {
+      required List<String> preferredProviders,
+      String? label,
+    });
+
 /// Thin wrapper around the `flutter_onnxruntime` plugin.
 ///
 /// The plugin routes every native call through a background task queue, so
 /// `await`ing session creation / inference never blocks the platform UI thread.
 class OrtSessionPool {
-  OrtSessionPool();
+  OrtSessionPool({OrtSessionFactory? sessionFactory})
+    : _sessionFactory = sessionFactory;
 
+  final OrtSessionFactory? _sessionFactory;
   final OnnxRuntime _ort = OnnxRuntime();
   List<OrtProvider>? _available;
 
@@ -41,6 +50,13 @@ class OrtSessionPool {
     required List<String> preferredProviders,
     String? label,
   }) async {
+    if (_sessionFactory != null) {
+      return _sessionFactory(
+        filePath,
+        preferredProviders: preferredProviders,
+        label: label,
+      );
+    }
     final available = await availableProviders();
 
     final providers = <OrtProvider>[];
@@ -61,7 +77,7 @@ class OrtSessionPool {
           interOpNumThreads: 1,
         ),
       );
-      return OrtSessionHandle._(session, providers.first.name.toLowerCase());
+      return _RealOrtSessionHandle(session, providers.first.name.toLowerCase());
     } catch (e) {
       // `.ort`-format models can't be layout-transformed to NHWC at load time
       // (the `com.ms.internal.nhwc` op schemas aren't registered in the
@@ -82,7 +98,7 @@ class OrtSessionPool {
               interOpNumThreads: 1,
             ),
           );
-          return OrtSessionHandle._(session, 'cpu (fallback)');
+          return _RealOrtSessionHandle(session, 'cpu (fallback)');
         } catch (e2) {
           throw StateError(
             'could not create ONNX session${label != null ? ' for $label' : ''}'
@@ -99,19 +115,39 @@ class OrtSessionPool {
 
 /// A loaded model. Runs all outputs; the caller maps them positionally
 /// (in the graph's declared output order).
-class OrtSessionHandle {
-  OrtSessionHandle._(this._session, this.activeProvider);
+abstract class OrtSessionHandle {
+  String get activeProvider;
+  List<String> get inputNames;
+  List<String> get outputNames;
+
+  Future<List<Tensor>> run(Map<String, Tensor> feeds);
+  Future<void> close();
+
+  @visibleForTesting
+  factory OrtSessionHandle.mock({
+    required String activeProvider,
+    required Future<List<Tensor>> Function(Map<String, Tensor> feeds) onRun,
+    Future<void> Function()? onClose,
+    List<String> inputNames,
+    List<String> outputNames,
+  }) = _MockOrtSessionHandle;
+}
+
+class _RealOrtSessionHandle implements OrtSessionHandle {
+  _RealOrtSessionHandle(this._session, this.activeProvider);
 
   final OrtSession _session;
 
-  /// The execution-provider preference this session was created with
-  /// (best-effort — the plugin does not report which EP actually bound).
+  @override
   final String activeProvider;
 
+  @override
   List<String> get inputNames => _session.inputNames;
+
+  @override
   List<String> get outputNames => _session.outputNames;
 
-  /// Feeds `{sessionInputName: Tensor}` -> all outputs, in graph output order.
+  @override
   Future<List<Tensor>> run(Map<String, Tensor> feeds) async {
     final inputs = <String, OrtValue>{};
     try {
@@ -164,8 +200,6 @@ class OrtSessionHandle {
         }
         return Tensor(data: f, shape: outShape());
       case OrtDataType.string:
-        // e.g. the RF `label` output we never consume — hand back an empty
-        // tensor so positional indexing still lines up.
         return Tensor(data: Float32List(0), shape: const [0]);
       case OrtDataType.bool:
         final b = Int64List(flat.length);
@@ -175,7 +209,6 @@ class OrtSessionHandle {
         }
         return Tensor(data: b, shape: outShape());
       default:
-        // every integer width (int8..uint64) -> Int64List
         final n = Int64List(flat.length);
         for (var i = 0; i < flat.length; i++) {
           n[i] = (flat[i] as num).toInt();
@@ -184,7 +217,35 @@ class OrtSessionHandle {
     }
   }
 
+  @override
   Future<void> close() => _session.close();
+}
+
+class _MockOrtSessionHandle implements OrtSessionHandle {
+  _MockOrtSessionHandle({
+    required this.activeProvider,
+    required Future<List<Tensor>> Function(Map<String, Tensor> feeds) onRun,
+    Future<void> Function()? onClose,
+    this.inputNames = const [],
+    this.outputNames = const [],
+  }) : _onRun = onRun,
+       _onClose = onClose;
+
+  @override
+  final String activeProvider;
+  @override
+  final List<String> inputNames;
+  @override
+  final List<String> outputNames;
+
+  final Future<List<Tensor>> Function(Map<String, Tensor> feeds) _onRun;
+  final Future<void> Function()? _onClose;
+
+  @override
+  Future<List<Tensor>> run(Map<String, Tensor> feeds) => _onRun(feeds);
+
+  @override
+  Future<void> close() async => await _onClose?.call();
 }
 
 /// Reason a session failed to load, for surfacing in the UI.

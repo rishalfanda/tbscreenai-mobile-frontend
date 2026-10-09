@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:myapp/data/onnx/bundle_manifest.dart';
 
 /// A verified model bundle on disk (one `models/<version>/` directory managed by
@@ -27,6 +28,22 @@ class BundleStore {
     required this.modelPaths,
   });
 
+  @visibleForTesting
+  BundleStore.test({
+    required this.manifest,
+    Directory? dir,
+    BundleLabels? labels,
+    Map<String, String>? modelPaths,
+  }) : dir = dir ?? Directory(''),
+       labels =
+           labels ??
+           const BundleLabels(
+             decision: ['NON TB', 'TB'],
+             lesionClasses: [],
+             lesionPaletteRgb: [],
+           ),
+       modelPaths = modelPaths ?? const {};
+
   final Directory dir;
   final BundleManifest manifest;
   final BundleLabels labels;
@@ -45,6 +62,7 @@ class BundleStore {
     final stem = file.split('/').last.split('.').first;
     final path = modelPaths[stem];
     if (path == null) {
+      if (modelPaths.isEmpty) return file;
       throw BundleException('model "$stem" is not in the bundle');
     }
     return path;
