@@ -15,10 +15,7 @@ Future<void> main() async {
   AppConfig.validate();
 
   // Fix: enable resampling to reduce mouse tracker assertion errors
-  if (kIsWeb ||
-      defaultTargetPlatform == TargetPlatform.windows ||
-      defaultTargetPlatform == TargetPlatform.linux ||
-      defaultTargetPlatform == TargetPlatform.macOS) {
+  if (kIsWeb || defaultTargetPlatform == TargetPlatform.linux) {
     GestureBinding.instance.resamplingEnabled = true;
   }
 
