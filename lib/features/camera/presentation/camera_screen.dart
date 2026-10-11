@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/features/camera/application/xray_capture_processor.dart';
+import 'package:myapp/features/diagnosis/application/reinhard_normalizer.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 import 'package:provider/provider.dart';
 
@@ -26,6 +27,7 @@ class _CameraScreenState extends State<CameraScreen>
   String? _error;
   bool _loading = true;
   bool _takingPicture = false;
+  bool _confirming = false;
   bool _flashOn = false;
 
   @override
@@ -152,19 +154,24 @@ class _CameraScreenState extends State<CameraScreen>
     await _initializeCamera(selected: _cameras[(index + 1) % _cameras.length]);
   }
 
-  void _confirm() {
+  Future<void> _confirm() async {
     final bytes = _capturedBytes;
-    if (bytes == null) return;
+    if (bytes == null || _confirming) return;
+    setState(() => _confirming = true);
     try {
       final image = XrayImage.fromBytes(
         bytes: bytes,
         filename: _capturedName,
         source: XrayImageSource.camera,
       );
-      context.read<DiagnosisProvider>().attachImage(image);
+      final normalized = await ReinhardNormalizer.normalizeXrayImage(image);
+      if (!mounted) return;
+      context.read<DiagnosisProvider>().attachImage(normalized);
       context.pop();
     } on XrayImageValidationException catch (error) {
-      setState(() => _error = error.message);
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _confirming = false);
     }
   }
 
@@ -382,7 +389,7 @@ class _CameraScreenState extends State<CameraScreen>
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         OutlinedButton.icon(
-          onPressed: _retake,
+          onPressed: _confirming ? null : _retake,
           icon: const Icon(Icons.replay_rounded),
           label: const Text('Retake'),
           style: OutlinedButton.styleFrom(
@@ -393,9 +400,18 @@ class _CameraScreenState extends State<CameraScreen>
         ),
         const SizedBox(width: 16),
         FilledButton.icon(
-          onPressed: _confirm,
-          icon: const Icon(Icons.check_rounded),
-          label: const Text('Use this image'),
+          onPressed: _confirming ? null : _confirm,
+          icon: _confirming
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.check_rounded),
+          label: Text(_confirming ? 'Menormalisasi...' : 'Use this image'),
           style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
         ),
       ],

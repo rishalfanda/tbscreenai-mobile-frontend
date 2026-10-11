@@ -5,8 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/domain/models/xray_image.dart';
+import 'package:myapp/features/diagnosis/application/reinhard_normalizer.dart';
 import 'package:myapp/features/diagnosis/application/xray_image_picker.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_palette.dart';
+import 'package:myapp/features/diagnosis/presentation/widgets/input/widgets.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 import 'package:provider/provider.dart';
 
@@ -116,6 +118,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
   final _imagePicker = XrayImagePicker();
   bool _initialized = false;
   bool _pickingImage = false;
+  String _imageLoadingMessage = 'Memproses normalisasi citra rontgen...';
 
   // `OnnxInferenceEngine.hasBundle` reads `false` until its startup `init()`
   // finishes loading the active bundle from disk. Reading it straight away
@@ -179,12 +182,21 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
 
   Future<void> _pickImage() async {
     if (_pickingImage) return;
-    setState(() => _pickingImage = true);
+    setState(() {
+      _pickingImage = true;
+      _imageLoadingMessage = 'Memproses normalisasi citra rontgen...';
+    });
     try {
       final image =
           await (widget.pickImage?.call() ?? _imagePicker.pickFromGallery());
       if (image != null && mounted) {
-        context.read<DiagnosisProvider>().attachImage(image);
+        setState(() {
+          _imageLoadingMessage = 'Memproses normalisasi citra rontgen...';
+        });
+        final normalized = await ReinhardNormalizer.normalizeXrayImage(image);
+        if (mounted) {
+          context.read<DiagnosisProvider>().attachImage(normalized);
+        }
       }
     } on XrayImageValidationException catch (error) {
       if (mounted) _showMessage(error.message, isError: true);
@@ -428,18 +440,19 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
       children: [
         _topFields(diagnosis),
         const SizedBox(height: 18),
-        _OptionalFieldsPanel(
+        OptionalFieldsPanel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _SectionLabel(
+              const SectionLabel(
                 icon: Icons.coronavirus_outlined,
                 text: 'Jenis Gejala',
               ),
               const SizedBox(height: 6),
-              _SymptomGrid(
+              SymptomGrid(
                 symptoms: _symptoms,
                 selected: draft.symptoms,
+                labels: _symptomLabels,
                 onChanged: diagnosis.toggleSymptom,
               ),
               const SizedBox(height: 14),
@@ -449,10 +462,10 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
               const SizedBox(height: 20),
               _leftClinicalColumn(diagnosis),
               const SizedBox(height: 18),
-              _LabeledField(
+              LabeledField(
                 label: 'Jenis Model',
                 icon: Icons.psychology_outlined,
-                child: _DarkDropdown(
+                child: DarkDropdown(
                   key: const Key('model-type-dropdown'),
                   value: draft.modelType,
                   hint: 'Pilih Jenis Model',
@@ -469,9 +482,9 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
   }
 
   Widget _topFields(DiagnosisProvider diagnosis) {
-    final name = _LabeledField(
+    final name = LabeledField(
       label: 'Nama/Inisial/Nama Panggilan',
-      child: _DarkTextField(
+      child: DarkTextField(
         key: const Key('patient-name'),
         controller: _nameController,
         textInputAction: TextInputAction.next,
@@ -480,9 +493,9 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
             value == null || value.trim().isEmpty ? 'Nama wajib diisi' : null,
       ),
     );
-    final gender = _LabeledField(
+    final gender = LabeledField(
       label: 'Jenis Kelamin',
-      child: _DarkDropdown(
+      child: DarkDropdown(
         key: const Key('gender'),
         value: diagnosis.draft.gender,
         hint: 'Pilih Jenis Kelamin',
@@ -555,9 +568,9 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     required double max,
     bool decimal = false,
   }) {
-    return _LabeledField(
+    return LabeledField(
       label: label,
-      child: _DarkTextField(
+      child: DarkTextField(
         key: key,
         controller: controller,
         keyboardType: TextInputType.numberWithOptions(decimal: decimal),
@@ -581,10 +594,10 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final fields = [
-          _LabeledField(
+          LabeledField(
             label: 'Komorbiditas',
             icon: Icons.medical_information_outlined,
-            child: _DarkDropdown(
+            child: DarkDropdown(
               value: diagnosis.draft.comorbidity,
               hint: 'Pilih Komorbiditas',
               items: const [
@@ -597,10 +610,10 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
               onChanged: diagnosis.updateComorbidity,
             ),
           ),
-          _LabeledField(
+          LabeledField(
             label: 'Merokok',
             icon: Icons.smoking_rooms_outlined,
-            child: _DarkDropdown(
+            child: DarkDropdown(
               value: diagnosis.draft.smoking,
               hint: 'Pilih Status Merokok',
               items: const ['Never', 'Former', 'Current'],
@@ -608,10 +621,10 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
               onChanged: diagnosis.updateSmoking,
             ),
           ),
-          _LabeledField(
+          LabeledField(
             label: 'Riwayat Kontak dengan TB',
             icon: Icons.history_rounded,
-            child: _DarkDropdown(
+            child: DarkDropdown(
               value: diagnosis.draft.tbContact,
               hint: 'Pilih Riwayat',
               items: const ['Unknown', 'No', 'Yes'],
@@ -651,9 +664,9 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     return FractionallySizedBox(
       widthFactor: 0.48,
       alignment: Alignment.centerLeft,
-      child: _LabeledField(
+      child: LabeledField(
         label: 'Jika Usia < 18 Tahun, Skor TB Anak',
-        child: _DarkTextField(
+        child: DarkTextField(
           key: ValueKey('pediatric-${enabled ? 'enabled' : 'disabled'}'),
           controller: _pediatricController,
           enabled: enabled,
@@ -678,16 +691,16 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionLabel(icon: Icons.home_rounded, text: 'Lingkungan'),
+        const SectionLabel(icon: Icons.home_rounded, text: 'Lingkungan'),
         const SizedBox(height: 12),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: _LabeledField(
+              child: LabeledField(
                 label: 'Keberadaan Jendela',
                 icon: Icons.window_rounded,
-                child: _DarkDropdown(
+                child: DarkDropdown(
                   value: draft.windowsPresence,
                   hint: 'Pilih Opsi',
                   items: const ['Yes', 'No'],
@@ -698,10 +711,10 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
             ),
             const SizedBox(width: 20),
             Expanded(
-              child: _LabeledField(
+              child: LabeledField(
                 label: 'Paparan Sinar Matahari Langsung',
                 icon: Icons.light_mode_outlined,
-                child: _DarkDropdown(
+                child: DarkDropdown(
                   key: const Key('sunlight-dropdown'),
                   value: draft.sunlightExposure,
                   hint: 'Pilih Opsi',
@@ -727,7 +740,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: _RadioGroup(
+              child: DarkRadioGroup(
                 label: 'Pemeriksaan Dahak (BTA):',
                 values: const ['BTA Positive', 'BTA Negative'],
                 selected: draft.bta == null ? null : 'BTA ${draft.bta}',
@@ -739,7 +752,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: _RadioGroup(
+              child: DarkRadioGroup(
                 label: 'Kultur:',
                 values: const ['Positive', 'Negative'],
                 selected: draft.culture,
@@ -749,7 +762,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: _RadioGroup(
+              child: DarkRadioGroup(
                 label: 'Xpert MTB/Rif atau NAAT:',
                 values: const ['Positive', 'Negative'],
                 selected: draft.xpert,
@@ -769,7 +782,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
           ),
         ),
         const SizedBox(height: 8),
-        _RadioGroup(
+        DarkRadioGroup(
           label: 'IGRA:',
           values: const ['Positive', 'Negative', 'Other'],
           selected: draft.igra,
@@ -782,9 +795,9 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: _LabeledField(
+              child: LabeledField(
                 label: 'Riwayat TB',
-                child: _DarkDropdown(
+                child: DarkDropdown(
                   value: draft.tbHistory,
                   hint: 'Pilih Riwayat TB',
                   items: const ['No', 'Yes'],
@@ -795,9 +808,9 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
             ),
             const SizedBox(width: 20),
             Expanded(
-              child: _LabeledField(
+              child: LabeledField(
                 label: 'Status TB',
-                child: _DarkDropdown(
+                child: DarkDropdown(
                   value: draft.tbStatus,
                   hint: 'Pilih Status TB',
                   items: const ['Suspected', 'Screening', 'Follow-up'],
@@ -822,7 +835,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (!checkingModel && !hasModel) ...[
-          _NoModelBanner(onGoToSync: () => context.go('/sync')),
+          NoModelBanner(onGoToSync: () => context.go('/sync')),
           const SizedBox(height: 18),
         ],
         IgnorePointer(
@@ -832,14 +845,15 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const _FieldLabel(text: 'Unggah Citra Rontgen'),
+                const FieldLabel(text: 'Unggah Citra Rontgen'),
                 const SizedBox(height: 8),
                 SizedBox(
                   height: 420,
                   width: double.infinity,
-                  child: _DashedUploadPanel(
+                  child: DashedUploadPanel(
                     image: diagnosis.image,
                     loading: _pickingImage,
+                    loadingMessage: _imageLoadingMessage,
                     onUpload: _pickImage,
                     onCamera: () => context.push('/camera'),
                     onRemove: diagnosis.hasImage ? diagnosis.clearImage : null,
@@ -851,7 +865,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
         ),
         const SizedBox(height: 24),
         if (diagnosis.lastError != null) ...[
-          _InlineError(message: diagnosis.lastError!),
+          InlineError(message: diagnosis.lastError!),
           const SizedBox(height: 18),
         ],
         Row(
@@ -909,659 +923,9 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
   }
 }
 
-class _OptionalFieldsPanel extends StatelessWidget {
-  const _OptionalFieldsPanel({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      type: MaterialType.transparency,
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          key: const Key('optional-fields-panel'),
-          initiallyExpanded: false,
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: const EdgeInsets.only(top: 14),
-          iconColor: diagnosisAccent,
-          collapsedIconColor: diagnosisMuted,
-          textColor: diagnosisText,
-          collapsedTextColor: diagnosisText,
-          title: const Text(
-            'Informasi Tambahan (Opsional)',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-          ),
-          subtitle: const Text(
-            'Gejala, lingkungan, dan hasil pemeriksaan klinis',
-            style: TextStyle(color: diagnosisMuted, fontSize: 12),
-          ),
-          children: [child],
-        ),
-      ),
-    );
-  }
-}
-
-class _NoModelBanner extends StatelessWidget {
-  const _NoModelBanner({required this.onGoToSync});
-
-  final VoidCallback onGoToSync;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E3A5F),
-        border: Border.all(color: diagnosisAccent),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.info_outline_rounded, color: diagnosisAccent),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'Model AI belum terpasang di perangkat ini. Unduh model dari '
-                  'Pusat Sinkronisasi sebelum menjalankan analisis.',
-                  style: TextStyle(color: diagnosisText, fontSize: 13),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              onPressed: onGoToSync,
-              style: TextButton.styleFrom(foregroundColor: diagnosisAccent),
-              child: const Text('Buka Pusat Sinkronisasi'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SymptomGrid extends StatelessWidget {
-  const _SymptomGrid({
-    required this.symptoms,
-    required this.selected,
-    required this.onChanged,
-  });
-
-  final List<String> symptoms;
-  final Set<String> selected;
-  final void Function(String symptom, bool selected) onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 900
-            ? 4
-            : constraints.maxWidth >= 320
-            ? 2
-            : 1;
-        const gap = 12.0;
-        final width = ((constraints.maxWidth - gap * (columns - 1)) / columns)
-            .clamp(0.0, double.infinity)
-            .toDouble();
-        return Wrap(
-          spacing: gap,
-          runSpacing: 6,
-          children: symptoms
-              .map(
-                (symptom) => SizedBox(
-                  width: width,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: CheckboxListTile(
-                      value: selected.contains(symptom),
-                      onChanged: (value) => onChanged(symptom, value ?? false),
-                      title: Text(
-                        _symptomLabels[symptom] ?? symptom,
-                        style: const TextStyle(
-                          color: diagnosisText,
-                          fontSize: 15,
-                        ),
-                      ),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      visualDensity: VisualDensity.compact,
-                      activeColor: diagnosisAccent,
-                      checkColor: diagnosisInput,
-                      side: const BorderSide(color: diagnosisMuted, width: 1.5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ),
-                ),
-              )
-              .toList(),
-        );
-      },
-    );
-  }
-}
-
-class _LabeledField extends StatelessWidget {
-  const _LabeledField({required this.label, required this.child, this.icon});
-
-  final String label;
-  final Widget child;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _FieldLabel(text: label, icon: icon),
-        const SizedBox(height: 7),
-        child,
-      ],
-    );
-  }
-}
-
-class _FieldLabel extends StatelessWidget {
-  const _FieldLabel({required this.text, this.icon});
-
-  final String text;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        if (icon != null) ...[
-          Icon(icon, size: 19, color: const Color(0xFFD7DEE8)),
-          const SizedBox(width: 5),
-        ],
-        Flexible(
-          child: Text(
-            text,
-            maxLines: 2,
-            style: const TextStyle(
-              color: diagnosisText,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 19, color: const Color(0xFFD7DEE8)),
-        const SizedBox(width: 6),
-        Text(
-          text,
-          style: const TextStyle(
-            color: diagnosisText,
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DarkTextField extends StatelessWidget {
-  const _DarkTextField({
-    super.key,
-    required this.controller,
-    required this.onChanged,
-    this.validator,
-    this.keyboardType,
-    this.inputFormatters,
-    this.textInputAction,
-    this.enabled = true,
-  });
-
-  final TextEditingController controller;
-  final ValueChanged<String> onChanged;
-  final FormFieldValidator<String>? validator;
-  final TextInputType? keyboardType;
-  final List<TextInputFormatter>? inputFormatters;
-  final TextInputAction? textInputAction;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      enabled: enabled,
-      keyboardType: keyboardType,
-      inputFormatters: inputFormatters,
-      textInputAction: textInputAction,
-      onChanged: onChanged,
-      validator: validator,
-      style: const TextStyle(color: diagnosisText, fontSize: 15),
-      cursorColor: diagnosisAccent,
-      decoration: _decoration().copyWith(
-        fillColor: enabled
-            ? diagnosisInput
-            : diagnosisInput.withValues(alpha: 0.55),
-      ),
-    );
-  }
-}
-
-class _DarkDropdown extends StatelessWidget {
-  const _DarkDropdown({
-    super.key,
-    required this.value,
-    required this.hint,
-    required this.items,
-    required this.onChanged,
-    this.validator,
-    this.labels,
-  });
-
-  final String? value;
-  final String hint;
-  final List<String> items;
-  final ValueChanged<String?> onChanged;
-  final FormFieldValidator<String>? validator;
-
-  /// Optional display-text override per item value; the stored `value`
-  /// itself is unchanged so domain/data logic never sees the translation.
-  final Map<String, String>? labels;
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      key: key == null ? ValueKey('$hint-${value ?? 'empty'}') : null,
-      initialValue: value,
-      isExpanded: true,
-      dropdownColor: diagnosisInput,
-      icon: const Icon(
-        Icons.keyboard_arrow_down_rounded,
-        color: diagnosisMuted,
-      ),
-      style: const TextStyle(color: diagnosisText, fontSize: 15),
-      decoration: _decoration(),
-      hint: Text(
-        hint,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(color: diagnosisText, fontSize: 15),
-      ),
-      items: items
-          .map(
-            (item) => DropdownMenuItem<String>(
-              value: item,
-              child: Text(
-                labels?[item] ?? item,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          )
-          .toList(),
-      onChanged: onChanged,
-      validator: validator,
-    );
-  }
-}
-
-InputDecoration _decoration() {
-  return InputDecoration(
-    filled: true,
-    fillColor: diagnosisInput,
-    isDense: true,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-    errorStyle: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 11),
-    border: _outline(diagnosisBorder),
-    enabledBorder: _outline(diagnosisBorder),
-    disabledBorder: _outline(diagnosisBorder.withValues(alpha: 0.55)),
-    focusedBorder: _outline(diagnosisAccent, width: 1.7),
-    errorBorder: _outline(const Color(0xFFEF4444)),
-    focusedErrorBorder: _outline(const Color(0xFFEF4444), width: 1.7),
-  );
-}
-
-OutlineInputBorder _outline(Color color, {double width = 1}) {
-  return OutlineInputBorder(
-    borderRadius: BorderRadius.circular(10),
-    borderSide: BorderSide(color: color, width: width),
-  );
-}
-
-class _RadioGroup extends StatelessWidget {
-  const _RadioGroup({
-    required this.label,
-    required this.values,
-    required this.selected,
-    required this.onChanged,
-    this.horizontal = false,
-    this.labels,
-  });
-
-  final String label;
-  final List<String> values;
-  final String? selected;
-  final ValueChanged<String?> onChanged;
-  final bool horizontal;
-
-  /// Optional display-text override per option value.
-  final Map<String, String>? labels;
-
-  @override
-  Widget build(BuildContext context) {
-    final options = values.map((value) => _option(value)).toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: diagnosisText,
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 4),
-        if (horizontal)
-          Wrap(spacing: 8, runSpacing: 2, children: options)
-        else
-          ...options,
-      ],
-    );
-  }
-
-  Widget _option(String value) {
-    return SizedBox(
-      height: 36,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Radio<String>(
-            value: value,
-            // ignore: deprecated_member_use
-            groupValue: selected,
-            // ignore: deprecated_member_use
-            onChanged: onChanged,
-            activeColor: diagnosisAccent,
-            fillColor: WidgetStateProperty.resolveWith(
-              (states) => states.contains(WidgetState.selected)
-                  ? diagnosisAccent
-                  : const Color(0xFFE5E7EB),
-            ),
-            visualDensity: VisualDensity.compact,
-          ),
-          Flexible(
-            child: Text(
-              labels?[value] ?? value,
-              maxLines: 2,
-              style: const TextStyle(color: diagnosisText, fontSize: 14),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DashedUploadPanel extends StatelessWidget {
-  const _DashedUploadPanel({
-    required this.image,
-    required this.loading,
-    required this.onUpload,
-    required this.onCamera,
-    required this.onRemove,
-  });
-
-  final XrayImage? image;
-  final bool loading;
-  final VoidCallback onUpload;
-  final VoidCallback onCamera;
-  final VoidCallback? onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _DashedBorderPainter(),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: ColoredBox(
-          color: diagnosisInput,
-          child: image == null ? _emptyState() : _preview(),
-        ),
-      ),
-    );
-  }
-
-  Widget _emptyState() {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          if (loading)
-            const CircularProgressIndicator(color: diagnosisAccent)
-          else
-            const Icon(
-              Icons.add_photo_alternate_outlined,
-              size: 52,
-              color: diagnosisMuted,
-            ),
-          const SizedBox(height: 16),
-          const Text(
-            'Unggah Citra Rontgen',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: diagnosisMuted,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'PNG, JPG, JPEG · Maksimal 25 MB',
-            style: TextStyle(color: Color(0xFF71809A), fontSize: 12),
-          ),
-          const SizedBox(height: 22),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 12,
-            runSpacing: 10,
-            children: [
-              OutlinedButton.icon(
-                key: const Key('upload-xray'),
-                onPressed: loading ? null : onUpload,
-                icon: const Icon(Icons.upload_file_rounded, size: 19),
-                label: const Text('Pilih Gambar'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: diagnosisAccent,
-                  side: const BorderSide(color: diagnosisAccent),
-                ),
-              ),
-              FilledButton.icon(
-                key: const Key('capture-xray'),
-                onPressed: loading ? null : onCamera,
-                icon: const Icon(Icons.photo_camera_rounded, size: 19),
-                label: const Text('Gunakan Kamera'),
-                style: FilledButton.styleFrom(backgroundColor: diagnosisAction),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'Gunakan citra rontgen digital asli jika tersedia. Pengambilan foto '
-            'dengan kamera dapat menurunkan kualitas gambar.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: diagnosisMuted, fontSize: 11, height: 1.35),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _preview() {
-    final current = image!;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        if (current.canPreview)
-          Image.memory(
-            current.bytes,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) =>
-                _fileFallback(current),
-          )
-        else
-          _fileFallback(current),
-        Positioned(
-          left: 12,
-          right: 58,
-          bottom: 12,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.72),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '${current.filename} · ${_formatBytes(current.sizeBytes)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-            ),
-          ),
-        ),
-        Positioned(
-          top: 10,
-          right: 10,
-          child: IconButton(
-            tooltip: 'Hapus Rontgen',
-            onPressed: onRemove,
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.black.withValues(alpha: 0.72),
-              foregroundColor: Colors.white,
-            ),
-            icon: const Icon(Icons.close_rounded),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _fileFallback(XrayImage current) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.monitor_heart_outlined,
-            size: 64,
-            color: diagnosisMuted,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            current.filename,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: diagnosisText),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DashedBorderPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    const dash = 7.0;
-    const gap = 5.0;
-    final path = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(12)),
-      );
-    final paint = Paint()
-      ..color = diagnosisBorder
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    for (final metric in path.computeMetrics()) {
-      var distance = 0.0;
-      while (distance < metric.length) {
-        canvas.drawPath(metric.extractPath(distance, distance + dash), paint);
-        distance += dash + gap;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _InlineError extends StatelessWidget {
-  const _InlineError({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      liveRegion: true,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF7F1D1D),
-          border: Border.all(color: const Color(0xFFEF4444)),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.error_outline_rounded, color: Color(0xFFFCA5A5)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                message,
-                style: const TextStyle(color: diagnosisText, fontSize: 13),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 String _numberText(double? value) {
   if (value == null) return '';
   return value == value.roundToDouble()
       ? value.toInt().toString()
       : value.toString();
-}
-
-String _formatBytes(int bytes) {
-  if (bytes < 1024) return '$bytes B';
-  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }

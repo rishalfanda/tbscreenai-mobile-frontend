@@ -48,3 +48,4 @@ app.*.map.json
 
 # Claude Code local machine settings
 .claude/settings.local.json
+.todo

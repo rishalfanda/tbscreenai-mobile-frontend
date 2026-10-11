@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -156,4 +158,50 @@ void main() {
     expect(provider.lastOutcome, isNull);
     expect(provider.lastError, contains('Check the server connection'));
   });
+
+  testWidgets(
+    'upload panel displays loading indicator and Reinhard normalization message while processing image',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final provider = DiagnosisProvider(MockDiagnosisRepository());
+      _seedRequiredFields(provider);
+
+      final completer = Completer<XrayImage?>();
+
+      await tester.pumpWidget(
+        _app(
+          provider: provider,
+          picker: () => completer.future,
+        ),
+      );
+
+      // Initially, upload button is visible and loading state is not
+      expect(find.byKey(const Key('upload-xray')), findsOneWidget);
+      expect(find.byKey(const Key('upload-normalizing-state')), findsNothing);
+
+      // Tap upload
+      await tester.tap(find.byKey(const Key('upload-xray')));
+      await tester.pump(); // Pump frame where _pickingImage becomes true
+
+      // The loading indicator and normalization message must be visible
+      expect(find.byKey(const Key('upload-normalizing-state')), findsOneWidget);
+      expect(find.byKey(const Key('upload-loading-indicator')), findsOneWidget);
+      expect(
+        find.text('Memproses normalisasi citra rontgen (Reinhard)...'),
+        findsOneWidget,
+      );
+      // Upload buttons are replaced while loading
+      expect(find.byKey(const Key('upload-xray')), findsNothing);
+
+      // Complete the picker future
+      completer.complete(XrayImage.placeholder('chest_sample.png'));
+      await tester.pumpAndSettle();
+
+      // Normalization finished, preview is shown
+      expect(find.byKey(const Key('upload-normalizing-state')), findsNothing);
+      expect(provider.imageLabel, 'chest_sample.png');
+    },
+  );
 }

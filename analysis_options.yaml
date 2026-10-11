@@ -13,6 +13,9 @@ analyzer:
     - android/**
     - web/**
     - linux/**
+    - ios/**
+    - windows/**
+    - macos/**
 include: package:flutter_lints/flutter.yaml
 
 linter:
