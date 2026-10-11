@@ -160,7 +160,7 @@ void main() {
   });
 
   testWidgets(
-    'upload panel displays loading indicator and Reinhard normalization message while processing image',
+    'upload panel displays loading indicator and processing message while processing image',
     (tester) async {
       tester.view.physicalSize = const Size(1600, 1000);
       tester.view.devicePixelRatio = 1;
@@ -185,11 +185,11 @@ void main() {
       await tester.tap(find.byKey(const Key('upload-xray')));
       await tester.pump(); // Pump frame where _pickingImage becomes true
 
-      // The loading indicator and normalization message must be visible
+      // The loading indicator and processing message must be visible
       expect(find.byKey(const Key('upload-normalizing-state')), findsOneWidget);
       expect(find.byKey(const Key('upload-loading-indicator')), findsOneWidget);
       expect(
-        find.text('Memproses normalisasi citra rontgen (Reinhard)...'),
+        find.text('Sedang memproses citra rontgen...'),
         findsOneWidget,
       );
       // Upload buttons are replaced while loading

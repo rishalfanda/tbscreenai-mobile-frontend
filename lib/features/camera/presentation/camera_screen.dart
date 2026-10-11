@@ -411,7 +411,7 @@ class _CameraScreenState extends State<CameraScreen>
                   ),
                 )
               : const Icon(Icons.check_rounded),
-          label: Text(_confirming ? 'Menormalisasi...' : 'Use this image'),
+          label: Text(_confirming ? 'Memproses...' : 'Use this image'),
           style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
         ),
       ],

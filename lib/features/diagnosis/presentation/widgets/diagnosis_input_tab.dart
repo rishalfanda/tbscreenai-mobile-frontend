@@ -118,7 +118,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
   final _imagePicker = XrayImagePicker();
   bool _initialized = false;
   bool _pickingImage = false;
-  String _imageLoadingMessage = 'Memproses normalisasi citra rontgen...';
+  String _imageLoadingMessage = 'Sedang memproses citra rontgen...';
 
   // `OnnxInferenceEngine.hasBundle` reads `false` until its startup `init()`
   // finishes loading the active bundle from disk. Reading it straight away
@@ -184,14 +184,14 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     if (_pickingImage) return;
     setState(() {
       _pickingImage = true;
-      _imageLoadingMessage = 'Memproses normalisasi citra rontgen...';
+      _imageLoadingMessage = 'Sedang memproses citra rontgen...';
     });
     try {
       final image =
           await (widget.pickImage?.call() ?? _imagePicker.pickFromGallery());
       if (image != null && mounted) {
         setState(() {
-          _imageLoadingMessage = 'Memproses normalisasi citra rontgen...';
+          _imageLoadingMessage = 'Sedang memproses citra rontgen...';
         });
         final normalized = await ReinhardNormalizer.normalizeXrayImage(image);
         if (mounted) {

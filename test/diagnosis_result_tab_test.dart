@@ -85,7 +85,7 @@ void main() {
 
       // The stored value (73, confidence of the TB class) is flipped only
       // for display since the verdict is Normal — the model stays untouched.
-      expect(find.text('Normal'), findsOneWidget);
+      expect(find.text('Non-TBC'), findsOneWidget);
       expect(find.text('27%'), findsOneWidget);
       expect(find.text('73%'), findsNothing);
       expect(provider.lastOutcome?.confidence, 73);
@@ -128,7 +128,9 @@ void main() {
       await tester.pumpWidget(_wrap(provider));
       await tester.pump();
 
-      expect(find.byType(SegmentedButton<int>), findsOneWidget);
+      expect(find.text('Rontgen'), findsOneWidget);
+      expect(find.text('Paru'), findsOneWidget);
+      expect(find.text('Lesi'), findsOneWidget);
       expect(find.text('Konsolidasi · 1.0%'), findsOneWidget);
     },
   );
@@ -153,8 +155,58 @@ void main() {
       await tester.pumpWidget(_wrap(provider));
       await tester.pump();
 
-      expect(find.byType(SegmentedButton<int>), findsNothing);
+      expect(find.text('Paru'), findsNothing);
+      expect(find.text('Lesi'), findsNothing);
       expect(find.byType(Image), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'renders Screening AI, updated recommendation, and collapsible clinical details panel',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final provider = DiagnosisProvider(MockDiagnosisRepository())
+        ..attachPlaceholderImage('xray.png')
+        ..lastOutcome = DiagnosisOutcome(
+          isPositive: true,
+          confidence: 88,
+          processingTime: '1.8s',
+          modelVersion: 'TBScreen v2.1.0',
+          createdAt: DateTime(2026, 7, 24, 10, 30),
+        );
+
+      await tester.pumpWidget(_wrap(provider));
+      await tester.pump();
+
+      // Heading "Screening AI"
+      expect(find.text('Screening AI'), findsOneWidget);
+      // Status pill & confidence
+      expect(find.text('TBC'), findsOneWidget);
+      expect(find.text('88%'), findsOneWidget);
+
+      // Patient identity card
+      expect(find.text('Identitas Pasien'), findsOneWidget);
+
+      // Updated recommendation text
+      expect(
+        find.text(
+          'Segera rujuk ke fasilitas kesehatan untuk di evaluasi dan dilakukan pemeriksaan tambahan oleh dokter',
+        ),
+        findsOneWidget,
+      );
+
+      // Collapsible clinical details panel (Hide/Unhide)
+      expect(
+        find.byKey(const Key('clinical-details-expansion-panel')),
+        findsOneWidget,
+      );
+
+      // Runtime details and new screening button
+      expect(find.text('Detail Runtime & Aksi'), findsOneWidget);
+      expect(find.byKey(const Key('new-screening-button')), findsOneWidget);
     },
   );
 }

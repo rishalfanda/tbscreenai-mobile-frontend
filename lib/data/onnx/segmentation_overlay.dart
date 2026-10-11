@@ -89,6 +89,9 @@ _RenderedPngs? _render(_OverlayRequest req) {
     final decoded = img.decodeImage(req.xrayBytes);
     if (decoded == null) return null;
 
+    final origW = decoded.width;
+    final origH = decoded.height;
+
     final backdrop = img.copyResize(
       decoded,
       width: req.width,
@@ -96,12 +99,35 @@ _RenderedPngs? _render(_OverlayRequest req) {
       interpolation: img.Interpolation.linear,
     );
 
+    final lungGrid = _lungOverlay(backdrop, req);
+    final lesionGrid = _lesionOverlay(backdrop, req);
+
+    final finalLung = (req.width == origW && req.height == origH)
+        ? lungGrid
+        : img.copyResize(
+            lungGrid,
+            width: origW,
+            height: origH,
+            interpolation: img.Interpolation.linear,
+          );
+
+    final finalLesion = (req.width == origW && req.height == origH)
+        ? lesionGrid
+        : img.copyResize(
+            lesionGrid,
+            width: origW,
+            height: origH,
+            interpolation: img.Interpolation.linear,
+          );
+
+    final finalXray = (req.width == origW && req.height == origH)
+        ? backdrop
+        : decoded;
+
     return _RenderedPngs(
-      xray: Uint8List.fromList(img.encodePng(backdrop)),
-      lung: Uint8List.fromList(img.encodePng(_lungOverlay(backdrop, req))),
-      lesion: Uint8List.fromList(
-        img.encodePng(_lesionOverlay(backdrop, req)),
-      ),
+      xray: Uint8List.fromList(img.encodePng(finalXray)),
+      lung: Uint8List.fromList(img.encodePng(finalLung)),
+      lesion: Uint8List.fromList(img.encodePng(finalLesion)),
     );
   } catch (_) {
     return null;

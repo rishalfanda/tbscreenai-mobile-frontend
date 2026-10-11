@@ -7,7 +7,7 @@ class DashedUploadPanel extends StatelessWidget {
     super.key,
     required this.image,
     required this.loading,
-    this.loadingMessage = 'Memproses normalisasi citra rontgen (Reinhard)...',
+    this.loadingMessage = 'Sedang memproses citra rontgen...',
     required this.onUpload,
     required this.onCamera,
     required this.onRemove,
