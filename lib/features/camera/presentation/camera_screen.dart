@@ -29,6 +29,8 @@ class _CameraScreenState extends State<CameraScreen>
   bool _takingPicture = false;
   bool _confirming = false;
   bool _flashOn = false;
+  bool _isInitializing = false;
+  DeviceOrientation _lastKnownLandscape = DeviceOrientation.landscapeLeft;
 
   @override
   void initState() {
@@ -39,14 +41,26 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final cameraController = _controller;
+
+    // App state changed before controller finished initializing (e.g. when the
+    // Android runtime permission dialog pauses the activity to 'inactive').
+    // Disposing the controller here tears down the native FlutterSurfaceProducer
+    // while CameraX is waiting for the permission result, triggering an IllegalStateException.
+    if (cameraController == null || !cameraController.value.isInitialized) {
+      return;
+    }
+
     if (state == AppLifecycleState.inactive) {
       _disposeController();
     } else if (state == AppLifecycleState.resumed && _capturedBytes == null) {
-      _initializeCamera();
+      _initializeCamera(selected: cameraController.description);
     }
   }
 
   Future<void> _initializeCamera({CameraDescription? selected}) async {
+    if (_isInitializing) return;
+    _isInitializing = true;
     if (mounted) {
       setState(() {
         _loading = true;
@@ -70,6 +84,10 @@ class _CameraScreenState extends State<CameraScreen>
       );
       _controller = controller;
       await controller.initialize();
+      if (!mounted || _controller != controller) {
+        await controller.dispose();
+        return;
+      }
       await controller.setFlashMode(FlashMode.off);
       if (!mounted) return;
       setState(() {
@@ -88,6 +106,8 @@ class _CameraScreenState extends State<CameraScreen>
         _loading = false;
         _error = 'The camera could not be started. Try again or upload a file.';
       });
+    } finally {
+      _isInitializing = false;
     }
   }
 
@@ -300,7 +320,7 @@ class _CameraScreenState extends State<CameraScreen>
       builder: (context, value, _) {
         final quarterTurns = _previewQuarterTurns(
           controller.description,
-          value.deviceOrientation,
+          _effectiveOrientation(value.deviceOrientation),
         );
         return ClipRect(
           child: FittedBox(
@@ -319,26 +339,32 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  /// Standard sensor-orientation compensation formula (the one Google
-  /// documents for ML Kit camera integration): how many quarter-turns the
-  /// raw camera buffer needs to appear upright for the device's current
-  /// physical orientation, independent of the app's own (locked) UI
-  /// orientation.
+  /// When the tablet is lying flat on a surface ("posisi tertidur"), the
+  /// accelerometer has no horizontal tilt vector, causing the camera plugin's
+  /// deviceOrientation to default to portraitUp. In our landscape-locked app,
+  /// treating this as portrait erroneously triggers a 90° rotation compensation,
+  /// flipping the preview's aspect ratio and causing FittedBox to zoom and
+  /// mis-scale the camera feed.
+  ///
+  /// This helper preserves the active landscape orientation when the device is
+  /// flat or vertical-tilted, ensuring the preview renders cleanly without distortion.
+  DeviceOrientation _effectiveOrientation(DeviceOrientation raw) {
+    final effective = effectiveCameraOrientation(
+      raw,
+      fallbackLandscape: _lastKnownLandscape,
+    );
+    if (raw == DeviceOrientation.landscapeLeft ||
+        raw == DeviceOrientation.landscapeRight) {
+      _lastKnownLandscape = raw;
+    }
+    return effective;
+  }
+
   int _previewQuarterTurns(
     CameraDescription description,
     DeviceOrientation orientation,
   ) {
-    const degreesByOrientation = {
-      DeviceOrientation.portraitUp: 0,
-      DeviceOrientation.landscapeLeft: 90,
-      DeviceOrientation.portraitDown: 180,
-      DeviceOrientation.landscapeRight: 270,
-    };
-    final deviceDegrees = degreesByOrientation[orientation] ?? 0;
-    final compensation = description.lensDirection == CameraLensDirection.front
-        ? (description.sensorOrientation + deviceDegrees) % 360
-        : (description.sensorOrientation - deviceDegrees + 360) % 360;
-    return compensation ~/ 90;
+    return previewQuarterTurns(description, orientation);
   }
 
   Widget _captureControls() {
@@ -476,3 +502,42 @@ String _cameraMessage(CameraException error) {
           'The camera could not be started. Try again or upload a file.',
   };
 }
+
+/// Resolves the effective orientation for the camera preview.
+/// When the device is flat on a surface ("posisi tertidur"), the accelerometer
+/// reports no horizontal tilt, so Flutter defaults raw orientation to portraitUp.
+/// In this landscape-locked app, falling back to the active landscape orientation
+/// prevents an unintended 90° rotation that swaps preview aspect ratio.
+DeviceOrientation effectiveCameraOrientation(
+  DeviceOrientation raw, {
+  DeviceOrientation fallbackLandscape = DeviceOrientation.landscapeLeft,
+}) {
+  if (raw == DeviceOrientation.landscapeLeft ||
+      raw == DeviceOrientation.landscapeRight) {
+    return raw;
+  }
+  return fallbackLandscape;
+}
+
+/// Standard sensor-orientation compensation formula (the one Google
+/// documents for ML Kit camera integration): how many quarter-turns the
+/// raw camera buffer needs to appear upright for the device's current
+/// physical orientation, independent of the app's own (locked) UI
+/// orientation.
+int previewQuarterTurns(
+  CameraDescription description,
+  DeviceOrientation orientation,
+) {
+  const degreesByOrientation = {
+    DeviceOrientation.portraitUp: 0,
+    DeviceOrientation.landscapeLeft: 90,
+    DeviceOrientation.portraitDown: 180,
+    DeviceOrientation.landscapeRight: 270,
+  };
+  final deviceDegrees = degreesByOrientation[orientation] ?? 0;
+  final compensation = description.lensDirection == CameraLensDirection.front
+      ? (description.sensorOrientation + deviceDegrees) % 360
+      : (description.sensorOrientation - deviceDegrees + 360) % 360;
+  return compensation ~/ 90;
+}
+
