@@ -89,6 +89,20 @@ class _CameraScreenState extends State<CameraScreen>
         return;
       }
       await controller.setFlashMode(FlashMode.off);
+
+      if (controller.value.deviceOrientation == DeviceOrientation.landscapeLeft ||
+          controller.value.deviceOrientation == DeviceOrientation.landscapeRight) {
+        _lastKnownLandscape = controller.value.deviceOrientation;
+      }
+      try {
+        await controller.lockCaptureOrientation(_lastKnownLandscape);
+      } catch (_) {
+        // Platform might not support orientation locking.
+      }
+      if (!mounted || _controller != controller) {
+        return;
+      }
+      controller.addListener(_onCameraValueChanged);
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -202,10 +216,26 @@ class _CameraScreenState extends State<CameraScreen>
     });
   }
 
+  void _onCameraValueChanged() {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    final orientation = controller.value.deviceOrientation;
+    if (orientation == DeviceOrientation.landscapeLeft ||
+        orientation == DeviceOrientation.landscapeRight) {
+      if (controller.value.lockedCaptureOrientation != orientation) {
+        _lastKnownLandscape = orientation;
+        controller.lockCaptureOrientation(orientation).catchError((_) {});
+      }
+    }
+  }
+
   Future<void> _disposeController() async {
     final controller = _controller;
     _controller = null;
-    await controller?.dispose();
+    if (controller != null) {
+      controller.removeListener(_onCameraValueChanged);
+      await controller.dispose();
+    }
   }
 
   @override
@@ -320,7 +350,10 @@ class _CameraScreenState extends State<CameraScreen>
       builder: (context, value, _) {
         final quarterTurns = _previewQuarterTurns(
           controller.description,
-          _effectiveOrientation(value.deviceOrientation),
+          _effectiveOrientation(
+            value.deviceOrientation,
+            lockedOrientation: value.lockedCaptureOrientation,
+          ),
         );
         return ClipRect(
           child: FittedBox(
@@ -348,9 +381,13 @@ class _CameraScreenState extends State<CameraScreen>
   ///
   /// This helper preserves the active landscape orientation when the device is
   /// flat or vertical-tilted, ensuring the preview renders cleanly without distortion.
-  DeviceOrientation _effectiveOrientation(DeviceOrientation raw) {
+  DeviceOrientation _effectiveOrientation(
+    DeviceOrientation raw, {
+    DeviceOrientation? lockedOrientation,
+  }) {
     final effective = effectiveCameraOrientation(
       raw,
+      lockedOrientation: lockedOrientation,
       fallbackLandscape: _lastKnownLandscape,
     );
     if (raw == DeviceOrientation.landscapeLeft ||
@@ -510,8 +547,12 @@ String _cameraMessage(CameraException error) {
 /// prevents an unintended 90° rotation that swaps preview aspect ratio.
 DeviceOrientation effectiveCameraOrientation(
   DeviceOrientation raw, {
+  DeviceOrientation? lockedOrientation,
   DeviceOrientation fallbackLandscape = DeviceOrientation.landscapeLeft,
 }) {
+  if (lockedOrientation != null) {
+    return lockedOrientation;
+  }
   if (raw == DeviceOrientation.landscapeLeft ||
       raw == DeviceOrientation.landscapeRight) {
     return raw;

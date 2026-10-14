@@ -45,6 +45,24 @@ void main() {
         );
       },
     );
+
+    test('prefers lockedOrientation over raw and fallback orientations', () {
+      expect(
+        effectiveCameraOrientation(
+          DeviceOrientation.portraitUp,
+          lockedOrientation: DeviceOrientation.landscapeRight,
+          fallbackLandscape: DeviceOrientation.landscapeLeft,
+        ),
+        DeviceOrientation.landscapeRight,
+      );
+      expect(
+        effectiveCameraOrientation(
+          DeviceOrientation.landscapeLeft,
+          lockedOrientation: DeviceOrientation.landscapeRight,
+        ),
+        DeviceOrientation.landscapeRight,
+      );
+    });
   });
 
   group('previewQuarterTurns', () {
