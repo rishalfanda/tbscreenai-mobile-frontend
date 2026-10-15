@@ -111,3 +111,9 @@ bukan validasi akurasi ataupun kesiapan klinis.
 Diagnosis create pada antrean sync sekarang menyertakan clinical schema_version=1, tinggi/berat, gejala terurut, dan jawaban klinis yang diisi sesuai OpenAPI main c58db5c. Nama file, metadata citra lokal, device_id dan selected_model tidak disertakan di clinical. Snapshot lokal dan schema database tetap dipertahankan; perubahan hanya berlaku untuk diagnosis yang baru diantrekan, bukan backfill antrean lama.
 
 Tes regresi membuktikan clinical sebelumnya tidak terkirim (red), lalu memeriksa reopen database, respons 503, retry ber-client_op_id sama, respons skipped dan payload identik. Tes tambahan mencakup seluruh field klinis dan perubahan draft sesudah enqueue. Total 18 tes clinical/sync lulus; round-trip penyimpanan server masih menunggu staging aktif.
+
+## Perbaikan CI PR #6
+
+Lockfile kini mengikuti Flutter 3.44.7 / Dart 3.12.2 yang dipakai CI, bukan dependency hasil SDK Dart 3.13. Kode Drift diregenerasi tanpa perubahan tabel atau migrasi; regenerasi kedua menghasilkan nol perubahan. Baseline golden Windows ditinjau terhadap gambar pembanding dan diperbarui untuk teks batas unggahan, tanpa mengubah comparator/toleransi. Ekspektasi pesan error pada tes flow mengikuti pesan Indonesia yang sudah ada.
+
+Validasi lokal: 209 tes non-golden lulus, satu tes golden Windows lulus setelah update baseline, analyzer bersih. Hasil CI remote dilaporkan terpisah setelah push.
