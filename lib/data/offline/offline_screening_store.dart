@@ -105,7 +105,11 @@ class OfflineScreeningStore implements ScreeningStore {
       );
       await _syncEngine.enqueueDiagnosisCreate(
         diagnosisId,
-        _createPayload(patientId: patientId, outcome: outcome),
+        _createPayload(
+          patientId: patientId,
+          outcome: outcome,
+          draft: result.draft,
+        ),
       );
     });
 
@@ -120,8 +124,29 @@ class OfflineScreeningStore implements ScreeningStore {
   Map<String, dynamic> _createPayload({
     required String patientId,
     required DiagnosisOutcome outcome,
+    required DiagnosisDraft draft,
   }) => {
     'patient_id': patientId,
+    'clinical': {
+      'schema_version': 1,
+      if (draft.heightCm != null) 'height_cm': draft.heightCm,
+      if (draft.weightKg != null) 'weight_kg': draft.weightKg,
+      'symptoms': draft.symptoms.toList()..sort(),
+      if (draft.comorbidity != null) 'comorbidity': draft.comorbidity,
+      if (draft.smoking != null) 'smoking': draft.smoking,
+      if (draft.tbContact != null) 'tb_contact': draft.tbContact,
+      if (draft.pediatricScore != null) 'pediatric_score': draft.pediatricScore,
+      if (draft.windowsPresence != null)
+        'windows_presence': draft.windowsPresence,
+      if (draft.sunlightExposure != null)
+        'sunlight_exposure': draft.sunlightExposure,
+      if (draft.bta != null) 'bta': draft.bta,
+      if (draft.culture != null) 'culture': draft.culture,
+      if (draft.xpert != null) 'xpert': draft.xpert,
+      if (draft.igra != null) 'igra': draft.igra,
+      if (draft.tbHistory != null) 'tb_history': draft.tbHistory,
+      if (draft.tbStatus != null) 'tb_status': draft.tbStatus,
+    },
     'is_positive': outcome.isPositive,
     'confidence': outcome.confidence,
     'model_version': outcome.modelVersion,

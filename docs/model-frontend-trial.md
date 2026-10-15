@@ -105,3 +105,9 @@ bukan validasi akurasi ataupun kesiapan klinis.
 - Label sumber model, findings termasuk infiltrate, image_id/provenance, dan confidence backend dipertahankan. Layout hasil diperbaiki untuk teks 200% pada layar 400x900 dan 1600x1000.
 - Verifikasi baru: 8 tes hasil, 66 tes regresi inferensi/form/persistence/environment/kamera/DAG/Reinhard, dan 5 tes dengan flavor serta defines staging lulus. Flutter analyze --no-pub: no issues. Git diff --check bersih.
 - Verifikasi lokal ini belum mencakup build APK, golden Windows, server staging hidup, atau E2E perangkat. Gate model nyata, clinical payload dan device auth pada handoff tetap perlu dituntaskan.
+
+## Payload clinical — 15 Oktober 2026
+
+Diagnosis create pada antrean sync sekarang menyertakan clinical schema_version=1, tinggi/berat, gejala terurut, dan jawaban klinis yang diisi sesuai OpenAPI main c58db5c. Nama file, metadata citra lokal, device_id dan selected_model tidak disertakan di clinical. Snapshot lokal dan schema database tetap dipertahankan; perubahan hanya berlaku untuk diagnosis yang baru diantrekan, bukan backfill antrean lama.
+
+Tes regresi membuktikan clinical sebelumnya tidak terkirim (red), lalu memeriksa reopen database, respons 503, retry ber-client_op_id sama, respons skipped dan payload identik. Tes tambahan mencakup seluruh field klinis dan perubahan draft sesudah enqueue. Total 18 tes clinical/sync lulus; round-trip penyimpanan server masih menunggu staging aktif.
