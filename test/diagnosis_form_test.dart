@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:myapp/core/config/app_config.dart';
 
 import 'package:myapp/data/mock/mock_repositories.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_screen.dart';
@@ -23,6 +24,27 @@ Widget _wrap() {
 void main() {
   setUp(() {
     TestWidgetsFlutterBinding.ensureInitialized();
+  });
+
+  testWidgets('staging analysis does not require an installed device model', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ChangeNotifierProvider(
+        create: (_) => DiagnosisProvider(MockDiagnosisRepository()),
+        child: const MaterialApp(
+          home: Scaffold(body: DiagnosisScreen(hasModelOverride: false)),
+        ),
+      ),
+    );
+    final button = tester.widget<FilledButton>(
+      find.byKey(const Key('analyze-button')),
+    );
+    expect(button.onPressed != null, AppConfig.useHttp);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('sunlight exposure offers Yes/No only', (tester) async {

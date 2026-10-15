@@ -101,6 +101,9 @@ DiagnosisOutcome _outcome({bool mock = false}) => DiagnosisOutcome(
   createdAt: DateTime.utc(2026, 9, 30),
   isMock: mock,
   consolidation: 20,
+  infiltrate: 4.2,
+  imageId: '11111111-1111-4111-8111-111111111111',
+  provenance: const {'bundle_version': '2026.09.04', 'rf_model': 'combined'},
 );
 
 DiagnosisDraft _draft() => DiagnosisDraft(
@@ -228,6 +231,13 @@ void main() {
         _draft().image!.checksumSha256,
       );
       expect(restored.outcome.modelVersion, 'model-1');
+      expect(restored.outcome.imageId, persisted.outcome.imageId);
+      expect(restored.outcome.provenance, persisted.outcome.provenance);
+      expect(restored.outcome.infiltrate, 4.2);
+      final queued = await db.select(db.syncQueue).getSingle();
+      final payload = jsonDecode(queued.payload) as Map;
+      expect(payload['image_id'], persisted.outcome.imageId);
+      expect(payload['provenance'], persisted.outcome.provenance);
       expect(await db.countPending(), 1);
       adapter.verdict = 'applied';
       await engine.push();

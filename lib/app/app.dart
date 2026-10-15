@@ -99,7 +99,8 @@ class TBScreenApp extends StatelessWidget {
         Provider<OnnxInferenceEngine>(
           create: (_) {
             final engine = OnnxInferenceEngine();
-            engine.ready; // fire-and-forget kick-off; await this to read hasBundle reliably
+            engine
+                .ready; // fire-and-forget kick-off; await this to read hasBundle reliably
             return engine;
           },
         ),
@@ -151,12 +152,12 @@ class TBScreenApp extends StatelessWidget {
               : MockDashboardRepository(),
         ),
         Provider<DiagnosisRepository>(
-          create: (c) => HybridDiagnosisRepository(
-            engine: c.read<OnnxInferenceEngine>(),
-            fallback: useHttp
-                ? HttpDiagnosisRepository(c.read<ApiClient>())
-                : MockDiagnosisRepository(),
-          ),
+          create: (c) => useHttp
+              ? HttpDiagnosisRepository(c.read<ApiClient>())
+              : HybridDiagnosisRepository(
+                  engine: c.read<OnnxInferenceEngine>(),
+                  fallback: MockDiagnosisRepository(),
+                ),
         ),
         Provider<ValidationRepository>(
           create: (c) => useHttp

@@ -103,7 +103,7 @@ class DashedUploadPanel extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           const Text(
-            'PNG, JPG, JPEG · Maksimal 25 MB',
+            'PNG/JPEG - Maksimal 25 MB dan 20 juta pixel. Ekspor DICOM dahulu.',
             style: TextStyle(color: Color(0xFF71809A), fontSize: 12),
           ),
           const SizedBox(height: 22),
@@ -245,4 +245,3 @@ class DashedBorderPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
-

@@ -19,9 +19,13 @@ class PatientIdentityCard extends StatelessWidget {
         children: [
           const Row(
             children: [
-              Icon(Icons.person_outline_rounded, size: 20, color: kResultTextLoColor),
+              Icon(
+                Icons.person_outline_rounded,
+                size: 20,
+                color: kResultTextLoColor,
+              ),
               SizedBox(width: 6),
-              SectionTitle('Identitas Pasien', fontSize: 16),
+              Expanded(child: SectionTitle('Identitas Pasien', fontSize: 16)),
             ],
           ),
           const SizedBox(height: 8),
@@ -59,4 +63,3 @@ class PatientIdentityCard extends StatelessWidget {
     );
   }
 }
-

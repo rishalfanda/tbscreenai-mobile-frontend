@@ -62,6 +62,9 @@ class OfflineScreeningStore implements ScreeningStore {
     final clinicalSnapshot = result.draft.toClinicalSnapshot(
       deviceId: deviceId,
     );
+    if (result.outcome.imageId != null) {
+      clinicalSnapshot['inference_image_id'] = result.outcome.imageId;
+    }
     late final String imageReference;
     await _db.transaction(() async {
       imageReference = await _xrayStore.persist(
@@ -82,14 +85,17 @@ class OfflineScreeningStore implements ScreeningStore {
           imageChecksum: Value(image.checksumSha256),
           imageReference: Value(imageReference),
           provenance: Value(
-            jsonEncode({
-              'contract_version': 1,
-              'model_version': outcome.modelVersion,
-              'is_mock': false,
-              'inferred_at': outcome.createdAt.toUtc().toIso8601String(),
-              'device_id': deviceId,
-              'image_checksum': image.checksumSha256,
-            }),
+            jsonEncode(
+              outcome.provenance ??
+                  {
+                    'contract_version': 1,
+                    'model_version': outcome.modelVersion,
+                    'is_mock': false,
+                    'inferred_at': outcome.createdAt.toUtc().toIso8601String(),
+                    'device_id': deviceId,
+                    'image_checksum': image.checksumSha256,
+                  },
+            ),
           ),
           isMock: const Value(false),
           patientSnapshot: Value(jsonEncode(patientSnapshot)),
@@ -122,6 +128,8 @@ class OfflineScreeningStore implements ScreeningStore {
     if (outcome.processingTimeMs != null)
       'processing_time_ms': outcome.processingTimeMs,
     'findings': outcome.findings,
+    if (outcome.imageId != null) 'image_id': outcome.imageId,
+    if (outcome.provenance != null) 'provenance': outcome.provenance,
     'diagnosed_at': outcome.createdAt.toUtc().toIso8601String(),
   };
 
@@ -145,6 +153,7 @@ class OfflineScreeningStore implements ScreeningStore {
       image: image,
     );
     final findings = _decodeMap(row.findings, 'findings');
+    final storedProvenance = _decodeMap(row.provenance, 'provenance');
     final outcome = DiagnosisOutcome(
       isPositive: row.isPositive,
       confidence: row.confidence,
@@ -160,6 +169,9 @@ class OfflineScreeningStore implements ScreeningStore {
       effusion: _number(findings['effusion']),
       fibrotic: _number(findings['fibrotic']),
       calcification: _number(findings['calcification']),
+      infiltrate: _number(findings['infiltrate']),
+      imageId: clinical['inference_image_id'] as String?,
+      provenance: storedProvenance,
     );
     return ScreeningResult(
       draft: draft,

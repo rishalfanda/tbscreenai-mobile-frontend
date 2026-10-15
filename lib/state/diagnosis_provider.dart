@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 import 'package:myapp/domain/models/diagnosis_draft.dart';
 import 'package:myapp/domain/models/diagnosis_inference_request.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
@@ -9,6 +10,24 @@ import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/domain/models/screening_result.dart';
 import 'package:myapp/domain/repositories/diagnosis_repository.dart';
 import 'package:myapp/domain/repositories/screening_store.dart';
+
+String _inferenceError(Object error) {
+  if (error is DiagnosisRequestValidationException) return error.message;
+  if (error is DioException) {
+    return switch (error.response?.statusCode) {
+      401 => 'Sesi kedaluwarsa. Login kembali dengan akun doctor.',
+      403 => 'Akses ditolak. Gunakan akun doctor yang diaktifkan admin.',
+      413 => 'Gambar maksimal 25 MB. Ekspor ulang dengan ukuran lebih kecil.',
+      422 || 415 =>
+        'Gambar tidak didukung. Gunakan PNG/JPEG, maksimal 25 MB dan 20 juta pixel. Ekspor DICOM dahulu.',
+      503 =>
+        'Model atau storage backend tidak tersedia. Minta admin memeriksa layanan, lalu coba lagi.',
+      _ =>
+        'Analisis gagal. Periksa koneksi, alamat API staging, dan layanan backend, lalu coba lagi.',
+    };
+  }
+  return 'Respons analisis tidak valid. Minta admin memeriksa versi API backend, lalu coba lagi.';
+}
 
 class DiagnosisProvider extends ChangeNotifier {
   DiagnosisProvider(
@@ -272,10 +291,10 @@ class DiagnosisProvider extends ChangeNotifier {
         await _persistCurrent(generation);
       }
       return !_disposed && generation == _generation;
-    } catch (_) {
+    } catch (error) {
       if (_disposed || generation != _generation) return false;
       _lastResult = null;
-      lastError = 'Analysis failed. Check the server connection and try again.';
+      lastError = _inferenceError(error);
       return false;
     } finally {
       if (!_disposed && generation == _generation) {

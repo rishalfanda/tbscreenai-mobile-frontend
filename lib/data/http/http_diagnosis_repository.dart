@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
 
 import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/mock/mock_seed_data.dart';
@@ -12,14 +13,6 @@ import 'package:myapp/domain/repositories/diagnosis_repository.dart';
 
 /// Live inference against `POST /diagnoses/infer`.
 ///
-/// This is the piece the clinical flow was missing. The endpoint has existed
-/// on the backend since the API was built, but nothing on the tablet ever
-/// called it — the repository contract could only pass a filename, so the
-/// contract between the two sides had never actually been exercised.
-///
-/// The result is still produced by the backend's mock model. What is real now
-/// is the whole path around it: multipart upload, signature validation, the
-/// response shape, and the mapping into [DiagnosisOutcome].
 class HttpDiagnosisRepository
     implements DiagnosisRepository, TypedDiagnosisRepository {
   HttpDiagnosisRepository(this._client);
@@ -45,10 +38,30 @@ class HttpDiagnosisRepository
     required XrayImage image,
     DiagnosisInferenceRequest? request,
   }) async {
+    if (image.sizeBytes > 25 * 1024 * 1024) {
+      throw const DiagnosisRequestValidationException('Gambar maksimal 25 MB.');
+    }
+    if (image.format == XrayImageFormat.dicom) {
+      throw const DiagnosisRequestValidationException(
+        'Ekspor DICOM menjadi PNG/JPEG sebelum uji model backend.',
+      );
+    }
+    final decoder = img.findDecoderForData(image.bytes);
+    final info = decoder?.startDecode(image.bytes);
+    if (info == null || info.width <= 0 || info.height <= 0) {
+      throw const DiagnosisRequestValidationException(
+        'Gambar tidak didukung. Pilih PNG/JPEG X-ray yang valid.',
+      );
+    }
+    if (info.width * info.height > 20000000) {
+      throw const DiagnosisRequestValidationException(
+        'Gambar maksimal 20 juta pixel. Ekspor ulang dengan resolusi lebih kecil.',
+      );
+    }
     FormData buildForm() => FormData.fromMap({
       'image': MultipartFile.fromBytes(
         image.bytes,
-        filename: image.filename,
+        filename: image.format == XrayImageFormat.png ? 'xray.png' : 'xray.jpg',
         contentType: DioMediaType.parse(image.mimeType),
       ),
       if (request != null) ...{
@@ -63,7 +76,10 @@ class HttpDiagnosisRepository
     final response = await _client.dio.post<Map<String, dynamic>>(
       '/diagnoses/infer',
       data: buildForm(),
-      options: Options(extra: {requestBodyFactoryKey: buildForm}),
+      options: Options(
+        receiveTimeout: const Duration(minutes: 5),
+        extra: {requestBodyFactoryKey: buildForm},
+      ),
     );
 
     return _outcomeFromJson(response.data!);
@@ -115,7 +131,32 @@ DiagnosisOutcome _outcomeFromJson(Map<String, dynamic> json) {
     effusion: _percent(findings['effusion']),
     fibrotic: _percent(findings['fibrotic']),
     calcification: _percent(findings['calcification']),
+    infiltrate: _percent(findings['infiltrate']),
+    imageId: _imageId(json['image_id']),
+    provenance: _provenance(json['provenance']),
   );
 }
 
-double _percent(Object? value) => (value as num?)?.toDouble() ?? 0.0;
+double _percent(Object? value) {
+  if (value == null) return 0;
+  if (value is! num || !value.isFinite || value < 0 || value > 100) {
+    throw const FormatException('Invalid finding percentage.');
+  }
+  return value.toDouble();
+}
+
+String? _imageId(Object? value) {
+  if (value == null) return null;
+  if (value is! String || value.isEmpty) {
+    throw const FormatException('Invalid image reference.');
+  }
+  return value;
+}
+
+Map<String, dynamic>? _provenance(Object? value) {
+  if (value == null) return null;
+  if (value is! Map<String, dynamic>) {
+    throw const FormatException('Invalid model provenance.');
+  }
+  return Map.unmodifiable(value);
+}
