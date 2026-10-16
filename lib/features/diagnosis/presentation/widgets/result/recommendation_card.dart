@@ -25,7 +25,7 @@ class RecommendationCard extends StatelessWidget {
                 color: isPositive ? AppTheme.error : AppTheme.success,
               ),
               const SizedBox(width: 6),
-              const SectionTitle('Rekomendasi', fontSize: 16),
+              Expanded(child: SectionTitle('Rekomendasi', fontSize: 16)),
             ],
           ),
           const SizedBox(height: 8),
@@ -43,4 +43,3 @@ class RecommendationCard extends StatelessWidget {
     );
   }
 }
-

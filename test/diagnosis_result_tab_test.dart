@@ -23,6 +23,44 @@ Widget _wrap(DiagnosisProvider provider) {
 }
 
 void main() {
+  for (final size in [const Size(400, 900), const Size(1600, 1000)]) {
+    testWidgets('ONNX result at $size with 200 percent text', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final provider = DiagnosisProvider(MockDiagnosisRepository())
+        ..lastOutcome = DiagnosisOutcome(
+          isPositive: false,
+          confidence: 91,
+          processingTime: '2.9s',
+          modelVersion: 'onnx-2026.09.04',
+          createdAt: DateTime(2026),
+          isMock: false,
+          infiltrate: 4.2,
+        );
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: provider,
+          child: MaterialApp(
+            home: MediaQuery(
+              data: MediaQueryData(
+                size: size,
+                textScaler: TextScaler.linear(2),
+              ),
+              child: Scaffold(body: DiagnosisResultTab(onNewScreening: () {})),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Infiltrat'), findsOneWidget);
+      expect(find.text('4.2%'), findsOneWidget);
+      expect(find.text('91%'), findsOneWidget);
+      expect(find.text('Hasil model backend'), findsOneWidget);
+    });
+  }
+
   testWidgets('shows a neutral empty state before any run', (tester) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1.0;
@@ -64,33 +102,32 @@ void main() {
     expect(find.text('85%'), findsNothing);
   });
 
-  testWidgets(
-    'a negative verdict displays confidence in "Normal", not confidence in TB',
-    (tester) async {
-      tester.view.physicalSize = const Size(1600, 1000);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+  testWidgets('a negative verdict preserves backend decision confidence', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
 
-      final provider = DiagnosisProvider(MockDiagnosisRepository())
-        ..lastOutcome = DiagnosisOutcome(
-          isPositive: false,
-          confidence: 73,
-          processingTime: '2.9s',
-          modelVersion: 'TBScreen v2.1.0',
-          createdAt: DateTime(2026, 7, 24, 10, 30),
-        );
+    final provider = DiagnosisProvider(MockDiagnosisRepository())
+      ..lastOutcome = DiagnosisOutcome(
+        isPositive: false,
+        confidence: 73,
+        processingTime: '2.9s',
+        modelVersion: 'TBScreen v2.1.0',
+        createdAt: DateTime(2026, 7, 24, 10, 30),
+      );
 
-      await tester.pumpWidget(_wrap(provider));
-      await tester.pump();
+    await tester.pumpWidget(_wrap(provider));
+    await tester.pump();
 
-      // The stored value (73, confidence of the TB class) is flipped only
-      // for display since the verdict is Normal — the model stays untouched.
-      expect(find.text('Non-TBC'), findsOneWidget);
-      expect(find.text('27%'), findsOneWidget);
-      expect(find.text('73%'), findsNothing);
-      expect(provider.lastOutcome?.confidence, 73);
-    },
-  );
+    // The stored value (73, confidence of the TB class) is flipped only
+    // for display since the verdict is Normal — the model stays untouched.
+    expect(find.text('Non-TBC'), findsOneWidget);
+    expect(find.text('73%'), findsOneWidget);
+    expect(find.text('27%'), findsNothing);
+    expect(provider.lastOutcome?.confidence, 73);
+  });
 
   testWidgets(
     'shows the segmentation toggle and legend when the outcome carries one',

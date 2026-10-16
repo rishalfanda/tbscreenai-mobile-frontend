@@ -34,7 +34,9 @@ class DiagnosisAiCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
             children: [
               const Text(
                 'Screening AI',
@@ -44,7 +46,7 @@ class DiagnosisAiCard extends StatelessWidget {
                   color: Colors.white,
                 ),
               ),
-              const Spacer(),
+
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -66,10 +68,13 @@ class DiagnosisAiCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.start,
             children: [
-              const Expanded(
+              const SizedBox(
+                width: 220,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

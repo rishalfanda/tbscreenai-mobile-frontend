@@ -26,12 +26,10 @@ class DiagnosisResultTab extends StatelessWidget {
     }
 
     final isPositive = result.isPositive;
-    // `result.confidence` is stored as-is (the data model is untouched) —
-    // only the displayed figure flips for a negative verdict, so it always
-    // reads as "confidence in the shown verdict" rather than "confidence TB".
-    final displayedConfidence = isPositive
-        ? result.confidence
-        : 100 - result.confidence;
+    // HTTP returns decision confidence; local segmentation uses TB confidence.
+    final displayedConfidence = result.segmentation != null && !isPositive
+        ? 100 - result.confidence
+        : result.confidence;
 
     return ColoredBox(
       key: const Key('diagnosis-result-content'),
@@ -75,7 +73,9 @@ class DiagnosisResultTab extends StatelessWidget {
                                 children: [
                                   // B. Identitas Pasien
                                   Expanded(
-                                    child: PatientIdentityCard(snapshot: snapshot),
+                                    child: PatientIdentityCard(
+                                      snapshot: snapshot,
+                                    ),
                                   ),
                                   const SizedBox(height: 10),
                                   // C. Hasil Screening/Presentase (Screening AI)
@@ -88,7 +88,9 @@ class DiagnosisResultTab extends StatelessWidget {
                                   const SizedBox(height: 10),
                                   // D. Rekomendasi
                                   Expanded(
-                                    child: RecommendationCard(isPositive: isPositive),
+                                    child: RecommendationCard(
+                                      isPositive: isPositive,
+                                    ),
                                   ),
                                 ],
                               ),

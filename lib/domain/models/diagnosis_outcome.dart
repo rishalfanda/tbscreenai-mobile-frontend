@@ -15,6 +15,9 @@ class DiagnosisOutcome {
     this.effusion = 0,
     this.fibrotic = 0,
     this.calcification = 0,
+    this.infiltrate = 0,
+    this.imageId,
+    this.provenance,
     this.segmentation,
   });
 
@@ -32,6 +35,9 @@ class DiagnosisOutcome {
   final double effusion;
   final double fibrotic;
   final double calcification;
+  final double infiltrate;
+  final String? imageId;
+  final Map<String, dynamic>? provenance;
 
   /// Pre-rendered lung/lesion overlay visuals. Only the on-device path
   /// produces these — mock/HTTP outcomes leave this `null`.
@@ -43,5 +49,6 @@ class DiagnosisOutcome {
     'effusion': effusion,
     'fibrotic': fibrotic,
     'calcification': calcification,
+    'infiltrate': infiltrate,
   };
 }

@@ -43,17 +43,32 @@ class AppConfig {
     if (http) {
       final uri = Uri.tryParse(url);
       if (uri == null ||
-          uri.scheme != 'https' ||
+          !(uri.scheme == 'https' ||
+              (env == 'staging' &&
+                  uri.scheme == 'http' &&
+                  isLocalTrialHost(uri.host))) ||
           uri.host.isEmpty ||
           uri.userInfo.isNotEmpty ||
           uri.hasQuery ||
           uri.hasFragment ||
-          !RegExp(r'/v[1-9][0-9]*$').hasMatch(uri.path)) {
+          !RegExp(r'^/api/v[1-9][0-9]*$').hasMatch(uri.path)) {
         throw StateError(
-          'API_BASE_URL must be HTTPS with a versioned /api/vN path.',
+          'API_BASE_URL must use HTTPS, or a local staging IP, with /api/vN.',
         );
       }
     }
+  }
+
+  static bool isLocalTrialHost(String host) {
+    if (host == 'localhost') return true;
+    final parts = host.split('.').map(int.tryParse).toList();
+    if (parts.length != 4 || parts.any((v) => v == null || v < 0 || v > 255)) {
+      return false;
+    }
+    return parts[0] == 10 ||
+        parts[0] == 127 ||
+        (parts[0] == 192 && parts[1] == 168) ||
+        (parts[0] == 172 && parts[1]! >= 16 && parts[1]! <= 31);
   }
 
   /// Dev-time fallback bundle-zip URL, for exercising the real OTA model

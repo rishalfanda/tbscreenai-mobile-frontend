@@ -5202,7 +5202,16 @@ class $$LocalPatientsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<$LocalPatientsTable, LocalPatient>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $LocalPatientsTable,
+                    LocalPatient
+                  >(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -5793,7 +5802,16 @@ class $$LocalDiagnosesTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<$LocalDiagnosesTable, LocalDiagnose>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $LocalDiagnosesTable,
+                    LocalDiagnose
+                  >(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -6235,7 +6253,16 @@ class $$SyncQueueTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<$SyncQueueTable, SyncQueueData>(table),
+                  BaseReferences<_$AppDatabase, $SyncQueueTable, SyncQueueData>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -6604,7 +6631,19 @@ class $$EncryptedXrayArtifactsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<
+                    $EncryptedXrayArtifactsTable,
+                    EncryptedXrayArtifact
+                  >(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $EncryptedXrayArtifactsTable,
+                    EncryptedXrayArtifact
+                  >(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -6898,7 +6937,18 @@ class $$ClinicalAuditEventsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<$ClinicalAuditEventsTable, ClinicalAuditEvent>(
+                    table,
+                  ),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $ClinicalAuditEventsTable,
+                    ClinicalAuditEvent
+                  >(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),
@@ -7041,7 +7091,16 @@ class $$AppSettingsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<$AppSettingsTable, AppSetting>(table),
+                  BaseReferences<_$AppDatabase, $AppSettingsTable, AppSetting>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),

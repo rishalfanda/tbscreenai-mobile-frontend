@@ -36,6 +36,7 @@ const Map<String, String> kLesionNameLabels = {
   'effusion': 'Efusi',
   'fibrotic': 'Fibrotik',
   'calcification': 'Kalsifikasi',
+  'infiltrate': 'Infiltrat',
 };
 
 /// Dark surface card used across the Result tab.
@@ -80,4 +81,3 @@ class SectionTitle extends StatelessWidget {
     );
   }
 }
-

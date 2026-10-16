@@ -3,9 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/domain/models/xray_image.dart';
-import 'package:myapp/features/diagnosis/application/reinhard_normalizer.dart';
+import 'package:myapp/features/diagnosis/application/prepare_inference_image.dart';
 import 'package:myapp/features/diagnosis/application/xray_image_picker.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_palette.dart';
 import 'package:myapp/features/diagnosis/presentation/widgets/input/widgets.dart';
@@ -143,7 +144,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
   @override
   void initState() {
     super.initState();
-    if (widget.hasModelOverride != null) {
+    if (AppConfig.useHttp || widget.hasModelOverride != null) {
       _checkingModel = false;
     } else {
       context.read<OnnxInferenceEngine>().ready.then((_) {
@@ -193,7 +194,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
         setState(() {
           _imageLoadingMessage = 'Sedang memproses citra rontgen...';
         });
-        final normalized = await ReinhardNormalizer.normalizeXrayImage(image);
+        final normalized = await prepareInferenceImage(image);
         if (mounted) {
           context.read<DiagnosisProvider>().attachImage(normalized);
         }
@@ -356,8 +357,10 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
   @override
   Widget build(BuildContext context) {
     final diagnosis = context.watch<DiagnosisProvider>();
-    final hasModel = widget.hasModelOverride ?? _hasModelReady;
-    final checkingModel = widget.hasModelOverride == null && _checkingModel;
+    final hasModel =
+        AppConfig.useHttp || (widget.hasModelOverride ?? _hasModelReady);
+    final checkingModel =
+        !AppConfig.useHttp && widget.hasModelOverride == null && _checkingModel;
     final locked = diagnosis.lastOutcome != null;
 
     return ColoredBox(
