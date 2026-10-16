@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/domain/models/xray_image.dart';
-import 'package:myapp/features/diagnosis/application/reinhard_normalizer.dart';
+import 'package:myapp/features/diagnosis/application/prepare_inference_image.dart';
 import 'package:myapp/features/diagnosis/application/xray_image_picker.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_palette.dart';
 import 'package:myapp/features/diagnosis/presentation/widgets/input/widgets.dart';
@@ -194,9 +194,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
         setState(() {
           _imageLoadingMessage = 'Sedang memproses citra rontgen...';
         });
-        final normalized = AppConfig.useHttp
-            ? image
-            : await ReinhardNormalizer.normalizeXrayImage(image);
+        final normalized = await prepareInferenceImage(image);
         if (mounted) {
           context.read<DiagnosisProvider>().attachImage(normalized);
         }
