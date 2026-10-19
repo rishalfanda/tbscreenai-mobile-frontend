@@ -97,10 +97,15 @@ check(appEnvironment != "demo" || buildDefines["USE_HTTP"] != "true") {
 }
 if (appEnvironment == "staging") {
     val uri = URI(buildDefines["API_BASE_URL"] ?: "")
-    check(uri.scheme == "https" && !uri.host.isNullOrBlank() &&
+    val ip = (uri.host ?: "").split(".").map { it.toIntOrNull() }
+    val localHost = uri.host == "localhost" || (ip.size == 4 &&
+        ip.all { it != null && it in 0..255 } &&
+        (ip[0] == 10 || ip[0] == 127 || (ip[0] == 192 && ip[1] == 168) ||
+            (ip[0] == 172 && ip[1]!! in 16..31)))
+    check((uri.scheme == "https" || (uri.scheme == "http" && localHost)) && !uri.host.isNullOrBlank() &&
         uri.userInfo == null && uri.query == null && uri.fragment == null &&
-        Regex("/v[1-9][0-9]*").matches(uri.path ?: "")) {
-        "HTTPS versioned API_BASE_URL required"
+        Regex("/api/v[1-9][0-9]*").matches(uri.path ?: "")) {
+        "HTTPS or local staging IP with /api/vN required"
     }
 }
 // Validate the resolved graph so indirect packaging/installation is covered.

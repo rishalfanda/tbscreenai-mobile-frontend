@@ -5,9 +5,12 @@
 
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:archive/archive.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
+import 'package:myapp/domain/models/diagnosis_inference_request.dart';
 
 import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/http/http_diagnosis_repository.dart';
@@ -102,6 +105,83 @@ void main() {
   });
 
   group('HttpDiagnosisRepository', () {
+    test('preserves real ONNX findings and backend provenance', () async {
+      final provenance = {
+        'bundle_version': '2026.09.04',
+        'rf_model': 'combined',
+      };
+      final repo = HttpDiagnosisRepository(
+        _client(
+          _RecordingAdapter(
+            body: {
+              ..._serverResponse,
+              'is_mock': false,
+              'model_version': 'onnx-2026.09.04',
+              'image_id': '11111111-1111-4111-8111-111111111111',
+              'provenance': provenance,
+              'findings': {
+                ..._serverResponse['findings'] as Map,
+                'infiltrate': 4.2,
+              },
+            },
+          ),
+        ),
+      );
+      final outcome = await repo.runInference(image: XrayImage.placeholder());
+      expect(outcome.isMock, false);
+      expect(outcome.modelVersion, 'onnx-2026.09.04');
+      expect(outcome.infiltrate, 4.2);
+      expect(outcome.imageId, '11111111-1111-4111-8111-111111111111');
+      expect(outcome.provenance, provenance);
+    });
+
+    test('rejects more than 20 million pixels before upload', () async {
+      final bytes = Uint8List.fromList(
+        img.encodePng(img.Image(width: 1, height: 1)),
+      );
+      ByteData.sublistView(bytes).setUint32(16, 5000);
+      ByteData.sublistView(bytes).setUint32(20, 5000);
+      ByteData.sublistView(
+        bytes,
+      ).setUint32(29, getCrc32(bytes.sublist(12, 29)));
+      final adapter = _RecordingAdapter();
+      final repo = HttpDiagnosisRepository(_client(adapter));
+      await expectLater(
+        repo.runInference(
+          image: XrayImage.fromBytes(
+            bytes: bytes,
+            filename: 'large.png',
+            source: XrayImageSource.gallery,
+          ),
+        ),
+        throwsA(
+          isA<DiagnosisRequestValidationException>().having(
+            (error) => error.message,
+            'limit',
+            contains('20 juta pixel'),
+          ),
+        ),
+      );
+      expect(adapter.captured, isNull);
+    });
+
+    test('rejects DICOM before uploading', () async {
+      final bytes = Uint8List(132)..setRange(128, 132, [68, 73, 67, 77]);
+      final adapter = _RecordingAdapter();
+      final repo = HttpDiagnosisRepository(_client(adapter));
+      await expectLater(
+        repo.runInference(
+          image: XrayImage.fromBytes(
+            bytes: bytes,
+            filename: 'test.dcm',
+            source: XrayImageSource.gallery,
+          ),
+        ),
+        throwsA(isA<Exception>()),
+      );
+      expect(adapter.captured, isNull);
+    });
+
     test('posts the image bytes as multipart to /diagnoses/infer', () async {
       final adapter = _RecordingAdapter();
       final repo = HttpDiagnosisRepository(_client(adapter));
@@ -168,6 +248,8 @@ void main() {
 
       expect(outcome.consolidation, 0.0);
       expect(outcome.cavity, 0.0);
+      expect(outcome.infiltrate, 0);
+      expect(outcome.provenance, isNull);
     });
   });
 
@@ -223,6 +305,37 @@ void main() {
         expect(provider.isRunning, isFalse);
       },
     );
+
+    for (final status in [401, 403, 422, 503]) {
+      test('actionable error for HTTP $status without dummy outcome', () async {
+        final provider =
+            DiagnosisProvider(
+                HttpDiagnosisRepository(
+                  _client(
+                    _RecordingAdapter(statusCode: status, body: const {}),
+                  ),
+                ),
+              )
+              ..updatePatientName('Synthetic')
+              ..updateGender('Female')
+              ..updateAge(34)
+              ..updateHeight(160)
+              ..updateWeight(55)
+              ..attachPlaceholderImage('xray.png');
+        expect(await provider.runDiagnosis(), false);
+        expect(provider.lastOutcome, isNull);
+        expect(provider.isRunning, false);
+        expect(
+          provider.lastError,
+          contains(switch (status) {
+            401 => 'Login',
+            403 => 'doctor',
+            422 => 'PNG/JPEG',
+            _ => 'storage',
+          }),
+        );
+      });
+    }
 
     test('resetting clears image, outcome and error together', () async {
       final provider = DiagnosisProvider(MockDiagnosisRepository())

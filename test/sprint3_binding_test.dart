@@ -40,7 +40,9 @@ void main() {
       );
       expect(
         context.read<DiagnosisRepository>(),
-        isA<HybridDiagnosisRepository>(),
+        live
+            ? isA<HttpDiagnosisRepository>()
+            : isA<HybridDiagnosisRepository>(),
       );
       expect(
         context.read<PatientRepository>(),

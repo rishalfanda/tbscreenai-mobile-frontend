@@ -156,7 +156,8 @@ void main() {
     expect(find.byKey(const Key('diagnosis-result-content')), findsNothing);
     expect(find.byKey(const Key('diagnosis-input-content')), findsOneWidget);
     expect(provider.lastOutcome, isNull);
-    expect(provider.lastError, contains('Check the server connection'));
+    expect(provider.lastError, contains('Respons analisis tidak valid'));
+    expect(provider.lastError, contains('versi API backend'));
   });
 
   testWidgets(

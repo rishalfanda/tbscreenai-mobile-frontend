@@ -101,6 +101,9 @@ DiagnosisOutcome _outcome({bool mock = false}) => DiagnosisOutcome(
   createdAt: DateTime.utc(2026, 9, 30),
   isMock: mock,
   consolidation: 20,
+  infiltrate: 4.2,
+  imageId: '11111111-1111-4111-8111-111111111111',
+  provenance: const {'bundle_version': '2026.09.04', 'rf_model': 'combined'},
 );
 
 DiagnosisDraft _draft() => DiagnosisDraft(
@@ -228,9 +231,37 @@ void main() {
         _draft().image!.checksumSha256,
       );
       expect(restored.outcome.modelVersion, 'model-1');
+      expect(restored.outcome.imageId, persisted.outcome.imageId);
+      expect(restored.outcome.provenance, persisted.outcome.provenance);
+      expect(restored.outcome.infiltrate, 4.2);
+      final queued = await db.select(db.syncQueue).getSingle();
+      final payload = jsonDecode(queued.payload) as Map;
+      expect(payload['image_id'], persisted.outcome.imageId);
+      expect(payload['provenance'], persisted.outcome.provenance);
+      final expectedClinical = {
+        'schema_version': 1,
+        'height_cm': 160.0,
+        'weight_kg': 55.0,
+        'symptoms': <String>[],
+      };
+      expect(payload['clinical'], expectedClinical);
       expect(await db.countPending(), 1);
       adapter.verdict = 'applied';
-      await engine.push();
+      adapter.responseStatus = 503;
+      expect((await engine.push()).failed, 1);
+      expect(adapter.sent.single['payload'], payload);
+      await db.close();
+      db = AppDatabase(NativeDatabase(file));
+      bind();
+      final retry = await db.select(db.syncQueue).getSingle();
+      expect(retry.clientOpId, queued.clientOpId);
+      expect(jsonDecode(retry.payload), payload);
+      adapter.responseStatus = 200;
+      adapter.verdict = 'skipped';
+      expect((await engine.push()).skipped, 1);
+      expect(adapter.sent.last['client_op_id'], queued.clientOpId);
+      expect(adapter.sent.last['payload'], payload);
+      expect(await db.countPending(), 0);
       await (db.update(
         db.localDiagnoses,
       )..where((row) => row.id.equals(persisted.id!))).write(
@@ -241,6 +272,56 @@ void main() {
       expect(
         (await store().restoreLatest())!.draft.image!.checksumSha256,
         persisted.draft.image!.checksumSha256,
+      );
+    },
+  );
+
+  test(
+    'clinical queue uses backend fields and freezes the reviewed draft',
+    () async {
+      final symptoms = {'Fever', 'Cough'};
+      final draft = _draft().copyWith(
+        symptoms: symptoms,
+        comorbidity: 'Diabetes Mellitus',
+        smoking: 'Never',
+        tbContact: 'Yes',
+        pediatricScore: 0,
+        windowsPresence: 'Yes',
+        sunlightExposure: 'No',
+        bta: 'BTA Negative',
+        culture: 'Negative',
+        xpert: 'Negative',
+        igra: 'Negative',
+        tbHistory: 'No',
+        tbStatus: 'Screening',
+      );
+      await store().persist(ScreeningResult(draft: draft, outcome: _outcome()));
+      symptoms.add('Fatigue');
+      final queued = await db.select(db.syncQueue).getSingle();
+      final payload = jsonDecode(queued.payload) as Map;
+      expect(payload['clinical'], {
+        'schema_version': 1,
+        'height_cm': 160.0,
+        'weight_kg': 55.0,
+        'symptoms': ['Cough', 'Fever'],
+        'comorbidity': 'Diabetes Mellitus',
+        'smoking': 'Never',
+        'tb_contact': 'Yes',
+        'pediatric_score': 0,
+        'windows_presence': 'Yes',
+        'sunlight_exposure': 'No',
+        'bta': 'BTA Negative',
+        'culture': 'Negative',
+        'xpert': 'Negative',
+        'igra': 'Negative',
+        'tb_history': 'No',
+        'tb_status': 'Screening',
+      });
+      expect((payload['clinical'] as Map).containsKey('image'), isFalse);
+      expect((payload['clinical'] as Map).containsKey('device_id'), isFalse);
+      expect(
+        (payload['clinical'] as Map).containsKey('selected_model'),
+        isFalse,
       );
     },
   );

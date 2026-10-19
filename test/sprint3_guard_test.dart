@@ -21,6 +21,14 @@ void main() {
         true,
         'https://staging.example.org/api/v1',
       );
+      for (final host in [
+        '10.0.2.2',
+        '192.168.1.2',
+        '172.16.0.2',
+        'localhost',
+      ]) {
+        AppConfig.validateValues('staging', true, 'http://$host:8000/api/v1');
+      }
       for (final env in ['production', 'unknown']) {
         expect(
           () =>

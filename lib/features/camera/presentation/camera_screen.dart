@@ -7,7 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/features/camera/application/xray_capture_processor.dart';
-import 'package:myapp/features/diagnosis/application/reinhard_normalizer.dart';
+import 'package:myapp/features/diagnosis/application/prepare_inference_image.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 import 'package:provider/provider.dart';
 
@@ -198,7 +198,7 @@ class _CameraScreenState extends State<CameraScreen>
         filename: _capturedName,
         source: XrayImageSource.camera,
       );
-      final normalized = await ReinhardNormalizer.normalizeXrayImage(image);
+      final normalized = await prepareInferenceImage(image);
       if (!mounted) return;
       context.read<DiagnosisProvider>().attachImage(normalized);
       context.pop();

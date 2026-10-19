@@ -29,10 +29,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
           const SectionTitle('Detail Runtime & Aksi', fontSize: 13),
           const SizedBox(height: 8),
           Table(
-            columnWidths: const {
-              0: IntrinsicColumnWidth(),
-              1: FlexColumnWidth(),
-            },
+            columnWidths: const {0: FlexColumnWidth(), 1: FlexColumnWidth()},
             children: [
               _analysisRow(
                 'Tanggal Analisis',
@@ -42,26 +39,61 @@ class RuntimeAndActionsCard extends StatelessWidget {
               _analysisRow('Waktu Proses', result.processingTime),
             ],
           ),
+          const SizedBox(height: 8),
+          Text(
+            result.isMock
+                ? 'MOCK / DEMO - bukan hasil model asli'
+                : result.segmentation != null
+                ? 'Hasil model perangkat'
+                : 'Hasil model backend',
+            style: const TextStyle(color: kResultTextLoColor),
+          ),
+          if (result.segmentation == null) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                for (final entry in result.findings.entries)
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        kLesionNameLabels[entry.key] ?? entry.key,
+                        style: const TextStyle(color: kResultTextLoColor),
+                      ),
+                      Text(
+                        '${entry.value.toStringAsFixed(1)}%',
+                        style: const TextStyle(color: kResultTextHiColor),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: 12),
           PersistenceBanner(
             status: diagnosis.saveStatus,
             error: diagnosis.persistenceError,
           ),
           const SizedBox(height: 12),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              Expanded(
+              SizedBox(
                 child: _actionButton(
                   Icons.save_rounded,
                   _saveButtonLabel(diagnosis.saveStatus),
                   onPressed:
                       result.isMock ||
-                              diagnosis.isSaving ||
-                              diagnosis.saveStatus ==
-                                  ScreeningSaveStatus.pendingSync ||
-                              diagnosis.saveStatus == ScreeningSaveStatus.saved
-                          ? null
-                          : () => _save(context, diagnosis),
+                          diagnosis.isSaving ||
+                          diagnosis.saveStatus ==
+                              ScreeningSaveStatus.pendingSync ||
+                          diagnosis.saveStatus == ScreeningSaveStatus.saved
+                      ? null
+                      : () => _save(context, diagnosis),
                 ),
               ),
               const SizedBox(width: 8),
@@ -209,4 +241,3 @@ class RuntimeAndActionsCard extends StatelessWidget {
     );
   }
 }
-
