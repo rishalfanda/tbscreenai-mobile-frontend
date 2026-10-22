@@ -1,10 +1,22 @@
-/// Model bundle descriptor returned by the model discovery endpoint (GET /v1/models).
+/// Local storage and verification lifecycle status for an AI model bundle.
+enum ModelBundleStatus {
+  notDownloaded,
+  downloaded,
+  verifying,
+  verified,
+  verificationFailed,
+}
+
+/// Model bundle descriptor returned by the model discovery endpoint (GET /v1/models)
+/// enriched with local on-device installation and verification state.
 class AvailableModelBundle {
   const AvailableModelBundle({
     required this.channel,
     required this.version,
     required this.isLatest,
     this.isCurrent = false,
+    this.localStatus = ModelBundleStatus.notDownloaded,
+    this.verificationError,
     this.releasedUtc,
     this.schemaVersion = 1,
     this.quantized = false,
@@ -29,6 +41,8 @@ class AvailableModelBundle {
   final String version;
   final bool isLatest;
   final bool isCurrent;
+  final ModelBundleStatus localStatus;
+  final String? verificationError;
   final DateTime? releasedUtc;
   final int schemaVersion;
   final bool quantized;
@@ -50,6 +64,16 @@ class AvailableModelBundle {
 
   /// Unique bundle key used for directory naming and identification: `${channel}_${version}`.
   String get id => '${channel.toLowerCase().trim()}_${version.trim()}';
+
+  /// Whether this bundle is downloaded and stored on device disk (in any state: downloaded, verified, or failed).
+  bool get isDownloaded => localStatus != ModelBundleStatus.notDownloaded;
+
+  /// Whether this bundle is completely verified and ready for inference execution.
+  bool get isVerified => localStatus == ModelBundleStatus.verified;
+
+  /// Whether integrity or signature verification failed for this bundle.
+  bool get isVerificationFailed =>
+      localStatus == ModelBundleStatus.verificationFailed;
 
   /// Human-readable file size, e.g. "504.1 MB" or "196.8 MB".
   String get formattedSize {
@@ -95,11 +119,24 @@ class AvailableModelBundle {
         ? rawChangelog.map((e) => e.toString()).toList()
         : const <String>[];
 
+    ModelBundleStatus parsedStatus = ModelBundleStatus.notDownloaded;
+    final rawStatus = json['local_status'] as String?;
+    if (rawStatus != null) {
+      for (final s in ModelBundleStatus.values) {
+        if (s.name == rawStatus) {
+          parsedStatus = s;
+          break;
+        }
+      }
+    }
+
     return AvailableModelBundle(
       channel: (json['channel'] as String?) ?? 'stable',
       version: (json['version'] as String?) ?? '',
       isLatest: (json['is_latest'] as bool?) ?? false,
       isCurrent: (json['is_current'] as bool?) ?? false,
+      localStatus: parsedStatus,
+      verificationError: json['verification_error'] as String?,
       releasedUtc: parsedDate,
       schemaVersion: (json['schema_version'] as num?)?.toInt() ?? 1,
       quantized: (json['quantized'] as bool?) ?? false,
@@ -126,6 +163,8 @@ class AvailableModelBundle {
     'version': version,
     'is_latest': isLatest,
     'is_current': isCurrent,
+    'local_status': localStatus.name,
+    if (verificationError != null) 'verification_error': verificationError,
     if (releasedUtc != null) 'released_utc': releasedUtc!.toIso8601String(),
     'schema_version': schemaVersion,
     'quantized': quantized,
@@ -151,6 +190,8 @@ class AvailableModelBundle {
     String? version,
     bool? isLatest,
     bool? isCurrent,
+    ModelBundleStatus? localStatus,
+    String? verificationError,
     DateTime? releasedUtc,
     int? schemaVersion,
     bool? quantized,
@@ -175,6 +216,8 @@ class AvailableModelBundle {
       version: version ?? this.version,
       isLatest: isLatest ?? this.isLatest,
       isCurrent: isCurrent ?? this.isCurrent,
+      localStatus: localStatus ?? this.localStatus,
+      verificationError: verificationError ?? this.verificationError,
       releasedUtc: releasedUtc ?? this.releasedUtc,
       schemaVersion: schemaVersion ?? this.schemaVersion,
       quantized: quantized ?? this.quantized,
@@ -196,4 +239,3 @@ class AvailableModelBundle {
     );
   }
 }
-

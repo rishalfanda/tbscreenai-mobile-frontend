@@ -22,10 +22,13 @@ abstract class SyncRepository {
   /// ever completed.
   Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo();
 
-  /// Fetches all available model bundles across channels from GET /v1/models.
+  /// Fetches available model bundles across channels.
+  /// When [localOnly] is true, only returns bundles currently stored on device
+  /// without querying remote endpoints.
   Future<List<AvailableModelBundle>> getAvailableModels({
     String? channel,
     bool? quantized,
+    bool localOnly = false,
   });
 
   /// Bundle keys of all models currently downloaded and verified on disk.
@@ -36,6 +39,13 @@ abstract class SyncRepository {
 
   /// Activates an already-downloaded model bundle for inference without re-downloading.
   Future<void> activateModelBundle(String bundleKey);
+
+  /// Verifies an existing downloaded model bundle on disk.
+  Future<bool> verifyModelBundle(String bundleKey);
+
+  /// Deletes an installed model bundle from local storage.
+  /// If the deleted model was active, the active model is cleared (null).
+  Future<void> deleteModelBundle(String bundleKey);
 
   Future<SyncSummary> getSyncSummary();
 

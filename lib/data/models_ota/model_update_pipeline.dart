@@ -10,6 +10,7 @@ import 'package:myapp/data/models_ota/bundle_download.dart';
 import 'package:myapp/data/models_ota/bundle_verifier.dart';
 import 'package:myapp/data/models_ota/model_store.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
+import 'package:myapp/domain/models/available_model_bundle.dart';
 import 'package:myapp/domain/models/installed_bundle_info.dart';
 import 'package:myapp/domain/models/model_version_info.dart';
 
@@ -94,37 +95,41 @@ class ModelUpdatePipeline {
     try {
       incomingDir = await _store.freshIncomingDir(incomingName);
       await extractBundleZip(zipFile.path, incomingDir.path);
-      final manifest = await verifyBundleDir(incomingDir);
-      if (manifest.bundleVersion != version) {
-        throw StateError(
-          'downloaded bundle is v${manifest.bundleVersion}, expected v$version',
-        );
-      }
     } catch (e) {
       await _cleanupTemp(zipFile);
       await _store.wipeIncoming();
-      throw ModelInstallException(ModelInstallPhase.verifying, '$e');
+      throw ModelInstallException(ModelInstallPhase.downloading, '$e');
     }
     await _cleanupTemp(zipFile);
 
+    // Promote to version directory and set initial downloaded status
     try {
       await _store.promoteIncoming(incomingName, asVersion: bundleKey);
       if (metadata != null) {
         await _store.writeBundleMeta(bundleKey, metadata);
       }
-      await _store.activate(bundleKey);
-      final opened = await _engine.init();
-      if (!opened) throw StateError('installed bundle failed to open');
+      await _store.setBundleStatus(bundleKey, ModelBundleStatus.downloaded);
     } catch (e) {
-      await _rollback();
       throw ModelInstallException(ModelInstallPhase.activating, '$e');
     }
 
+    // Verify downloaded bundle on disk
+    final destDir = await _store.versionDir(bundleKey);
     try {
-      await _engine.smokeTest(smokeTestSampleBytes);
+      final manifest = await verifyBundleDir(destDir);
+      if (manifest.bundleVersion != version) {
+        throw StateError(
+          'downloaded bundle is v${manifest.bundleVersion}, expected v$version',
+        );
+      }
+      await _store.setBundleStatus(bundleKey, ModelBundleStatus.verified);
     } catch (e) {
-      await _rollback();
-      throw ModelInstallException(ModelInstallPhase.smokeTesting, '$e');
+      await _store.setBundleStatus(
+        bundleKey,
+        ModelBundleStatus.verificationFailed,
+        error: '$e',
+      );
+      throw ModelInstallException(ModelInstallPhase.verifying, '$e');
     }
   }
 
@@ -135,7 +140,7 @@ class ModelUpdatePipeline {
   Stream<double> install({
     required ModelVersionInfo info,
     required Uint8List smokeTestSampleBytes,
-  }) {
+  }) async* {
     final url = info.downloadUrl;
     if (url == null || url.isEmpty) {
       throw ModelInstallException(
@@ -143,13 +148,51 @@ class ModelUpdatePipeline {
         'no download URL available for this model version',
       );
     }
-    return installBundle(
+    yield* installBundle(
       bundleKey: info.latestVersion,
       version: info.latestVersion,
       downloadUrl: url,
       sha256: info.sha256,
       smokeTestSampleBytes: smokeTestSampleBytes,
     );
+    await activateExisting(info.latestVersion);
+    try {
+      await _engine.smokeTest(smokeTestSampleBytes);
+    } catch (e) {
+      await _rollback();
+      throw ModelInstallException(ModelInstallPhase.smokeTesting, '$e');
+    }
+  }
+
+  /// Verifies an already downloaded bundle directory on disk without re-downloading.
+  Future<bool> verifyExistingBundle(String bundleKey) async {
+    final d = await _store.versionDir(bundleKey);
+    if (!await d.exists()) {
+      throw StateError(
+        'Direktori model $bundleKey tidak ditemukan di perangkat.',
+      );
+    }
+    try {
+      await verifyBundleDir(d);
+      await _store.setBundleStatus(bundleKey, ModelBundleStatus.verified);
+      return true;
+    } catch (e) {
+      await _store.setBundleStatus(
+        bundleKey,
+        ModelBundleStatus.verificationFailed,
+        error: '$e',
+      );
+      throw ModelInstallException(ModelInstallPhase.verifying, '$e');
+    }
+  }
+
+  /// Deletes a bundle and unloads session if currently active.
+  Future<void> deleteBundle(String bundleKey) async {
+    final active = await _store.activeVersion();
+    await _store.deleteBundle(bundleKey);
+    if (active == bundleKey) {
+      await _engine.init();
+    }
   }
 
   /// Activates an already installed bundle and reloads the inference engine.
@@ -157,6 +200,12 @@ class ModelUpdatePipeline {
     final isInstalled = await _store.isInstalled(bundleKey);
     if (!isInstalled) {
       throw StateError('Bundle $bundleKey is not installed on this device.');
+    }
+    final status = await _store.getBundleStatus(bundleKey);
+    if (status != ModelBundleStatus.verified) {
+      throw StateError(
+        'Model $bundleKey belum terverifikasi dan tidak dapat digunakan.',
+      );
     }
     await _store.activate(bundleKey);
     final opened = await _engine.init();

@@ -56,63 +56,101 @@ class ModelUpdateService {
   Future<List<String>> getInstalledModelKeys() =>
       _store.listInstalledBundleKeys();
 
-  /// Fetches all available model bundles across channels from GET /models.
+  /// Fetches available model bundles across channels.
+  /// When [localOnly] is true, returns only local models on device without network queries.
   Future<List<AvailableModelBundle>> fetchAvailableModels({
     String? channel,
     bool? quantized,
+    bool localOnly = false,
   }) async {
     final installed = await _settings.readInstalledModelVersion();
-    try {
-      final response = await _client.dio.get<dynamic>(
-        '/models',
-        queryParameters: {
-          if (channel != null && channel.isNotEmpty) 'channel': channel,
-          if (quantized != null) 'quantized': quantized,
-          'app': _appVersion,
-          if (installed != null && installed.isNotEmpty) 'current': installed,
-        },
-      );
-      final data = _asJsonMap(response.data);
-      if (data != null) {
-        await _settings.saveAvailableModelsCache(jsonEncode(data));
-        final modelsRaw = data['models'] as List?;
-        if (modelsRaw != null) {
-          return modelsRaw
-              .whereType<Map<String, dynamic>>()
-              .map(AvailableModelBundle.fromJson)
-              .toList();
+    List<AvailableModelBundle>? rawList;
+
+    if (localOnly) {
+      rawList = (await _synthesizeFromInstalledBundles()).where((m) {
+        if (channel != null && channel.isNotEmpty && channel != 'all') {
+          if (m.channel.toLowerCase() != channel.toLowerCase()) return false;
         }
-      }
-    } catch (_) {
-      // Offline fallback: try reading cached catalog.
-      final cachedJson = await _settings.readAvailableModelsCache();
-      if (cachedJson != null) {
-        try {
-          final data = jsonDecode(cachedJson) as Map<String, dynamic>;
+        if (quantized != null && m.quantized != quantized) return false;
+        return true;
+      }).toList();
+    } else {
+      try {
+        final response = await _client.dio.get<dynamic>(
+          '/models',
+          queryParameters: {
+            if (channel != null && channel.isNotEmpty) 'channel': channel,
+            'quantized': ?quantized,
+            'app': _appVersion,
+            if (installed != null && installed.isNotEmpty) 'current': installed,
+          },
+        );
+        final data = _asJsonMap(response.data);
+        if (data != null) {
+          await _settings.saveAvailableModelsCache(jsonEncode(data));
           final modelsRaw = data['models'] as List?;
           if (modelsRaw != null) {
-            return modelsRaw
+            rawList = modelsRaw
                 .whereType<Map<String, dynamic>>()
                 .map(AvailableModelBundle.fromJson)
                 .toList();
           }
-        } catch (_) {}
+        }
+      } catch (_) {
+        // Offline fallback: try reading cached catalog.
+        final cachedJson = await _settings.readAvailableModelsCache();
+        if (cachedJson != null) {
+          try {
+            final data = jsonDecode(cachedJson) as Map<String, dynamic>;
+            final modelsRaw = data['models'] as List?;
+            if (modelsRaw != null) {
+              rawList = modelsRaw
+                  .whereType<Map<String, dynamic>>()
+                  .map(AvailableModelBundle.fromJson)
+                  .toList();
+            }
+          } catch (_) {}
+        }
       }
+
+      rawList ??= await _synthesizeFromInstalledBundles();
     }
 
-    // If completely offline with no network cache, synthesize entries from installed bundles.
-    return _synthesizeFromInstalledBundles();
+    // Enrich with local device status and active pointer
+    final enriched = <AvailableModelBundle>[];
+    for (final m in rawList) {
+      final status = await _store.getBundleStatus(m.id);
+      final meta = await _store.readBundleMeta(m.id);
+      final isCurrent = installed != null &&
+          (installed.toLowerCase().trim() == m.id.toLowerCase().trim() ||
+           installed.toLowerCase().trim() == m.version.toLowerCase().trim());
+      enriched.add(
+        m.copyWith(
+          isCurrent: isCurrent,
+          localStatus: status,
+          verificationError: meta?['verification_error'] as String?,
+        ),
+      );
+    }
+    return enriched;
   }
 
   Future<List<AvailableModelBundle>> _synthesizeFromInstalledBundles() async {
     final installedKeys = await _store.listInstalledBundleKeys();
-    final activeKey = await _store.activeVersion();
+    final activeKey = await _settings.readInstalledModelVersion();
     final result = <AvailableModelBundle>[];
 
     for (final key in installedKeys) {
       final meta = await _store.readBundleMeta(key);
+      final status = await _store.getBundleStatus(key);
       if (meta != null) {
-        result.add(AvailableModelBundle.fromJson(meta));
+        result.add(
+          AvailableModelBundle.fromJson(meta).copyWith(
+            localStatus: status,
+            isCurrent: key == activeKey,
+            verificationError: meta['verification_error'] as String?,
+          ),
+        );
       } else {
         // Fallback if no meta.json exists: parse key
         final parts = key.split('_');
@@ -124,6 +162,7 @@ class ModelUpdateService {
             version: version,
             isLatest: false,
             isCurrent: key == activeKey,
+            localStatus: status,
             notes: 'Installed on device',
           ),
         );
@@ -146,10 +185,7 @@ class ModelUpdateService {
         progress += 0.05;
         yield progress.clamp(0.0, 1.0);
       }
-      await _db.writeForSession(
-        session,
-        () => _settings.saveInstalledModelVersion(model.id),
-      );
+      await _store.setBundleStatus(model.id, ModelBundleStatus.verified);
       return;
     }
 
@@ -165,11 +201,28 @@ class ModelUpdateService {
       if (session != _db.sessionGeneration) return;
       yield progress;
     }
-    if (session != _db.sessionGeneration) return;
-    await _db.writeForSession(
-      session,
-      () => _settings.saveInstalledModelVersion(model.id),
-    );
+  }
+
+  /// Verifies an already downloaded bundle on disk.
+  Future<bool> verifyModelBundle(String bundleKey) =>
+      _modelPipeline.verifyExistingBundle(bundleKey);
+
+  /// Deletes a bundle from disk and unloads active model if deleted.
+  Future<void> deleteModelBundle(String bundleKey) async {
+    final session = _db.sessionGeneration;
+    await _modelPipeline.deleteBundle(bundleKey);
+    final installed = await _settings.readInstalledModelVersion();
+    if (installed == bundleKey ||
+        (installed != null &&
+            (installed.toLowerCase() == bundleKey.toLowerCase() ||
+             bundleKey.endsWith('_$installed')))) {
+      if (session == _db.sessionGeneration) {
+        await _db.writeForSession(
+          session,
+          () => _settings.clearInstalledModelVersion(),
+        );
+      }
+    }
   }
 
   /// Activates an already installed bundle without re-downloading.

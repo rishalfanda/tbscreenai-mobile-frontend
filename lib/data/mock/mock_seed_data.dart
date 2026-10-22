@@ -427,6 +427,7 @@ class MockSeedData {
       version: '2026.09.04',
       isLatest: true,
       isCurrent: true,
+      localStatus: ModelBundleStatus.verified,
       releasedUtc: DateTime.utc(2026, 9, 17, 8, 45, 35),
       schemaVersion: 1,
       quantized: false,
@@ -443,6 +444,9 @@ class MockSeedData {
       version: '2026.09.04',
       isLatest: true,
       isCurrent: false,
+      localStatus: ModelBundleStatus.verificationFailed,
+      verificationError:
+          'Checksum SHA256 atau tanda tangan digital Ed25519 tidak cocok.',
       releasedUtc: DateTime.utc(2026, 9, 17, 8, 27, 24),
       schemaVersion: 1,
       quantized: true,

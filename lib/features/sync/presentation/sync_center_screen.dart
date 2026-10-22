@@ -182,6 +182,7 @@ class _ModelSyncTabState extends State<_ModelSyncTab> {
   String? _activeVersion;
   bool _loading = false;
   String? _errorMessage;
+  bool _hasCheckedRemote = false;
 
   String _channelFilter = 'all'; // 'all', 'stable', 'beta'
   bool? _quantizedFilter; // null: all, true: quantized, false: unquantized
@@ -189,6 +190,8 @@ class _ModelSyncTabState extends State<_ModelSyncTab> {
   String? _downloadingModelId;
   double _downloadProgress = 0.0;
   StreamSubscription<double>? _downloadSub;
+  String? _verifyingModelId;
+  String? _deletingModelId;
 
   final _connectivity = ConnectivityService();
   bool _isOnline = true;
@@ -205,7 +208,7 @@ class _ModelSyncTabState extends State<_ModelSyncTab> {
       if (!mounted) return;
       setState(() => _isOnline = online);
     });
-    _loadData();
+    _loadData(fetchRemote: false);
   }
 
   @override
@@ -215,8 +218,11 @@ class _ModelSyncTabState extends State<_ModelSyncTab> {
     super.dispose();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool? fetchRemote}) async {
     final repository = context.read<SyncRepository>();
+    if (fetchRemote != null) {
+      _hasCheckedRemote = fetchRemote;
+    }
     setState(() {
       _loading = true;
       _errorMessage = null;
@@ -228,6 +234,7 @@ class _ModelSyncTabState extends State<_ModelSyncTab> {
       final models = await repository.getAvailableModels(
         channel: _channelFilter == 'all' ? null : _channelFilter,
         quantized: _quantizedFilter,
+        localOnly: !_hasCheckedRemote,
       );
 
       if (!mounted) return;
@@ -262,48 +269,80 @@ class _ModelSyncTabState extends State<_ModelSyncTab> {
       },
       onDone: () async {
         if (!mounted) return;
-        final newActive = await repository.getInstalledModelVersion();
-        final newInstalled = await repository.getInstalledModelKeys();
-        setState(() {
-          _downloadingModelId = null;
-          _activeVersion = newActive;
-          _installedKeys = newInstalled.toSet();
-        });
+        setState(() => _downloadingModelId = null);
+        await _loadData();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Model ${model.version} (${model.channel.toUpperCase()}) berhasil diunduh dan diaktifkan.',
+                'Model v${model.version} (${model.channel.toUpperCase()}) berhasil diunduh dan diverifikasi. Ketuk "Gunakan Model" untuk mengaktifkannya.',
               ),
               backgroundColor: AppTheme.success,
             ),
           );
         }
       },
-      onError: (Object error) {
+      onError: (Object error) async {
         if (!mounted) return;
         setState(() => _downloadingModelId = null);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Gagal mengunduh model: $error'),
-            backgroundColor: AppTheme.error,
-          ),
-        );
+        await _loadData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Gagal mengunduh/memverifikasi model: $error'),
+              backgroundColor: AppTheme.error,
+            ),
+          );
+        }
       },
     );
+  }
+
+  Future<void> _verifyModel(AvailableModelBundle model) async {
+    if (_verifyingModelId != null) return;
+    final repository = context.read<SyncRepository>();
+
+    setState(() => _verifyingModelId = model.id);
+    try {
+      final success = await repository.verifyModelBundle(model.id);
+      await _loadData();
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Model v${model.version} (${model.channel.toUpperCase()}) berhasil diverifikasi dan siap digunakan.',
+            ),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+      }
+    } catch (e) {
+      await _loadData();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Verifikasi gagal: $e'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _verifyingModelId = null);
+      }
+    }
   }
 
   Future<void> _activateModel(AvailableModelBundle model) async {
     final repository = context.read<SyncRepository>();
     try {
       await repository.activateModelBundle(model.id);
-      final newActive = await repository.getInstalledModelVersion();
+      await _loadData();
       if (!mounted) return;
-      setState(() => _activeVersion = newActive);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Model ${model.version} (${model.channel.toUpperCase()}) sekarang aktif digunakan.',
+            'Model v${model.version} (${model.channel.toUpperCase()}) sekarang aktif digunakan.',
           ),
           backgroundColor: AppTheme.success,
         ),
@@ -316,6 +355,70 @@ class _ModelSyncTabState extends State<_ModelSyncTab> {
           backgroundColor: AppTheme.error,
         ),
       );
+    }
+  }
+
+  Future<void> _confirmDeleteModel(AvailableModelBundle model) async {
+    final isActive = _isModelActive(model);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+          ),
+          title: Text('Hapus Model v${model.version}?'),
+          content: Text(
+            isActive
+                ? 'Model ini sedang aktif digunakan untuk analisis deteksi TB. '
+                  'Jika dihapus, tidak ada model yang aktif hingga Anda memilih model lain.'
+                : 'Berkas model v${model.version} (${model.channel.toUpperCase()}) '
+                  'akan dihapus dari penyimpanan perangkat.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.error),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Hapus'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final repository = context.read<SyncRepository>();
+    setState(() => _deletingModelId = model.id);
+    try {
+      await repository.deleteModelBundle(model.id);
+      await _loadData();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Model v${model.version} (${model.channel.toUpperCase()}) berhasil dihapus.',
+          ),
+          backgroundColor: AppTheme.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal menghapus model: $e'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _deletingModelId = null);
+      }
     }
   }
 
@@ -441,27 +544,27 @@ class _ModelSyncTabState extends State<_ModelSyncTab> {
                           letterSpacing: 0.5,
                         ),
                       ),
-                      if (hasActive) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppTheme.success.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'SIAP INFERENSI',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.success,
-                            ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: hasActive
+                              ? AppTheme.success.withValues(alpha: 0.15)
+                              : Colors.amber.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          hasActive ? 'SIAP INFERENSI' : 'TIDAK ADA MODEL AKTIF',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: hasActive ? AppTheme.success : Colors.orange[800],
                           ),
                         ),
-                      ],
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -572,7 +675,9 @@ class _ModelSyncTabState extends State<_ModelSyncTab> {
               ],
             ),
             OutlinedButton.icon(
-              onPressed: _isOnline ? _loadData : null,
+              onPressed: _isOnline && !_loading
+                  ? () => _loadData(fetchRemote: true)
+                  : null,
               icon: const Icon(Icons.refresh_rounded, size: 16),
               label: const Text('Periksa Pembaruan Model'),
             ),
@@ -630,36 +735,86 @@ class _ModelSyncTabState extends State<_ModelSyncTab> {
         child: Padding(
           padding: const EdgeInsets.all(AppTheme.sp24),
           child: Center(
-            child: Text(
-              _isOnline
-                  ? 'Tidak ada model yang sesuai dengan filter.'
-                  : 'Mode offline: tidak ada model tersimpan.',
-              style: const TextStyle(color: AppTheme.textSecondary),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _hasCheckedRemote
+                      ? Icons.folder_open_rounded
+                      : Icons.download_for_offline_outlined,
+                  size: 40,
+                  color: AppTheme.textSecondary,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _hasCheckedRemote
+                      ? 'Tidak ada model yang sesuai dengan filter.'
+                      : 'Belum ada model AI yang tersimpan di perangkat.\nTekan tombol "Periksa Pembaruan Model" untuk memeriksa dan mengunduh model dari server.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: AppTheme.textSecondary),
+                ),
+                if (!_hasCheckedRemote && _isOnline) ...[
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed:
+                        _loading ? null : () => _loadData(fetchRemote: true),
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text('Periksa Pembaruan Model'),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
       );
     }
 
+    final catalogTitle = _hasCheckedRemote
+        ? 'Katalog Model Tersedia (${_models.length})'
+        : 'Model Tersimpan di Perangkat (${_models.length})';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          child: Text(
-            'Katalog Model Tersedia (${_models.length})',
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.navy,
-            ),
+          child: Row(
+            children: [
+              Text(
+                catalogTitle,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.navy,
+                ),
+              ),
+              if (!_hasCheckedRemote) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'LOKAL',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
         ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: _models.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          separatorBuilder: (_, index) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
             final model = _models[index];
             return _buildModelCard(model);
@@ -669,9 +824,238 @@ class _ModelSyncTabState extends State<_ModelSyncTab> {
     );
   }
 
+  Widget _buildCardActions(AvailableModelBundle model) {
+    final isActive = _isModelActive(model);
+    final status = model.localStatus;
+    final isDownloaded = model.isDownloaded || _isModelInstalled(model);
+    final isVerified = (status == ModelBundleStatus.verified) || isActive;
+    final isFailed = status == ModelBundleStatus.verificationFailed;
+    final isVerifying = _verifyingModelId == model.id;
+    final isDeleting = _deletingModelId == model.id;
+
+    final deleteButton = IconButton(
+      tooltip: 'Hapus Model',
+      icon: isDeleting
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppTheme.error,
+              ),
+            )
+          : const Icon(
+              Icons.delete_outline_rounded,
+              size: 20,
+              color: AppTheme.error,
+            ),
+      onPressed: isDeleting || isVerifying || _downloadingModelId != null
+          ? null
+          : () => _confirmDeleteModel(model),
+    );
+
+    if (isActive) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppTheme.success.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.success),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: 16,
+                  color: AppTheme.success,
+                ),
+                SizedBox(width: 6),
+                Text(
+                  'Sedang Digunakan',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.success,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          deleteButton,
+        ],
+      );
+    }
+
+    if (isVerified) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: AppTheme.success.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: AppTheme.success.withValues(alpha: 0.5),
+              ),
+            ),
+            child: const Text(
+              'Terverifikasi',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.success,
+              ),
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: isDeleting || isVerifying
+                ? null
+                : () => _activateModel(model),
+            icon: const Icon(
+              Icons.check_circle_outline_rounded,
+              size: 16,
+            ),
+            label: const Text('Gunakan Model'),
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              textStyle: const TextStyle(fontSize: 12),
+            ),
+          ),
+          const SizedBox(width: 4),
+          deleteButton,
+        ],
+      );
+    }
+
+    if (isFailed) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: AppTheme.error.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: AppTheme.error.withValues(alpha: 0.5),
+              ),
+            ),
+            child: const Text(
+              'Gagal Verifikasi',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.error,
+              ),
+            ),
+          ),
+          FilledButton.tonalIcon(
+            onPressed: isVerifying || isDeleting
+                ? null
+                : () => _verifyModel(model),
+            icon: isVerifying
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded, size: 16),
+            label: Text(isVerifying ? 'Memverifikasi...' : 'Verify Ulang'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.warning.withValues(alpha: 0.15),
+              foregroundColor: AppTheme.warning,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          deleteButton,
+        ],
+      );
+    }
+
+    if (isDownloaded || status == ModelBundleStatus.downloaded) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text(
+              'Terunduh',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ),
+          FilledButton.tonalIcon(
+            onPressed: isVerifying || isDeleting
+                ? null
+                : () => _verifyModel(model),
+            icon: isVerifying
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.verified_outlined, size: 16),
+            label: Text(isVerifying ? 'Memverifikasi...' : 'Verifikasi'),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              textStyle: const TextStyle(fontSize: 12),
+            ),
+          ),
+          const SizedBox(width: 4),
+          deleteButton,
+        ],
+      );
+    }
+
+    // Default: not downloaded
+    return FilledButton.icon(
+      onPressed: _isOnline && _downloadingModelId == null
+          ? () => _startDownload(model)
+          : null,
+      icon: const Icon(Icons.download_rounded, size: 16),
+      label: const Text('Unduh Model'),
+      style: FilledButton.styleFrom(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 8,
+        ),
+        textStyle: const TextStyle(fontSize: 12),
+      ),
+    );
+  }
+
   Widget _buildModelCard(AvailableModelBundle model) {
     final isActive = _isModelActive(model);
-    final isInstalled = _isModelInstalled(model);
     final isDownloading = _downloadingModelId == model.id;
 
     final channelColor = model.channel.toLowerCase() == 'stable'
@@ -779,94 +1163,47 @@ class _ModelSyncTabState extends State<_ModelSyncTab> {
                   ),
                 ),
                 // Action Buttons
-                if (isActive)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.success.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppTheme.success),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.check_circle_rounded,
-                          size: 16,
-                          color: AppTheme.success,
-                        ),
-                        SizedBox(width: 6),
-                        Text(
-                          'Sedang Digunakan',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.success,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (isInstalled)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        margin: const EdgeInsets.only(right: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Text(
-                          'Tersimpan',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textSecondary,
-                          ),
-                        ),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: () => _activateModel(model),
-                        icon: const Icon(
-                          Icons.check_circle_outline_rounded,
-                          size: 16,
-                        ),
-                        label: const Text('Gunakan Model'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          textStyle: const TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  )
-                else
-                  FilledButton.icon(
-                    onPressed: _isOnline && _downloadingModelId == null
-                        ? () => _startDownload(model)
-                        : null,
-                    icon: const Icon(Icons.download_rounded, size: 16),
-                    label: const Text('Unduh Model'),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      textStyle: const TextStyle(fontSize: 12),
-                    ),
-                  ),
+                _buildCardActions(model),
               ],
             ),
+            if (model.verificationError != null &&
+                model.verificationError!.isNotEmpty &&
+                model.isVerificationFailed) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.error.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: AppTheme.error.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      size: 16,
+                      color: AppTheme.error,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Verifikasi gagal: ${model.verificationError}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppTheme.error,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             // Row 2: Metadata (Size, Date, Notes)
             Wrap(

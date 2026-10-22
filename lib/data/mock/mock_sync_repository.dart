@@ -8,11 +8,16 @@ import 'package:myapp/domain/repositories/sync_repository.dart';
 
 /// Mock Sync Center backend.
 class MockSyncRepository implements SyncRepository {
-  String _activeModelKey = 'stable_2026.09.04';
-  final Set<String> _installedKeys = {'stable_2026.09.04'};
+  String? _activeModelKey = 'stable_2026.09.04';
+  final Set<String> _installedKeys = {'stable_2026.09.04', 'beta_2026.09.04'};
+  final Map<String, ModelBundleStatus> _modelStatuses = {
+    'stable_2026.09.04': ModelBundleStatus.verified,
+    'beta_2026.09.04': ModelBundleStatus.verificationFailed,
+    'stable_2026.08.15': ModelBundleStatus.notDownloaded,
+  };
 
   @override
-  Future<String> getInstalledModelVersion() =>
+  Future<String?> getInstalledModelVersion() =>
       SynchronousFuture(_activeModelKey);
 
   @override
@@ -20,7 +25,7 @@ class MockSyncRepository implements SyncRepository {
     await Future<void>.delayed(const Duration(seconds: 2));
     final base = MockSeedData.modelVersionInfo;
     return ModelVersionInfo(
-      currentVersion: _activeModelKey,
+      currentVersion: _activeModelKey ?? '',
       latestVersion: base.latestVersion,
       fileSize: base.fileSize,
       releaseDate: base.releaseDate,
@@ -48,9 +53,15 @@ class MockSyncRepository implements SyncRepository {
   Future<List<AvailableModelBundle>> getAvailableModels({
     String? channel,
     bool? quantized,
+    bool localOnly = false,
   }) async {
-    await Future<void>.delayed(const Duration(milliseconds: 600));
+    await Future<void>.delayed(
+      Duration(milliseconds: localOnly ? 100 : 600),
+    );
     return MockSeedData.availableModels.where((m) {
+      if (localOnly && !_installedKeys.contains(m.id)) {
+        return false;
+      }
       if (channel != null && channel.isNotEmpty && channel != 'all') {
         if (m.channel.toLowerCase() != channel.toLowerCase()) return false;
       }
@@ -59,7 +70,14 @@ class MockSyncRepository implements SyncRepository {
       }
       return true;
     }).map((m) {
-      return m.copyWith(isCurrent: m.id == _activeModelKey);
+      final status = _modelStatuses[m.id] ?? ModelBundleStatus.notDownloaded;
+      return m.copyWith(
+        isCurrent: _activeModelKey != null && m.id == _activeModelKey,
+        localStatus: status,
+        verificationError: status == ModelBundleStatus.verificationFailed
+            ? 'Checksum SHA256 atau tanda tangan digital Ed25519 tidak cocok.'
+            : null,
+      );
     }).toList();
   }
 
@@ -76,13 +94,37 @@ class MockSyncRepository implements SyncRepository {
       yield progress.clamp(0.0, 1.0);
     }
     _installedKeys.add(model.id);
-    _activeModelKey = model.id;
+    _modelStatuses[model.id] = ModelBundleStatus.verified;
+  }
+
+  @override
+  Future<bool> verifyModelBundle(String bundleKey) async {
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    _modelStatuses[bundleKey] = ModelBundleStatus.verified;
+    _installedKeys.add(bundleKey);
+    return true;
   }
 
   @override
   Future<void> activateModelBundle(String bundleKey) async {
+    final status = _modelStatuses[bundleKey];
+    if (status != ModelBundleStatus.verified) {
+      throw StateError(
+        'Model $bundleKey belum terverifikasi dan tidak dapat digunakan.',
+      );
+    }
     _installedKeys.add(bundleKey);
     _activeModelKey = bundleKey;
+  }
+
+  @override
+  Future<void> deleteModelBundle(String bundleKey) async {
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    _installedKeys.remove(bundleKey);
+    _modelStatuses[bundleKey] = ModelBundleStatus.notDownloaded;
+    if (_activeModelKey == bundleKey) {
+      _activeModelKey = null;
+    }
   }
 
   @override

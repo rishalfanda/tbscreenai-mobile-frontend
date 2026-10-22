@@ -6,9 +6,9 @@ import 'package:myapp/data/mock/mock_repositories.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 import 'package:myapp/features/sync/presentation/sync_center_screen.dart';
 
-Widget _wrap() {
+Widget _wrap([SyncRepository? repo]) {
   return Provider<SyncRepository>(
-    create: (_) => MockSyncRepository(),
+    create: (_) => repo ?? MockSyncRepository(),
     child: const MaterialApp(home: Scaffold(body: SyncCenterScreen())),
   );
 }
@@ -56,42 +56,30 @@ void main() {
   });
 
   group('Model AI Tab catalog and interactions', () {
-    testWidgets('displays active model and available model cards',
+    testWidgets('initially displays only downloaded models without auto-syncing',
         (tester) async {
       sizeTablet(tester);
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
       expect(find.text('Periksa Pembaruan Model'), findsOneWidget);
-      expect(find.text('Katalog Model Tersedia (3)'), findsOneWidget);
+      expect(find.text('Model Tersimpan di Perangkat (2)'), findsOneWidget);
+      expect(find.text('LOKAL'), findsOneWidget);
       expect(find.text('Sedang Digunakan'), findsOneWidget);
-      expect(find.text('Unduh Model'), findsWidgets);
+      expect(find.text('Gagal Verifikasi'), findsOneWidget);
+      expect(find.text('Verify Ulang'), findsOneWidget);
+      // Unduh Model is not visible until user checks remote catalog
+      expect(find.text('Unduh Model'), findsNothing);
+      expect(find.byIcon(Icons.delete_outline_rounded), findsWidgets);
     });
 
-    testWidgets('filter chips filter models by channel and quantization',
+    testWidgets('tapping Periksa Pembaruan Model fetches full remote catalog',
         (tester) async {
       sizeTablet(tester);
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
-      // Tap Beta filter chip
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Beta'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Katalog Model Tersedia (1)'), findsOneWidget);
-
-      // Tap Semua channel filter chip
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Semua').first);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Katalog Model Tersedia (3)'), findsOneWidget);
-    });
-
-    testWidgets('refresh button triggers catalog reload', (tester) async {
-      sizeTablet(tester);
-      await tester.pumpWidget(_wrap());
-      await tester.pumpAndSettle();
-
+      // Tap Periksa Pembaruan Model
       await tester.tap(find.text('Periksa Pembaruan Model'));
       await tester.pump();
 
@@ -100,7 +88,88 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
 
+      // Full catalog of 3 models is now visible including undownloaded model
       expect(find.text('Katalog Model Tersedia (3)'), findsOneWidget);
+      expect(find.text('Unduh Model'), findsOneWidget);
+    });
+
+    testWidgets('filter chips filter models by channel and quantization',
+        (tester) async {
+      sizeTablet(tester);
+      await tester.pumpWidget(_wrap());
+      await tester.pumpAndSettle();
+
+      // Check remote first to have all 3 models
+      await tester.tap(find.text('Periksa Pembaruan Model'));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      // Tap Beta filter chip
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Beta'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Katalog Model Tersedia (1)'), findsOneWidget);
+      expect(find.text('Gagal Verifikasi'), findsOneWidget);
+
+      // Tap Semua channel filter chip
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Semua').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Katalog Model Tersedia (3)'), findsOneWidget);
+    });
+
+    testWidgets(
+        'Verify Ulang button verifies bundle and switches to Gunakan Model',
+        (tester) async {
+      sizeTablet(tester);
+      final repo = MockSyncRepository();
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Verify Ulang'), findsOneWidget);
+      expect(find.text('Gunakan Model'), findsNothing);
+
+      // Tap Verify Ulang
+      await tester.tap(find.text('Verify Ulang'));
+      await tester.pump(); // starts verifying
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+
+      // Verification passed -> status verified -> Gunakan Model button appears
+      expect(find.text('Terverifikasi'), findsOneWidget);
+      expect(find.text('Gunakan Model'), findsOneWidget);
+    });
+
+    testWidgets(
+        'deleting active model clears active model banner and leaves no model selected',
+        (tester) async {
+      sizeTablet(tester);
+      final repo = MockSyncRepository();
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      expect(find.text('SIAP INFERENSI'), findsOneWidget);
+      expect(find.text('Sedang Digunakan'), findsOneWidget);
+
+      // First delete icon button is for the active model
+      final deleteButtons = find.byIcon(Icons.delete_outline_rounded);
+      expect(deleteButtons, findsWidgets);
+
+      await tester.tap(deleteButtons.first);
+      await tester.pumpAndSettle();
+
+      // Delete confirmation dialog is shown
+      expect(find.text('Hapus Model v2026.09.04?'), findsOneWidget);
+
+      // Confirm delete
+      await tester.tap(find.widgetWithText(FilledButton, 'Hapus'));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+
+      // Active model banner now shows no active model
+      expect(find.text('Belum Ada Model Aktif'), findsOneWidget);
+      expect(find.text('TIDAK ADA MODEL AKTIF'), findsOneWidget);
+      expect(find.text('Sedang Digunakan'), findsNothing);
     });
   });
 

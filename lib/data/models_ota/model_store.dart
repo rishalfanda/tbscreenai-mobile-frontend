@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'package:myapp/domain/models/available_model_bundle.dart';
+
 /// The on-device model-bundle store:
 ///
 /// ```
@@ -96,6 +98,81 @@ class ModelStore {
     if (!await d.exists()) return false;
     final manifest = File('${d.path}${Platform.pathSeparator}manifest.json');
     return manifest.exists();
+  }
+
+  /// Determines the local lifecycle status of a model bundle.
+  Future<ModelBundleStatus> getBundleStatus(String bundleKey) async {
+    final d = await versionDir(bundleKey);
+    if (!await d.exists()) return ModelBundleStatus.notDownloaded;
+
+    final verifiedFile = File('${d.path}${Platform.pathSeparator}verified.json');
+    if (await verifiedFile.exists()) {
+      return ModelBundleStatus.verified;
+    }
+
+    final meta = await readBundleMeta(bundleKey);
+    if (meta != null) {
+      final s = meta['status'] as String?;
+      if (s == ModelBundleStatus.verified.name) {
+        return ModelBundleStatus.verified;
+      }
+      if (s == ModelBundleStatus.verificationFailed.name) {
+        return ModelBundleStatus.verificationFailed;
+      }
+      if (s == ModelBundleStatus.downloaded.name) {
+        return ModelBundleStatus.downloaded;
+      }
+    }
+
+    final manifest = File('${d.path}${Platform.pathSeparator}manifest.json');
+    if (await manifest.exists()) {
+      return ModelBundleStatus.downloaded;
+    }
+    return ModelBundleStatus.notDownloaded;
+  }
+
+  /// Updates status and optional error message in bundle metadata.
+  Future<void> setBundleStatus(
+    String bundleKey,
+    ModelBundleStatus status, {
+    String? error,
+  }) async {
+    final meta = await readBundleMeta(bundleKey) ?? <String, dynamic>{};
+    meta['status'] = status.name;
+    if (error != null) {
+      meta['verification_error'] = error;
+    } else {
+      meta.remove('verification_error');
+    }
+
+    if (status != ModelBundleStatus.verified) {
+      final d = await versionDir(bundleKey);
+      final verifiedFile =
+          File('${d.path}${Platform.pathSeparator}verified.json');
+      if (await verifiedFile.exists()) {
+        await verifiedFile.delete();
+      }
+    }
+
+    await writeBundleMeta(bundleKey, meta);
+  }
+
+  /// Deletes a bundle directory completely and resets active pointer if deleted.
+  Future<void> deleteBundle(String bundleKey) async {
+    final d = await versionDir(bundleKey);
+    if (await d.exists()) {
+      await d.delete(recursive: true);
+    }
+
+    final current = await activeVersion();
+    if (current == bundleKey) {
+      await _writePointer('ACTIVE', null);
+    }
+
+    final prev = await previousVersion();
+    if (prev == bundleKey) {
+      await _writePointer('PREVIOUS', null);
+    }
   }
 
   /// Saves local metadata alongside the bundle for offline display.

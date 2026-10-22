@@ -35,10 +35,12 @@ class HybridSyncRepository implements SyncRepository {
   Future<List<AvailableModelBundle>> getAvailableModels({
     String? channel,
     bool? quantized,
+    bool localOnly = false,
   }) =>
       _modelUpdate.fetchAvailableModels(
         channel: channel,
         quantized: quantized,
+        localOnly: localOnly,
       );
 
   @override
@@ -52,6 +54,14 @@ class HybridSyncRepository implements SyncRepository {
   @override
   Future<void> activateModelBundle(String bundleKey) =>
       _modelUpdate.activateModelBundle(bundleKey);
+
+  @override
+  Future<bool> verifyModelBundle(String bundleKey) =>
+      _modelUpdate.verifyModelBundle(bundleKey);
+
+  @override
+  Future<void> deleteModelBundle(String bundleKey) =>
+      _modelUpdate.deleteModelBundle(bundleKey);
 
   @override
   Future<SyncSummary> getSyncSummary() => _backup.getSyncSummary();
