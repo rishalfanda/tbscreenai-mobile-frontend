@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
@@ -6,10 +7,10 @@ import 'package:path_provider/path_provider.dart';
 ///
 /// ```
 /// <appSupport>/models/
-///   ACTIVE          text: the active bundle_version
+///   ACTIVE          text: the active bundle_version or bundleKey
 ///   PREVIOUS        text: the rollback target
 ///   incoming/       in-flight download + staging (wiped on startup)
-///   <version>/      a fully-verified staged bundle
+///   <bundleKey>/    a fully-verified staged bundle (e.g. "stable_2026.09.04")
 /// ```
 ///
 /// Bundles are downloaded, signature-verified and staged by
@@ -18,6 +19,15 @@ import 'package:path_provider/path_provider.dart';
 class ModelStore {
   static const _dirName = 'models';
   static const _incoming = 'incoming';
+  static const _metaFile = 'meta.json';
+
+  /// Standardized unique bundle key combining channel and version.
+  static String bundleKey(String channel, String version) {
+    final c = channel.toLowerCase().trim();
+    final v = version.trim();
+    if (c.isEmpty) return v;
+    return '${c}_$v';
+  }
 
   Future<Directory> _root() async {
     final base = await getApplicationSupportDirectory();
@@ -62,6 +72,53 @@ class ModelStore {
     final manifest = File('${d.path}${Platform.pathSeparator}manifest.json');
     if (!await d.exists() || !await manifest.exists()) return null;
     return d;
+  }
+
+  /// Lists all valid installed bundle keys (directories containing manifest.json).
+  Future<List<String>> listInstalledBundleKeys() async {
+    final root = await _root();
+    final installed = <String>[];
+    await for (final e in root.list()) {
+      if (e is! Directory) continue;
+      final name = e.path.split(Platform.pathSeparator).last;
+      if (name == _incoming) continue;
+      final manifest = File('${e.path}${Platform.pathSeparator}manifest.json');
+      if (await manifest.exists()) {
+        installed.add(name);
+      }
+    }
+    return installed;
+  }
+
+  /// Checks if a bundle is installed and has a valid manifest.json.
+  Future<bool> isInstalled(String bundleKey) async {
+    final d = await versionDir(bundleKey);
+    if (!await d.exists()) return false;
+    final manifest = File('${d.path}${Platform.pathSeparator}manifest.json');
+    return manifest.exists();
+  }
+
+  /// Saves local metadata alongside the bundle for offline display.
+  Future<void> writeBundleMeta(
+    String bundleKey,
+    Map<String, dynamic> meta,
+  ) async {
+    final d = await versionDir(bundleKey);
+    if (!await d.exists()) return;
+    final f = File('${d.path}${Platform.pathSeparator}$_metaFile');
+    await f.writeAsString(jsonEncode(meta), flush: true);
+  }
+
+  /// Reads cached metadata for an installed bundle.
+  Future<Map<String, dynamic>?> readBundleMeta(String bundleKey) async {
+    final d = await versionDir(bundleKey);
+    final f = File('${d.path}${Platform.pathSeparator}$_metaFile');
+    if (!await f.exists()) return null;
+    try {
+      final decoded = jsonDecode(await f.readAsString());
+      if (decoded is Map<String, dynamic>) return decoded;
+    } catch (_) {}
+    return null;
   }
 
   /// Run once at startup: wipe `incoming/` and drop only *broken* staged dirs

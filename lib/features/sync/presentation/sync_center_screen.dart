@@ -3,21 +3,39 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/connectivity/connectivity_service.dart';
 import 'package:myapp/core/theme/app_theme.dart';
-import 'package:myapp/data/models_ota/model_update_pipeline.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
-import 'package:myapp/domain/models/model_version_info.dart';
+import 'package:myapp/domain/models/available_model_bundle.dart';
 import 'package:myapp/domain/models/patient.dart';
 import 'package:myapp/domain/models/sync_summary.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 
-class SyncCenterScreen extends StatelessWidget {
+class SyncCenterScreen extends StatefulWidget {
   const SyncCenterScreen({super.key});
 
   @override
+  State<SyncCenterScreen> createState() => _SyncCenterScreenState();
+}
+
+class _SyncCenterScreenState extends State<SyncCenterScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      physics: const ClampingScrollPhysics(),
+    return Padding(
       padding: const EdgeInsets.all(AppTheme.sp24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -36,29 +54,50 @@ class SyncCenterScreen extends StatelessWidget {
               const _ConnectionChip(),
             ],
           ),
-          const SizedBox(height: AppTheme.sp24),
-          // === Section: Cards ===
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final stacked = constraints.maxWidth < 880;
-              if (stacked) {
-                return const Column(
-                  children: [
-                    _ModelUpdateCard(),
-                    SizedBox(height: AppTheme.sp24),
-                    _DataBackupCard(),
-                  ],
-                );
-              }
-              return const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: _ModelUpdateCard()),
-                  SizedBox(width: AppTheme.sp24),
-                  Expanded(child: _DataBackupCard()),
-                ],
-              );
-            },
+          const SizedBox(height: AppTheme.sp16),
+          // === Section: TabBar ===
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.borderLight),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              labelColor: AppTheme.primary,
+              unselectedLabelColor: AppTheme.textSecondary,
+              indicatorColor: AppTheme.primary,
+              indicatorWeight: 3,
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 14,
+              ),
+              tabs: const [
+                Tab(
+                  icon: Icon(Icons.memory_rounded),
+                  text: 'Model AI',
+                ),
+                Tab(
+                  icon: Icon(Icons.cloud_upload_rounded),
+                  text: 'Data Medis',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppTheme.sp16),
+          // === Section: Tab Views ===
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: const [
+                _ModelSyncTab(),
+                _DataSyncTab(),
+              ],
+            ),
           ),
         ],
       ),
@@ -128,33 +167,27 @@ class _ConnectionChipState extends State<_ConnectionChip> {
   }
 }
 
-// === Section: Model Update Card ===
+// === Section: Tab 1 - Model AI Sync & Management ===
 
-enum _ModelSyncState {
-  idle,
-  checking,
-  upToDate,
-  updateAvailable,
-  downloading,
-  installing,
-  done,
-  error,
-}
-
-class _ModelUpdateCard extends StatefulWidget {
-  const _ModelUpdateCard();
+class _ModelSyncTab extends StatefulWidget {
+  const _ModelSyncTab();
 
   @override
-  State<_ModelUpdateCard> createState() => _ModelUpdateCardState();
+  State<_ModelSyncTab> createState() => _ModelSyncTabState();
 }
 
-class _ModelUpdateCardState extends State<_ModelUpdateCard> {
-  _ModelSyncState _state = _ModelSyncState.idle;
-  double _progress = 0.0;
-  String _currentVersion = '';
-  ModelVersionInfo? _updateInfo;
-  DateTime? _lastChecked;
+class _ModelSyncTabState extends State<_ModelSyncTab> {
+  List<AvailableModelBundle> _models = const [];
+  Set<String> _installedKeys = const {};
+  String? _activeVersion;
+  bool _loading = false;
   String? _errorMessage;
+
+  String _channelFilter = 'all'; // 'all', 'stable', 'beta'
+  bool? _quantizedFilter; // null: all, true: quantized, false: unquantized
+
+  String? _downloadingModelId;
+  double _downloadProgress = 0.0;
   StreamSubscription<double>? _downloadSub;
 
   final _connectivity = ConnectivityService();
@@ -164,24 +197,6 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
   @override
   void initState() {
     super.initState();
-    final repository = context.read<SyncRepository>();
-    repository.getInstalledModelVersion().then((version) {
-      if (!mounted) return;
-      setState(() => _currentVersion = version ?? '');
-    });
-    // Restore the last completed check (if any) so reopening this page
-    // doesn't reset back to a blank "no info yet" idle state.
-    repository.lastKnownUpdateInfo().then((cached) {
-      if (!mounted || cached == null) return;
-      final (info, checkedAt) = cached;
-      setState(() {
-        _updateInfo = info;
-        _lastChecked = checkedAt;
-        _state = info.hasUpdate
-            ? _ModelSyncState.updateAvailable
-            : _ModelSyncState.upToDate;
-      });
-    });
     _connectivity.checkNow().then((online) {
       if (!mounted) return;
       setState(() => _isOnline = online);
@@ -190,6 +205,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       if (!mounted) return;
       setState(() => _isOnline = online);
     });
+    _loadData();
   }
 
   @override
@@ -199,426 +215,795 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
     super.dispose();
   }
 
-  Future<void> _checkForUpdate() async {
+  Future<void> _loadData() async {
     final repository = context.read<SyncRepository>();
     setState(() {
-      _state = _ModelSyncState.checking;
-      _lastChecked = DateTime.now();
+      _loading = true;
+      _errorMessage = null;
     });
+
     try {
-      final info = await repository.checkForUpdate();
+      final active = await repository.getInstalledModelVersion();
+      final installed = await repository.getInstalledModelKeys();
+      final models = await repository.getAvailableModels(
+        channel: _channelFilter == 'all' ? null : _channelFilter,
+        quantized: _quantizedFilter,
+      );
+
       if (!mounted) return;
       setState(() {
-        _updateInfo = info;
-        _state = info.hasUpdate
-            ? _ModelSyncState.updateAvailable
-            : _ModelSyncState.upToDate;
+        _activeVersion = active;
+        _installedKeys = installed.toSet();
+        _models = models;
+        _loading = false;
       });
-    } catch (err) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
-        _state = _ModelSyncState.error;
-        _errorMessage =
-            'Gagal memeriksa pembaruan model — periksa koneksi internet Anda. (${err.toString()})';
+        _loading = false;
+        _errorMessage = 'Gagal memuat katalog model: $e';
       });
     }
   }
 
-  void _startDownload() {
+  void _startDownload(AvailableModelBundle model) {
+    if (_downloadingModelId != null) return;
+    final repository = context.read<SyncRepository>();
+
     setState(() {
-      _state = _ModelSyncState.downloading;
-      _progress = 0.0;
+      _downloadingModelId = model.id;
+      _downloadProgress = 0.0;
     });
-    _downloadSub = context.read<SyncRepository>().downloadModel().listen(
+
+    _downloadSub = repository.downloadModelBundle(model).listen(
       (progress) {
         if (!mounted) return;
+        setState(() => _downloadProgress = progress);
+      },
+      onDone: () async {
+        if (!mounted) return;
+        final newActive = await repository.getInstalledModelVersion();
+        final newInstalled = await repository.getInstalledModelKeys();
         setState(() {
-          _progress = progress;
-          if (progress >= 1.0 && _state == _ModelSyncState.downloading) {
-            _state = _ModelSyncState.installing;
-          }
+          _downloadingModelId = null;
+          _activeVersion = newActive;
+          _installedKeys = newInstalled.toSet();
         });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Model ${model.version} (${model.channel.toUpperCase()}) berhasil diunduh dan diaktifkan.',
+              ),
+              backgroundColor: AppTheme.success,
+            ),
+          );
+        }
       },
-      onDone: _onDownloadDone,
-      onError: _onDownloadError,
+      onError: (Object error) {
+        if (!mounted) return;
+        setState(() => _downloadingModelId = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mengunduh model: $error'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      },
     );
   }
 
-  void _onDownloadDone() {
-    if (!mounted) return;
-    final newVersion = _updateInfo?.latestVersion ?? _currentVersion;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Model berhasil diperbarui ke $newVersion')),
-    );
-    setState(() {
-      _state = _ModelSyncState.idle;
-      _currentVersion = newVersion;
-      _progress = 0.0;
-    });
+  Future<void> _activateModel(AvailableModelBundle model) async {
+    final repository = context.read<SyncRepository>();
+    try {
+      await repository.activateModelBundle(model.id);
+      final newActive = await repository.getInstalledModelVersion();
+      if (!mounted) return;
+      setState(() => _activeVersion = newActive);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Model ${model.version} (${model.channel.toUpperCase()}) sekarang aktif digunakan.',
+          ),
+          backgroundColor: AppTheme.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal mengaktifkan model: $e'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+    }
   }
 
-  void _onDownloadError(Object error) {
-    if (!mounted) return;
-    final message = switch (error) {
-      ModelInstallException(:final phase) => switch (phase) {
-        ModelInstallPhase.downloading =>
-          'Gagal mengunduh model — periksa koneksi internet Anda.',
-        ModelInstallPhase.verifying =>
-          'Verifikasi model gagal — berkas model rusak atau tidak sah.',
-        ModelInstallPhase.activating =>
-          'Model tidak kompatibel dengan aplikasi ini.',
-        ModelInstallPhase.smokeTesting =>
-          'Model baru gagal diuji — sistem kembali ke versi sebelumnya secara otomatis.',
-      },
-      _ => 'Gagal menghubungi server',
-    };
-    setState(() {
-      _state = _ModelSyncState.error;
-      _errorMessage = message;
-      _progress = 0.0;
-    });
+  bool _isModelActive(AvailableModelBundle model) {
+    final active = _activeVersion;
+    if (active == null || active.isEmpty) return false;
+    final act = active.toLowerCase().trim();
+    final modelId = model.id.toLowerCase().trim();
+    final modelVer = model.version.toLowerCase().trim();
+    return act == modelId || act == modelVer;
   }
 
-  String _formatLastChecked() {
-    if (_lastChecked == null) return '—';
-    final h = _lastChecked!.hour.toString().padLeft(2, '0');
-    final m = _lastChecked!.minute.toString().padLeft(2, '0');
-    return '$h:$m';
+  bool _isModelInstalled(AvailableModelBundle model) {
+    if (_isModelActive(model)) return true;
+    final keys = _installedKeys.map((k) => k.toLowerCase().trim()).toSet();
+    return keys.contains(model.id.toLowerCase().trim()) ||
+        keys.contains(model.version.toLowerCase().trim());
   }
 
   @override
   Widget build(BuildContext context) {
+    final activeModel = _models.cast<AvailableModelBundle?>().firstWhere(
+      (m) => m != null && _isModelActive(m),
+      orElse: () => null,
+    );
+
+    return SingleChildScrollView(
+      physics: const ClampingScrollPhysics(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // A. Active Model Card Banner
+          _buildActiveModelBanner(activeModel),
+          const SizedBox(height: AppTheme.sp16),
+          // B. Toolbar & Filters
+          _buildToolbar(),
+          const SizedBox(height: AppTheme.sp16),
+          // C. Available Models List
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Center(
+                child: Column(
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 12),
+                    Text('Memeriksa server...'),
+                  ],
+                ),
+              ),
+            )
+          else if (_errorMessage != null && _models.isEmpty)
+            _buildErrorState()
+          else
+            _buildModelList(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActiveModelBanner(AvailableModelBundle? activeModel) {
+    final hasActive = _activeVersion != null && _activeVersion!.isNotEmpty;
+    final versionDisplay = activeModel != null
+        ? 'v${activeModel.version} (${activeModel.channel.toUpperCase()})'
+        : hasActive
+            ? 'v$_activeVersion'
+            : 'Belum Ada Model Aktif';
+
+    final detailsDisplay = activeModel != null
+        ? '${activeModel.quantized ? "Kuantisasi INT8/FP16" : "Full Precision FP32"} • ${activeModel.formattedSize} • Skema v${activeModel.schemaVersion}'
+        : hasActive
+            ? 'Model terpasang di perangkat'
+            : 'Unduh salah satu model di bawah untuk mengaktifkan analisis TB.';
+
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+        side: BorderSide(
+          color: hasActive
+              ? AppTheme.primary.withValues(alpha: 0.3)
+              : AppTheme.borderLight,
+        ),
+      ),
+      color: hasActive
+          ? AppTheme.primary.withValues(alpha: 0.05)
+          : Colors.grey.withValues(alpha: 0.05),
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.sp16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: hasActive
+                    ? AppTheme.primary.withValues(alpha: 0.15)
+                    : Colors.grey.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                hasActive
+                    ? Icons.verified_user_rounded
+                    : Icons.help_outline_rounded,
+                color: hasActive ? AppTheme.primary : AppTheme.textSecondary,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: AppTheme.sp16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Model AI Aktif',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: hasActive
+                              ? AppTheme.primaryDark
+                              : AppTheme.textSecondary,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      if (hasActive) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.success.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'SIAP INFERENSI',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.success,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    versionDisplay,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.navy,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    detailsDisplay,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToolbar() {
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+        side: const BorderSide(color: AppTheme.borderLight),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTheme.sp16,
+          vertical: AppTheme.sp12,
+        ),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            // Channel filter
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Saluran: ',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                Wrap(
+                  spacing: 4,
+                  children: [
+                    _filterChip('Semua', _channelFilter == 'all', () {
+                      setState(() => _channelFilter = 'all');
+                      _loadData();
+                    }),
+                    _filterChip('Stable', _channelFilter == 'stable', () {
+                      setState(() => _channelFilter = 'stable');
+                      _loadData();
+                    }),
+                    _filterChip('Beta', _channelFilter == 'beta', () {
+                      setState(() => _channelFilter = 'beta');
+                      _loadData();
+                    }),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(width: 8),
+            // Quantization filter
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Kuantisasi: ',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                Wrap(
+                  spacing: 4,
+                  children: [
+                    _filterChip('Semua', _quantizedFilter == null, () {
+                      setState(() => _quantizedFilter = null);
+                      _loadData();
+                    }),
+                    _filterChip('Quantized', _quantizedFilter == true, () {
+                      setState(() => _quantizedFilter = true);
+                      _loadData();
+                    }),
+                    _filterChip('Full FP32', _quantizedFilter == false, () {
+                      setState(() => _quantizedFilter = false);
+                      _loadData();
+                    }),
+                  ],
+                ),
+              ],
+            ),
+            OutlinedButton.icon(
+              onPressed: _isOnline ? _loadData : null,
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('Periksa Pembaruan Model'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _filterChip(String label, bool isSelected, VoidCallback onSelected) {
+    return ChoiceChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+          color: isSelected ? Colors.white : AppTheme.navy,
+        ),
+      ),
+      selected: isSelected,
+      selectedColor: AppTheme.primary,
+      backgroundColor: Colors.grey.withValues(alpha: 0.1),
+      showCheckmark: false,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+      onSelected: (_) => onSelected(),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Center(
+        child: Column(
+          children: [
+            const Icon(Icons.cloud_off_rounded, size: 48, color: AppTheme.error),
+            const SizedBox(height: 12),
+            Text(
+              _errorMessage ?? 'Gagal memuat katalog model.',
+              style: const TextStyle(color: AppTheme.error),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: _loadData,
+              child: const Text('Coba Lagi'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModelList() {
+    if (_models.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(AppTheme.sp24),
+          child: Center(
+            child: Text(
+              _isOnline
+                  ? 'Tidak ada model yang sesuai dengan filter.'
+                  : 'Mode offline: tidak ada model tersimpan.',
+              style: const TextStyle(color: AppTheme.textSecondary),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Text(
+            'Katalog Model Tersedia (${_models.length})',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.navy,
+            ),
+          ),
+        ),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _models.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final model = _models[index];
+            return _buildModelCard(model);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildModelCard(AvailableModelBundle model) {
+    final isActive = _isModelActive(model);
+    final isInstalled = _isModelInstalled(model);
+    final isDownloading = _downloadingModelId == model.id;
+
+    final channelColor = model.channel.toLowerCase() == 'stable'
+        ? AppTheme.primary
+        : AppTheme.warning;
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+        side: BorderSide(
+          color: isActive
+              ? AppTheme.success.withValues(alpha: 0.6)
+              : AppTheme.borderLight,
+          width: isActive ? 1.5 : 1.0,
+        ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.sp24),
+        padding: const EdgeInsets.all(AppTheme.sp16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Pembaruan Model AI',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: AppTheme.navy,
-              ),
-            ),
-            const SizedBox(height: AppTheme.sp16),
-            _buildBody(context),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBody(BuildContext context) {
-    switch (_state) {
-      case _ModelSyncState.idle:
-        return _buildIdle(context);
-      case _ModelSyncState.checking:
-        return _buildChecking();
-      case _ModelSyncState.upToDate:
-        return _buildUpToDate(context);
-      case _ModelSyncState.updateAvailable:
-        return _buildUpdateAvailable(context);
-      case _ModelSyncState.downloading:
-        return _buildDownloading();
-      case _ModelSyncState.installing:
-        return _buildInstalling();
-      case _ModelSyncState.done:
-        return _buildIdle(context);
-      case _ModelSyncState.error:
-        return _buildError(context);
-    }
-  }
-
-  Widget _buildIdle(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          _currentVersion.isEmpty
-              ? 'Belum ada model terpasang'
-              : 'Versi Saat Ini: $_currentVersion',
-          style: const TextStyle(color: AppTheme.textSecondary),
-        ),
-        const SizedBox(height: AppTheme.sp4),
-        Text(
-          'Terakhir diperiksa: ${_formatLastChecked()}',
-          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-        ),
-        const SizedBox(height: AppTheme.sp16),
-        ElevatedButton.icon(
-          onPressed: _isOnline ? _checkForUpdate : null,
-          icon: const Icon(Icons.search_rounded, size: 18),
-          label: const Text('Periksa Pembaruan Model'),
-        ),
-        if (!_isOnline) ...[
-          const SizedBox(height: AppTheme.sp8),
-          const Text(
-            'Tidak ada koneksi internet',
-            style: TextStyle(fontSize: 12, color: AppTheme.error),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildChecking() {
-    return const Column(
-      children: [
-        SizedBox(height: AppTheme.sp8),
-        Row(
-          children: [
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2.5),
-            ),
-            SizedBox(width: AppTheme.sp12),
-            Text('Memeriksa server...'),
-          ],
-        ),
-        SizedBox(height: AppTheme.sp8),
-      ],
-    );
-  }
-
-  Widget _buildUpToDate(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(
-              Icons.check_circle_rounded,
-              color: AppTheme.success,
-              size: 32,
-            ),
-            const SizedBox(width: AppTheme.sp12),
-            Text(
-              _currentVersion.isEmpty
-                  ? 'Tidak ada pembaruan model tersedia'
-                  : 'Model sudah versi terbaru ($_currentVersion)',
-              style: const TextStyle(
-                color: AppTheme.success,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppTheme.sp16),
-        TextButton(
-          onPressed: _isOnline ? _checkForUpdate : null,
-          child: const Text('Periksa Ulang'),
-        ),
-        if (!_isOnline)
-          const Text(
-            'Tidak ada koneksi internet',
-            style: TextStyle(fontSize: 12, color: AppTheme.error),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildUpdateAvailable(BuildContext context) {
-    final info = _updateInfo;
-    if (info == null) return const SizedBox.shrink();
-    final changelog = info.changelog;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Chip(
-          label: const Text(
-            'Versi Baru Tersedia',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-              color: AppTheme.warning,
-            ),
-          ),
-          backgroundColor: AppTheme.warning.withValues(alpha: 0.15),
-          side: BorderSide(color: AppTheme.warning.withValues(alpha: 0.5)),
-        ),
-        const SizedBox(height: AppTheme.sp16),
-        // Info table
-        _InfoRow('Versi Saat Ini', _currentVersion),
-        _InfoRow('Versi Baru', info.latestVersion),
-        _InfoRow('Ukuran File', info.fileSize),
-        _InfoRow('Tanggal Rilis', info.releaseDate),
-        const SizedBox(height: AppTheme.sp8),
-        ExpansionTile(
-          tilePadding: EdgeInsets.zero,
-          title: const Text(
-            'Lihat Changelog',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-          ),
-          children: changelog
-              .map(
-                (c) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            // Row 1: Header + Badges + Action Button
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      const Text(
-                        '• ',
-                        style: TextStyle(color: AppTheme.textSecondary),
+                      Text(
+                        'v${model.version}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.navy,
+                        ),
                       ),
-                      Expanded(
-                        child: Text(c, style: const TextStyle(fontSize: 13)),
+                      // Channel Badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: channelColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: channelColor.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        child: Text(
+                          model.channel.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: channelColor,
+                          ),
+                        ),
                       ),
+                      // Quantization Badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.purple.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: Colors.purple.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Text(
+                          model.quantized ? 'INT8 / FP16' : 'FULL FP32',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.purple,
+                          ),
+                        ),
+                      ),
+                      if (model.isLatest)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.success.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'TERBARU',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.success,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
-              )
-              .toList(),
-        ),
-        const SizedBox(height: AppTheme.sp16),
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton(
-                onPressed: _isOnline ? _startDownload : null,
-                child: const Text('Perbarui Sekarang'),
-              ),
+                // Action Buttons
+                if (isActive)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.success.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.success),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.check_circle_rounded,
+                          size: 16,
+                          color: AppTheme.success,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Sedang Digunakan',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.success,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (isInstalled)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          'Tersimpan',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: () => _activateModel(model),
+                        icon: const Icon(
+                          Icons.check_circle_outline_rounded,
+                          size: 16,
+                        ),
+                        label: const Text('Gunakan Model'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          textStyle: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  FilledButton.icon(
+                    onPressed: _isOnline && _downloadingModelId == null
+                        ? () => _startDownload(model)
+                        : null,
+                    icon: const Icon(Icons.download_rounded, size: 16),
+                    label: const Text('Unduh Model'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(width: AppTheme.sp12),
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () => setState(() => _state = _ModelSyncState.idle),
-                child: const Text('Lewati'),
-              ),
+            const SizedBox(height: 10),
+            // Row 2: Metadata (Size, Date, Notes)
+            Wrap(
+              spacing: 16,
+              runSpacing: 4,
+              children: [
+                _metaText(Icons.sd_storage_outlined, 'Ukuran', model.formattedSize),
+                _metaText(
+                  Icons.calendar_today_outlined,
+                  'Rilis',
+                  model.formattedDate,
+                ),
+                if (model.notes != null && model.notes!.isNotEmpty)
+                  _metaText(Icons.notes_rounded, 'Catatan', model.notes!),
+              ],
             ),
-          ],
-        ),
-        if (!_isOnline) ...[
-          const SizedBox(height: AppTheme.sp8),
-          const Text(
-            'Tidak ada koneksi internet',
-            style: TextStyle(fontSize: 12, color: AppTheme.error),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildDownloading() {
-    final fileSizeLabel = _updateInfo?.fileSize ?? '';
-    final fileSizeMB =
-        double.tryParse(fileSizeLabel.replaceAll(' MB', '')) ?? 47.2;
-    final downloaded = (_progress * fileSizeMB).toStringAsFixed(1);
-    final percent = (_progress * 100).toInt();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Mengunduh pembaruan model...'),
-        const SizedBox(height: AppTheme.sp12),
-        LinearProgressIndicator(value: _progress),
-        const SizedBox(height: AppTheme.sp8),
-        Text(
-          '$percent% · $downloaded MB / $fileSizeLabel',
-          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildInstalling() {
-    return const Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2.5),
-            ),
-            SizedBox(width: AppTheme.sp12),
-            Expanded(child: Text('Memverifikasi dan memasang model...')),
-          ],
-        ),
-        SizedBox(height: AppTheme.sp8),
-        Text(
-          'Model sedang diverifikasi keasliannya dan diuji sebelum diaktifkan.',
-          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildError(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.error_rounded, color: AppTheme.error, size: 28),
-            const SizedBox(width: AppTheme.sp8),
-            Expanded(
-              child: Text(
-                _errorMessage ?? 'Gagal menghubungi server',
-                style: const TextStyle(
-                  color: AppTheme.error,
-                  fontWeight: FontWeight.w600,
+            // Changelog
+            if (model.changelog.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Theme(
+                data: Theme.of(context).copyWith(
+                  dividerColor: Colors.transparent,
+                ),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(bottom: 8),
+                  dense: true,
+                  title: const Text(
+                    'Lihat Catatan Perubahan (Changelog)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                  children: [
+                    for (final item in model.changelog)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(' • ', style: TextStyle(fontWeight: FontWeight.w800)),
+                            Expanded(
+                              child: Text(
+                                item,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppTheme.navy,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
                 ),
               ),
-            ),
+            ],
+            // In-flight progress
+            if (isDownloading) ...[
+              const SizedBox(height: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        _downloadProgress >= 1.0
+                            ? 'Memverifikasi & menguji model...'
+                            : 'Mengunduh bundle... ${(_downloadProgress * 100).toInt()}%',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primary,
+                        ),
+                      ),
+                      const Spacer(),
+                      SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          value: _downloadProgress >= 1.0 ? null : _downloadProgress,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  LinearProgressIndicator(
+                    value: _downloadProgress >= 1.0 ? null : _downloadProgress,
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
-        const SizedBox(height: AppTheme.sp12),
-        TextButton(
-          onPressed: () => setState(() {
-            _state = _ModelSyncState.idle;
-            _errorMessage = null;
-          }),
-          child: const Text('Coba Lagi'),
-        ),
-      ],
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow(this.label, this.value);
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 130,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
       ),
     );
   }
+
+  Widget _metaText(IconData icon, String label, String value) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: AppTheme.textSecondary),
+        const SizedBox(width: 4),
+        Text(
+          '$label: ',
+          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.navy,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-// === Section: Data Backup Card ===
+// === Section: Tab 2 - Data Medis Sync & Backup ===
+
+class _DataSyncTab extends StatelessWidget {
+  const _DataSyncTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SingleChildScrollView(
+      physics: ClampingScrollPhysics(),
+      child: _DataBackupCard(),
+    );
+  }
+}
 
 enum _DataSyncState { idle, selection, uploading, done, error }
 
@@ -642,8 +1027,6 @@ class _DataBackupCardState extends State<_DataBackupCard> {
   @override
   void initState() {
     super.initState();
-    // Mock repository resolves synchronously — summary & candidate list are
-    // ready before the first frame.
     final repository = context.read<SyncRepository>();
     repository.getSyncSummary().then((summary) {
       if (!mounted) return;
@@ -736,8 +1119,6 @@ class _DataBackupCardState extends State<_DataBackupCard> {
           },
           onDone: () {
             if (!mounted) return;
-            // Offline repository reports the per-record verdict from the server;
-            // the mock has none, so the UI falls back to "all uploaded".
             final report = repository is OfflineSyncRepository
                 ? repository.lastReport
                 : null;
@@ -937,9 +1318,9 @@ class _DataBackupCardState extends State<_DataBackupCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        const Text(
           'Mengunggah data pasien...',
-          style: const TextStyle(fontWeight: FontWeight.w600),
+          style: TextStyle(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: AppTheme.sp12),
         LinearProgressIndicator(
@@ -993,8 +1374,6 @@ class _DataBackupCardState extends State<_DataBackupCard> {
         ),
         if (report != null && report.conflicts > 0) ...[
           const SizedBox(height: AppTheme.sp12),
-          // Conflicts are never auto-resolved: the server holds a newer version
-          // of medical data, so a doctor must decide which one is correct.
           Container(
             padding: const EdgeInsets.all(AppTheme.sp12),
             decoration: BoxDecoration(

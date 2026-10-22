@@ -1,10 +1,3 @@
-// Widget tests for SyncCenterScreen — the two flows CLAUDE.md specifies:
-//   ModelUpdateCard state machine (idle → checking → updateAvailable)
-//   DataBackupCard consent dialog (non-dismissible, Lanjutkan gated on checkbox)
-//
-// Uses the mock SyncRepository so timings are deterministic and no backend is
-// needed.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -21,49 +14,106 @@ Widget _wrap() {
 }
 
 void main() {
-  // The cards lay out side by side above 880px — give tests the room.
   void sizeTablet(WidgetTester tester) {
     tester.view.physicalSize = const Size(1600, 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
   }
 
-  group('ModelUpdateCard state machine', () {
-    testWidgets('starts idle with a check button', (tester) async {
+  group('SyncCenterScreen TabView navigation', () {
+    testWidgets('displays Model AI and Data Medis tabs', (tester) async {
       sizeTablet(tester);
       await tester.pumpWidget(_wrap());
-      await tester.pump();
+      await tester.pumpAndSettle();
 
-      expect(find.text('Periksa Pembaruan Model'), findsOneWidget);
-      expect(find.text('Perbarui Sekarang'), findsNothing);
+      expect(find.text('Model AI'), findsOneWidget);
+      expect(find.text('Data Medis'), findsOneWidget);
+      expect(find.text('Model AI Aktif'), findsOneWidget);
     });
 
-    testWidgets('idle → checking → updateAvailable shows version table',
+    testWidgets('can switch between Model AI and Data Medis tabs',
         (tester) async {
       sizeTablet(tester);
       await tester.pumpWidget(_wrap());
-      await tester.pump();
-
-      await tester.tap(find.text('Periksa Pembaruan Model'));
-      await tester.pump(); // enter checking
-
-      expect(find.text('Memeriksa server...'), findsOneWidget);
-
-      // Mock resolves the check after 2s.
-      await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();
 
-      expect(find.text('Versi Baru Tersedia'), findsOneWidget);
-      expect(find.text('Perbarui Sekarang'), findsOneWidget);
-      expect(find.text('v1.3.1'), findsOneWidget);
+      // On Tab 1 (Model AI) initially
+      expect(find.text('Model AI Aktif'), findsOneWidget);
+
+      // Switch to Tab 2 (Data Medis)
+      await tester.tap(find.text('Data Medis'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Cadangan Data Medis'), findsOneWidget);
+      expect(find.text('Pilih Data & Unggah'), findsOneWidget);
+
+      // Switch back to Tab 1 (Model AI)
+      await tester.tap(find.text('Model AI'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Model AI Aktif'), findsOneWidget);
     });
   });
 
-  group('DataBackupCard consent dialog', () {
+  group('Model AI Tab catalog and interactions', () {
+    testWidgets('displays active model and available model cards',
+        (tester) async {
+      sizeTablet(tester);
+      await tester.pumpWidget(_wrap());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Periksa Pembaruan Model'), findsOneWidget);
+      expect(find.text('Katalog Model Tersedia (3)'), findsOneWidget);
+      expect(find.text('Sedang Digunakan'), findsOneWidget);
+      expect(find.text('Unduh Model'), findsWidgets);
+    });
+
+    testWidgets('filter chips filter models by channel and quantization',
+        (tester) async {
+      sizeTablet(tester);
+      await tester.pumpWidget(_wrap());
+      await tester.pumpAndSettle();
+
+      // Tap Beta filter chip
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Beta'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Katalog Model Tersedia (1)'), findsOneWidget);
+
+      // Tap Semua channel filter chip
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Semua').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Katalog Model Tersedia (3)'), findsOneWidget);
+    });
+
+    testWidgets('refresh button triggers catalog reload', (tester) async {
+      sizeTablet(tester);
+      await tester.pumpWidget(_wrap());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Periksa Pembaruan Model'));
+      await tester.pump();
+
+      expect(find.text('Memeriksa server...'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Katalog Model Tersedia (3)'), findsOneWidget);
+    });
+  });
+
+  group('Data Medis Tab (DataBackupCard)', () {
     Future<void> openDialog(WidgetTester tester) async {
       sizeTablet(tester);
       await tester.pumpWidget(_wrap());
-      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Navigate to Tab 2
+      await tester.tap(find.text('Data Medis'));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.text('Pilih Data & Unggah'));
       await tester.pumpAndSettle();
     }
@@ -97,11 +147,9 @@ void main() {
     testWidgets('cannot be dismissed by tapping the barrier', (tester) async {
       await openDialog(tester);
 
-      // Tap top-left, well outside the dialog.
       await tester.tapAt(const Offset(10, 10));
       await tester.pumpAndSettle();
 
-      // Still open — barrierDismissible is false for sensitive medical data.
       expect(find.text('Konfirmasi Pengiriman Data'), findsOneWidget);
     });
 
@@ -112,7 +160,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Konfirmasi Pengiriman Data'), findsNothing);
-      // Back to idle — no patient selection list shown.
       expect(find.text('Pilih Data & Unggah'), findsOneWidget);
     });
 

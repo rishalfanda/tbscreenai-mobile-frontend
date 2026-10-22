@@ -421,6 +421,57 @@ class MockSeedData {
 
   // === Section: Sync Center ===
 
+  static final availableModels = <AvailableModelBundle>[
+    AvailableModelBundle(
+      channel: 'stable',
+      version: '2026.09.04',
+      isLatest: true,
+      isCurrent: true,
+      releasedUtc: DateTime.utc(2026, 9, 17, 8, 45, 35),
+      schemaVersion: 1,
+      quantized: false,
+      sizeBytes: 504123456,
+      notes: 'Seeded unquantized bundle',
+      changelog: const [
+        'Unquantized parity build',
+        'Full-precision seg + cnn',
+      ],
+      bundleZip: 'http://localhost:8000/v1/models/stable/2026.09.04/bundle.zip',
+    ),
+    AvailableModelBundle(
+      channel: 'beta',
+      version: '2026.09.04',
+      isLatest: true,
+      isCurrent: false,
+      releasedUtc: DateTime.utc(2026, 9, 17, 8, 27, 24),
+      schemaVersion: 1,
+      quantized: true,
+      sizeBytes: 196853241,
+      notes: 'Seeded quantized bundle',
+      changelog: const [
+        'Initial field bundle',
+        'seg_lung fp16, cnn / seg_lesion int8',
+        'RF: dataset_gabungan active',
+      ],
+      bundleZip: 'http://localhost:8000/v1/models/beta/2026.09.04/bundle.zip',
+    ),
+    AvailableModelBundle(
+      channel: 'stable',
+      version: '2026.08.15',
+      isLatest: false,
+      isCurrent: false,
+      releasedUtc: DateTime.utc(2026, 8, 15, 10, 0, 0),
+      schemaVersion: 1,
+      quantized: false,
+      sizeBytes: 498112233,
+      notes: 'Previous stable release',
+      changelog: const [
+        'Standard baseline clinical model',
+      ],
+      bundleZip: 'http://localhost:8000/v1/models/stable/2026.08.15/bundle.zip',
+    ),
+  ];
+
   static const modelVersionInfo = ModelVersionInfo(
     currentVersion: 'v1.2.0',
     latestVersion: 'v1.3.1',

@@ -1,22 +1,33 @@
 import 'package:flutter/foundation.dart';
 import 'package:myapp/data/mock/mock_seed_data.dart';
+import 'package:myapp/domain/models/available_model_bundle.dart';
 import 'package:myapp/domain/models/model_version_info.dart';
 import 'package:myapp/domain/models/patient.dart';
 import 'package:myapp/domain/models/sync_summary.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 
-/// Mock Sync Center backend. Timings mirror the old SyncCenterScreen
-/// simulation exactly: 2s update check, 300ms/5% download ticks,
-/// 800ms per uploaded patient.
+/// Mock Sync Center backend.
 class MockSyncRepository implements SyncRepository {
+  String _activeModelKey = 'stable_2026.09.04';
+  final Set<String> _installedKeys = {'stable_2026.09.04'};
+
   @override
   Future<String> getInstalledModelVersion() =>
-      SynchronousFuture(MockSeedData.modelVersionInfo.currentVersion);
+      SynchronousFuture(_activeModelKey);
 
   @override
   Future<ModelVersionInfo> checkForUpdate() async {
     await Future<void>.delayed(const Duration(seconds: 2));
-    return MockSeedData.modelVersionInfo;
+    final base = MockSeedData.modelVersionInfo;
+    return ModelVersionInfo(
+      currentVersion: _activeModelKey,
+      latestVersion: base.latestVersion,
+      fileSize: base.fileSize,
+      releaseDate: base.releaseDate,
+      changelog: base.changelog,
+      downloadUrl: base.downloadUrl,
+      sha256: base.sha256,
+    );
   }
 
   @override
@@ -29,11 +40,50 @@ class MockSyncRepository implements SyncRepository {
     }
   }
 
-  /// Mock mode never persists anything — it's a stateless, side-effect-free
-  /// simulation, so there is no cached check to restore.
   @override
   Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo() =>
       SynchronousFuture(null);
+
+  @override
+  Future<List<AvailableModelBundle>> getAvailableModels({
+    String? channel,
+    bool? quantized,
+  }) async {
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    return MockSeedData.availableModels.where((m) {
+      if (channel != null && channel.isNotEmpty && channel != 'all') {
+        if (m.channel.toLowerCase() != channel.toLowerCase()) return false;
+      }
+      if (quantized != null && m.quantized != quantized) {
+        return false;
+      }
+      return true;
+    }).map((m) {
+      return m.copyWith(isCurrent: m.id == _activeModelKey);
+    }).toList();
+  }
+
+  @override
+  Future<List<String>> getInstalledModelKeys() =>
+      SynchronousFuture(_installedKeys.toList());
+
+  @override
+  Stream<double> downloadModelBundle(AvailableModelBundle model) async* {
+    var progress = 0.0;
+    while (progress < 1.0) {
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      progress += 0.1;
+      yield progress.clamp(0.0, 1.0);
+    }
+    _installedKeys.add(model.id);
+    _activeModelKey = model.id;
+  }
+
+  @override
+  Future<void> activateModelBundle(String bundleKey) async {
+    _installedKeys.add(bundleKey);
+    _activeModelKey = bundleKey;
+  }
 
   @override
   Future<SyncSummary> getSyncSummary() =>

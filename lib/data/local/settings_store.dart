@@ -72,6 +72,13 @@ class SettingsStore {
   Future<void> saveLastModelCheckJson(String json) =>
       _db.putSetting(kLastModelCheck, json);
 
+  /// Cached JSON of available models catalog from GET /v1/models.
+  Future<String?> readAvailableModelsCache() =>
+      _db.getSetting(kAvailableModelsCache);
+
+  Future<void> saveAvailableModelsCache(String json) =>
+      _db.putSetting(kAvailableModelsCache, json);
+
   // === Section: Sync ===
 
   Future<DateTime?> readLastSyncAt() async {

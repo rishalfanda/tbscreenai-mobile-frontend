@@ -28,33 +28,30 @@ class ModelInstallException implements Exception {
 /// Orchestrates one model-bundle install: download -> extract -> verify ->
 /// activate -> smoke-test, with automatic rollback if anything after
 /// activation fails.
-///
-/// This app's equivalent of `inf_app`'s `UpdateController`, trimmed to a
-/// single-version flow — there is no catalogue/channel machinery here, since
-/// `OfflineSyncRepository.checkForUpdate()` already owns talking to
-/// `/sync/model-version`.
 class ModelUpdatePipeline {
-  ModelUpdatePipeline({required Dio downloadDio, required OnnxInferenceEngine engine})
-      : _dio = downloadDio,
-        _engine = engine;
+  ModelUpdatePipeline({
+    required Dio downloadDio,
+    required OnnxInferenceEngine engine,
+  }) : _dio = downloadDio,
+       _engine = engine;
 
   final Dio _dio;
   final OnnxInferenceEngine _engine;
   final ModelStore _store = ModelStore();
 
-  /// Downloads, verifies and activates [info]'s bundle. Emits download
-  /// progress 0.0..1.0 (matching `SyncRepository.downloadModel()`'s existing
-  /// contract) and completes once the new bundle has passed its smoke test.
-  /// Throws [ModelInstallException] on any failure.
-  Stream<double> install({
-    required ModelVersionInfo info,
+  /// Downloads, verifies and activates a specific model bundle.
+  Stream<double> installBundle({
+    required String bundleKey,
+    required String version,
+    required String downloadUrl,
+    String? sha256,
+    Map<String, dynamic>? metadata,
     required Uint8List smokeTestSampleBytes,
   }) async* {
-    final url = info.downloadUrl;
-    if (url == null || url.isEmpty) {
+    if (downloadUrl.isEmpty) {
       throw ModelInstallException(
         ModelInstallPhase.downloading,
-        'no download URL available for this model version',
+        'no download URL available for this model bundle',
       );
     }
 
@@ -69,9 +66,9 @@ class ModelUpdatePipeline {
       unawaited(
         downloadBundleZip(
               dio: _dio,
-              url: url,
+              url: downloadUrl,
               dest: zipFile,
-              sha256Hex: info.sha256,
+              sha256Hex: sha256,
               onProgress: (received, total) {
                 if (!progressController.isClosed) {
                   progressController.add(total > 0 ? received / total : 0.0);
@@ -98,10 +95,9 @@ class ModelUpdatePipeline {
       incomingDir = await _store.freshIncomingDir(incomingName);
       await extractBundleZip(zipFile.path, incomingDir.path);
       final manifest = await verifyBundleDir(incomingDir);
-      if (manifest.bundleVersion != info.latestVersion) {
+      if (manifest.bundleVersion != version) {
         throw StateError(
-          'downloaded bundle is v${manifest.bundleVersion}, expected '
-          'v${info.latestVersion}',
+          'downloaded bundle is v${manifest.bundleVersion}, expected v$version',
         );
       }
     } catch (e) {
@@ -112,8 +108,11 @@ class ModelUpdatePipeline {
     await _cleanupTemp(zipFile);
 
     try {
-      await _store.promoteIncoming(incomingName, asVersion: info.latestVersion);
-      await _store.activate(info.latestVersion);
+      await _store.promoteIncoming(incomingName, asVersion: bundleKey);
+      if (metadata != null) {
+        await _store.writeBundleMeta(bundleKey, metadata);
+      }
+      await _store.activate(bundleKey);
       final opened = await _engine.init();
       if (!opened) throw StateError('installed bundle failed to open');
     } catch (e) {
@@ -126,6 +125,44 @@ class ModelUpdatePipeline {
     } catch (e) {
       await _rollback();
       throw ModelInstallException(ModelInstallPhase.smokeTesting, '$e');
+    }
+  }
+
+  /// Downloads, verifies and activates [info]'s bundle. Emits download
+  /// progress 0.0..1.0 (matching `SyncRepository.downloadModel()`'s existing
+  /// contract) and completes once the new bundle has passed its smoke test.
+  /// Throws [ModelInstallException] on any failure.
+  Stream<double> install({
+    required ModelVersionInfo info,
+    required Uint8List smokeTestSampleBytes,
+  }) {
+    final url = info.downloadUrl;
+    if (url == null || url.isEmpty) {
+      throw ModelInstallException(
+        ModelInstallPhase.downloading,
+        'no download URL available for this model version',
+      );
+    }
+    return installBundle(
+      bundleKey: info.latestVersion,
+      version: info.latestVersion,
+      downloadUrl: url,
+      sha256: info.sha256,
+      smokeTestSampleBytes: smokeTestSampleBytes,
+    );
+  }
+
+  /// Activates an already installed bundle and reloads the inference engine.
+  Future<void> activateExisting(String bundleKey) async {
+    final isInstalled = await _store.isInstalled(bundleKey);
+    if (!isInstalled) {
+      throw StateError('Bundle $bundleKey is not installed on this device.');
+    }
+    await _store.activate(bundleKey);
+    final opened = await _engine.init();
+    if (!opened) {
+      await _rollback();
+      throw StateError('Failed to initialize inference engine for $bundleKey');
     }
   }
 

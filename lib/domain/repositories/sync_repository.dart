@@ -1,3 +1,4 @@
+import 'package:myapp/domain/models/available_model_bundle.dart';
 import 'package:myapp/domain/models/model_version_info.dart';
 import 'package:myapp/domain/models/patient.dart';
 import 'package:myapp/domain/models/sync_summary.dart';
@@ -20,6 +21,21 @@ abstract class SyncRepository {
   /// re-querying the server every time the page opens. `null` if no check has
   /// ever completed.
   Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo();
+
+  /// Fetches all available model bundles across channels from GET /v1/models.
+  Future<List<AvailableModelBundle>> getAvailableModels({
+    String? channel,
+    bool? quantized,
+  });
+
+  /// Bundle keys of all models currently downloaded and verified on disk.
+  Future<List<String>> getInstalledModelKeys();
+
+  /// Downloads, verifies, and stages the specified model bundle.
+  Stream<double> downloadModelBundle(AvailableModelBundle model);
+
+  /// Activates an already-downloaded model bundle for inference without re-downloading.
+  Future<void> activateModelBundle(String bundleKey);
 
   Future<SyncSummary> getSyncSummary();
 
