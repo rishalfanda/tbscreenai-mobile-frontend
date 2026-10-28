@@ -156,7 +156,45 @@ Cage is designed as a kiosk compositor that manages a single full-screen applica
 
 ---
 
-## 5. Hardware Notes
+## 5. Routine Update Workflow (When Code Changes)
+
+Once `setup_pi.sh` has been run on the Raspberry Pi, updating the application after code modifications only requires 3 quick steps:
+
+### Step 1: Rebuild on your development PC
+- **On Linux / WSL:**
+  ```bash
+  FLAVOR=demo APP_ENV=demo API_BASE_URL="https://3rgcn2lx-8000.asse.devtunnels.ms/v1" ./tools/pi-build/build.sh
+  ```
+- **On Windows (PowerShell):**
+  ```powershell
+  .\tools\pi-build\build.ps1
+  ```
+
+### Step 2: Sync to Raspberry Pi 5
+- **Using `rsync` (Fastest — transfers only modified files like `libapp.so` in seconds):**
+  ```bash
+  rsync -avz --delete dist/bundle/ tbscreen@tbscreen.local:~/tbscreen-bundle/
+  ```
+- **Or using `scp`:**
+  ```bash
+  scp -r dist/bundle/* tbscreen@tbscreen.local:~/tbscreen-bundle/
+  ```
+
+### Step 3: Restart on Raspberry Pi 5
+If the app or Cage is currently running:
+```bash
+killall cage myapp 2>/dev/null || true
+```
+Then relaunch:
+```bash
+bash ~/run_pi.sh ~/tbscreen-bundle
+# or:
+cage -- ~/tbscreen-bundle/myapp
+```
+
+---
+
+## 6. Hardware Notes
 
 - **Camera & Webcam:**
   - Standard USB webcams mount as `/dev/video0`.
