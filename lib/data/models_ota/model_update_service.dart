@@ -113,17 +113,18 @@ class ModelUpdateService {
     return info;
   }
 
-  Future<void> _cacheCheck(ModelVersionInfo info) => _settings.saveLastModelCheckJson(
-    jsonEncode({
-      'latestVersion': info.latestVersion,
-      'fileSize': info.fileSize,
-      'releaseDate': info.releaseDate,
-      'changelog': info.changelog,
-      'downloadUrl': info.downloadUrl,
-      'sha256': info.sha256,
-      'checkedAtIso': DateTime.now().toIso8601String(),
-    }),
-  );
+  Future<void> _cacheCheck(ModelVersionInfo info) =>
+      _settings.saveLastModelCheckJson(
+        jsonEncode({
+          'latestVersion': info.latestVersion,
+          'fileSize': info.fileSize,
+          'releaseDate': info.releaseDate,
+          'changelog': info.changelog,
+          'downloadUrl': info.downloadUrl,
+          'sha256': info.sha256,
+          'checkedAtIso': DateTime.now().toIso8601String(),
+        }),
+      );
 
   /// The last cached check result plus when it was fetched, with
   /// `currentVersion` always re-derived from the live installed-version
@@ -158,28 +159,17 @@ class ModelUpdateService {
   /// Downloads, verifies and activates the new model bundle (see
   /// `ModelUpdatePipeline`), then records the new version on this device.
   ///
-  /// Falls back to the old simulate-and-persist behavior when no download URL
-  /// is available anywhere (today's real backend serves `download_url` for no
-  /// version yet) — `AppConfig.modelBundleUrl` is a dev-time override for
-  /// exercising the real path before that changes.
+  /// Missing bundles fail without changing the installed version.
   Stream<double> downloadModel() async* {
     final session = _db.sessionGeneration;
     final info = await checkForUpdate();
     final url = info.downloadUrl ?? AppConfig.modelBundleUrl;
 
-    if (url == null) {
-      var progress = 0.0;
-      while (progress < 1.0) {
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-        if (session != _db.sessionGeneration) return;
-        progress += 0.05;
-        yield progress.clamp(0.0, 1.0);
-      }
-      await _db.writeForSession(
-        session,
-        () => _settings.saveInstalledModelVersion(info.latestVersion),
+    if (url == null || url.trim().isEmpty) {
+      throw ModelInstallException(
+        ModelInstallPhase.downloading,
+        'Bundle model belum tersedia. Minta admin menyediakan URL download.',
       );
-      return;
     }
 
     final sample = await rootBundle.load('assets/sample/xray.png');

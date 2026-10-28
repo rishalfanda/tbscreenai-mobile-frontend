@@ -134,7 +134,7 @@ class _AppShellState extends State<AppShell> {
                   Material(
                     color: AppTheme.background,
                     child: SizedBox(
-                      height: 56,
+                      height: 48,
                       child: Row(
                         children: [
                           IconButton(
