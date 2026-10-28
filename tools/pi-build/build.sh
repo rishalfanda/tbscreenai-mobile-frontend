@@ -44,6 +44,12 @@ docker run --rm --platform linux/arm64 \
 
     rm -rf /out/bundle
     cp -r "$BUNDLE_SRC" /out/bundle
+
+    # Ensure all ONNX Runtime shared libraries and symlinks are in /out/bundle/lib
+    find build/linux/arm64 -path "*/flutter_onnxruntime/onnxruntime/*/lib/libonnxruntime.so*" -exec cp -d {} /out/bundle/lib/ \; 2>/dev/null || true
+    if [ -f /out/bundle/lib/libonnxruntime.so ] && [ ! -e /out/bundle/lib/libonnxruntime.so.1 ]; then
+      ln -sf libonnxruntime.so /out/bundle/lib/libonnxruntime.so.1
+    fi
     if [ -n "${HOST_UID:-}" ]; then
       chown -R "$HOST_UID:$HOST_GID" /out/bundle || true
     fi

@@ -11,12 +11,42 @@ import 'package:flutter/material.dart';
 class VirtualKeyboardBridge {
   const VirtualKeyboardBridge();
 
+  static EditableTextState? _activeEditableTextState;
+  static FocusNode? _activeFocusNode;
+
   /// Resolves the currently active [EditableTextState] from Flutter's
-  /// [FocusManager.instance.primaryFocus].
+  /// [FocusManager.instance.primaryFocus], with fallback to cached active state
+  /// while keyboard interaction is in progress.
   static EditableTextState? get currentEditableTextState {
     final focus = FocusManager.instance.primaryFocus;
-    if (focus == null || focus.context == null) return null;
-    return focus.context!.findAncestorStateOfType<EditableTextState>();
+    if (focus != null && focus.context != null) {
+      final state = focus.context!.findAncestorStateOfType<EditableTextState>();
+      if (state != null) {
+        _activeEditableTextState = state;
+        _activeFocusNode = focus;
+        return state;
+      }
+    }
+    // Return cached state if still mounted
+    if (_activeEditableTextState != null && _activeEditableTextState!.mounted) {
+      return _activeEditableTextState;
+    }
+    return null;
+  }
+
+  /// Ensures that focus is restored and maintained on the active text field.
+  static void ensureFocus() {
+    if (_activeFocusNode != null &&
+        _activeFocusNode!.canRequestFocus &&
+        !_activeFocusNode!.hasFocus) {
+      _activeFocusNode!.requestFocus();
+    }
+  }
+
+  /// Clears tracked state on explicit keyboard dismiss or submit.
+  static void clearActiveState() {
+    _activeEditableTextState = null;
+    _activeFocusNode = null;
   }
 
   /// Inserts [textToInsert] at the current cursor position, replacing any
@@ -24,6 +54,7 @@ class VirtualKeyboardBridge {
   static void insertText(String textToInsert) {
     final state = currentEditableTextState;
     if (state == null) return;
+    ensureFocus();
 
     final value = state.textEditingValue;
     final selection = value.selection;
@@ -57,6 +88,7 @@ class VirtualKeyboardBridge {
   static void backspace() {
     final state = currentEditableTextState;
     if (state == null) return;
+    ensureFocus();
 
     final value = state.textEditingValue;
     final selection = value.selection;
@@ -95,6 +127,7 @@ class VirtualKeyboardBridge {
   static void clear() {
     final state = currentEditableTextState;
     if (state == null) return;
+    ensureFocus();
 
     final newValue = const TextEditingValue(
       text: '',
@@ -121,10 +154,10 @@ class VirtualKeyboardBridge {
           action == TextInputAction.go ||
           action == TextInputAction.search) {
         FocusManager.instance.primaryFocus?.unfocus();
+        clearActiveState();
       }
     } else {
       insertText('\n');
     }
   }
 }
-

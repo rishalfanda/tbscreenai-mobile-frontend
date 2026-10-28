@@ -217,6 +217,40 @@ void main() {
       await tester.pump();
       expect(controller.text, '7');
     });
+
+    testWidgets('continuous typing on virtual keyboard keeps keyboard open', (tester) async {
+      final controller = TextEditingController();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VirtualKeyboardHost(
+            enableOnAllPlatforms: true,
+            child: Scaffold(
+              body: TextField(
+                controller: controller,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byType(TextField));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VirtualKeyboardView), findsOneWidget);
+
+      // Tap multiple keys: 'h', 'e', 'l', 'l', 'o'
+      for (final char in ['h', 'e', 'l', 'l', 'o']) {
+        final key = find.widgetWithText(VirtualKeyboardKey, char);
+        expect(key, findsOneWidget);
+        await tester.tap(key);
+        await tester.pump();
+      }
+
+      expect(controller.text, 'hello');
+      // Virtual keyboard remains open throughout typing
+      expect(find.byType(VirtualKeyboardView), findsOneWidget);
+    });
   });
 }
 

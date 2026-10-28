@@ -16,9 +16,10 @@ class VirtualKeyboardView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ExcludeFocus(
-      excluding: true,
-      child: AnimatedBuilder(
+    return TextFieldTapRegion(
+      child: ExcludeFocus(
+        excluding: true,
+        child: AnimatedBuilder(
         animation: controller,
         builder: (context, _) {
           return Material(
@@ -67,6 +68,7 @@ class VirtualKeyboardView extends StatelessWidget {
           );
         },
       ),
+      ),
     );
   }
 
@@ -94,6 +96,7 @@ class VirtualKeyboardView extends StatelessWidget {
         const Spacer(),
         // Quick dismiss button
         TextButton.icon(
+          focusNode: FocusNode(canRequestFocus: false),
           onPressed: () => controller.hide(),
           icon: const Icon(
             Icons.keyboard_hide_rounded,

@@ -10,6 +10,7 @@ This guide describes how to build the TBScreen Flutter application into a native
 - **Build Container:** Emulated `linux/arm64` container (`debian:trixie`) matching Raspberry Pi OS.
 - **Output:** Native 64-bit ARM bundle in `dist/bundle/` (`myapp` binary, `lib/`, `data/`).
 - **Target Device:** Raspberry Pi 5 running Raspberry Pi OS 64-bit (Debian Bookworm/Trixie) with touchscreen monitor and USB webcam.
+- **Bundled Runtimes:** Includes official Microsoft ONNX Runtime 1.28.3, Flutter engine, GTK 3, and GStreamer camera pipeline.
 
 ---
 
@@ -74,8 +75,10 @@ The compiled output will be generated in:
 dist/bundle/
 ├── myapp                          # Native ARM64 executable
 ├── data/                          # Flutter assets, ICU data, fonts
-└── lib/                           # Bundled native shared libraries
+└── lib/                           # Bundled native shared libraries (ONNX Runtime, SQLite, Plugins)
 ```
+
+The build script automatically ensures the matching `libonnxruntime.so.1` and library dependencies are bundled in `dist/bundle/lib/`.
 
 You can verify the architecture if `file` is available:
 ```sh
@@ -104,31 +107,62 @@ scp tools/pi-build/setup_pi.sh tools/pi-build/run_pi.sh pi@<RASPBERRY_PI_IP>:~/
 
 SSH into the Raspberry Pi 5 (or open a terminal):
 
-1. **Install Runtime Dependencies (Run Once):**
+1. **Install Runtime Dependencies & Fonts (Run Once):**
    ```bash
    bash ~/setup_pi.sh
    ```
-   This installs GTK 3, GStreamer (for webcam capture), libsecret, and the `cage` kiosk compositor.
+   This script performs the following setup:
+   - Installs GTK 3, GStreamer (for webcam capture), libsecret, and `cage` kiosk compositor.
+   - Installs TrueType fonts (`fonts-dejavu-core`, `fonts-liberation`, `fonts-roboto`) and refreshes the font cache so text characters render properly.
+   - Cleans up incompatible system ONNX Runtime packages (e.g. Debian 1.21 packages) that conflict with ONNX Runtime 1.28.3.
+   - Registers `~/tbscreen-bundle/lib` in `/etc/ld.so.conf.d/tbscreen.conf`.
+   - Adds current user to `video` and `render` groups.
 
 2. **Launch the Application:**
-   - **Kiosk / Touchscreen Mode (Without full desktop):**
+   - **Recommended — Using the launcher script (Auto-detects display or Cage):**
+     ```bash
+     bash ~/run_pi.sh ~/tbscreen-bundle
+     ```
+   - **Kiosk / Touchscreen Mode (CLI / Console mode without full desktop):**
      ```bash
      cage -- ~/tbscreen-bundle/myapp
      ```
-   - **Or using the launcher script:**
+   - **From SSH onto an active Desktop screen:**
      ```bash
-     bash ~/run_pi.sh ~/tbscreen-bundle
+     WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/$(id -u) ~/tbscreen-bundle/myapp
      ```
 
 ---
 
-## 4. Hardware Notes
+## 4. Operational & Troubleshooting Notes
+
+### Exiting Cage Kiosk
+Cage is designed as a kiosk compositor that manages a single full-screen application:
+- **From SSH:** Press `Ctrl + C` in the running terminal session, or run `killall cage`.
+- **From physical keyboard:** Switch to a text console with `Ctrl + Alt + F2` (or `F1`-`F6`).
+- **Application Exit:** Closing the Flutter application will automatically terminate Cage.
+
+### Shared Library Resolution (`libonnxruntime.so.1`)
+- TBScreen bundles official Microsoft ONNX Runtime 1.28.3 in `~/tbscreen-bundle/lib/`.
+- `setup_pi.sh` registers `~/tbscreen-bundle/lib` in `/etc/ld.so.conf.d/tbscreen.conf`.
+- `run_pi.sh` exports `LD_LIBRARY_PATH="$BUNDLE_DIR/lib:${LD_LIBRARY_PATH:-}"` for reliable sub-dependency loading across plugins.
+
+### Font Rendering ("Tofu" Square Boxes)
+- If characters render as squares, verify font packages and font cache:
+  ```bash
+  sudo apt-get install -y fontconfig fonts-dejavu-core fonts-liberation fonts-roboto
+  sudo fc-cache -f
+  ```
+
+---
+
+## 5. Hardware Notes
 
 - **Camera & Webcam:**
   - Standard USB webcams mount as `/dev/video0`.
   - The `camera_desktop` plugin automatically accesses the webcam via GStreamer V4L2.
   - Ensure your user is in the `video` group (`sudo usermod -aG video $USER`).
-- **Touchscreen & Virtual Keyboard:**
+- **Touchscreen & In-App Virtual Keyboard:**
   - The built-in in-app on-screen virtual keyboard automatically slides up when any text field is tapped on the touch-only screen.
+  - Tapping keys on the virtual keyboard preserves active text field focus using `TextFieldTapRegion`.
   - A physical USB keyboard can be plugged in simultaneously; pressing "Sembunyikan" docks the virtual keyboard away while preserving text focus.
-
