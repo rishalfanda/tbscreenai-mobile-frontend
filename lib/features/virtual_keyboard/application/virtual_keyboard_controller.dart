@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:myapp/features/virtual_keyboard/application/virtual_keyboard_bridge.dart';
 
@@ -10,6 +9,12 @@ enum VirtualKeyboardMode {
 
 /// Manages the visibility, layout mode, and shift states of the in-app
 /// virtual keyboard.
+///
+/// Designed specifically for touch kiosk operation:
+/// - Automatically displays when an [EditableTextState] gains focus.
+/// - Persists open during continuous typing even when primary focus shifts.
+/// - Only dismisses when explicitly hidden ("Sembunyikan" / "Done") or
+///   when the user taps on the content area outside of any text field.
 class VirtualKeyboardController extends ChangeNotifier {
   VirtualKeyboardController({
     bool autoShow = true,
@@ -22,68 +27,40 @@ class VirtualKeyboardController extends ChangeNotifier {
   VirtualKeyboardMode _mode = VirtualKeyboardMode.alphanumeric;
   bool _isShifted = false;
   bool _isCapsLock = false;
-  bool _isInteracting = false;
-  Timer? _dismissTimer;
 
   bool get isVisible => _isVisible;
   bool get autoShow => _autoShow;
   VirtualKeyboardMode get mode => _mode;
   bool get isShifted => _isShifted || _isCapsLock;
   bool get isCapsLock => _isCapsLock;
-  bool get isInteracting => _isInteracting;
-
-  void setInteracting(bool value) {
-    _isInteracting = value;
-    if (value) {
-      _dismissTimer?.cancel();
-      _dismissTimer = null;
-    }
-  }
 
   void _handleFocusChange() {
-    final state = VirtualKeyboardBridge.currentEditableTextState;
-    if (state != null) {
-      _dismissTimer?.cancel();
-      _dismissTimer = null;
+    final focus = FocusManager.instance.primaryFocus;
+    if (focus != null && focus.context != null) {
+      final state = focus.context!.findAncestorStateOfType<EditableTextState>();
+      if (state != null) {
+        VirtualKeyboardBridge.registerActiveState(state, focus);
 
-      final inputType = state.widget.keyboardType;
-      if (inputType == TextInputType.number ||
-          inputType == TextInputType.phone ||
-          inputType == const TextInputType.numberWithOptions(decimal: true) ||
-          inputType == const TextInputType.numberWithOptions(signed: true)) {
-        _mode = VirtualKeyboardMode.numeric;
-      } else if (_mode == VirtualKeyboardMode.numeric) {
-        _mode = VirtualKeyboardMode.alphanumeric;
-      }
+        final inputType = state.widget.keyboardType;
+        if (inputType == TextInputType.number ||
+            inputType == TextInputType.phone ||
+            inputType == const TextInputType.numberWithOptions(decimal: true) ||
+            inputType == const TextInputType.numberWithOptions(signed: true)) {
+          _mode = VirtualKeyboardMode.numeric;
+        } else if (_mode == VirtualKeyboardMode.numeric) {
+          _mode = VirtualKeyboardMode.alphanumeric;
+        }
 
-      if (_autoShow && !_isVisible) {
-        _isVisible = true;
-      }
-      notifyListeners();
-    } else {
-      if (_isInteracting) {
-        // Active keyboard tap in progress; keep keyboard open and ensure focus
-        VirtualKeyboardBridge.ensureFocus();
-        return;
-      }
-      // Debounce dismissal to prevent transient focus drops during touch from collapsing keyboard
-      _dismissTimer?.cancel();
-      _dismissTimer = Timer(const Duration(milliseconds: 200), () {
-        if (!_isInteracting &&
-            VirtualKeyboardBridge.currentEditableTextState == null &&
-            _isVisible) {
-          _isVisible = false;
-          VirtualKeyboardBridge.clearActiveState();
+        if (_autoShow && !_isVisible) {
+          _isVisible = true;
           notifyListeners();
         }
-      });
+      }
     }
   }
 
   /// Manually shows the virtual keyboard.
   void show() {
-    _dismissTimer?.cancel();
-    _dismissTimer = null;
     if (!_isVisible) {
       _isVisible = true;
       notifyListeners();
@@ -93,8 +70,6 @@ class VirtualKeyboardController extends ChangeNotifier {
   /// Dismisses the virtual keyboard.
   /// If [unfocus] is true, also releases focus from the active text field.
   void hide({bool unfocus = false}) {
-    _dismissTimer?.cancel();
-    _dismissTimer = null;
     if (unfocus) {
       VirtualKeyboardBridge.clearActiveState();
       FocusManager.instance.primaryFocus?.unfocus();
@@ -154,7 +129,6 @@ class VirtualKeyboardController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _dismissTimer?.cancel();
     FocusManager.instance.removeListener(_handleFocusChange);
     super.dispose();
   }

@@ -251,6 +251,44 @@ void main() {
       // Virtual keyboard remains open throughout typing
       expect(find.byType(VirtualKeyboardView), findsOneWidget);
     });
+
+    testWidgets('tapping outside via explicit unfocus dismisses keyboard', (tester) async {
+      final controller = TextEditingController();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VirtualKeyboardHost(
+            enableOnAllPlatforms: true,
+            child: Scaffold(
+              body: Column(
+                children: [
+                  GestureDetector(
+                    key: const Key('empty-space'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                    child: Container(color: Colors.blue, height: 100, width: double.infinity),
+                  ),
+                  TextField(controller: controller),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byType(TextField));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VirtualKeyboardView), findsOneWidget);
+
+      // Tap on empty space above which unfocuses
+      await tester.tap(find.byKey(const Key('empty-space')));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Keyboard is dismissed
+      expect(find.byType(VirtualKeyboardView), findsNothing);
+    });
   });
 }
 

@@ -78,17 +78,27 @@ class _VirtualKeyboardHostState extends State<VirtualKeyboardHost> {
           children: [
             Column(
               children: [
-                Expanded(child: widget.child),
-                if (isVisible)
-                  TextFieldTapRegion(
-                    child: Listener(
-                      behavior: HitTestBehavior.translucent,
-                      onPointerDown: (_) => _controller.setInteracting(true),
-                      onPointerUp: (_) => _controller.setInteracting(false),
-                      onPointerCancel: (_) => _controller.setInteracting(false),
-                      child: VirtualKeyboardView(controller: _controller),
-                    ),
+                Expanded(
+                  child: Listener(
+                    behavior: HitTestBehavior.translucent,
+                    onPointerDown: (_) {
+                      // If keyboard is open and user taps on the content area above,
+                      // check on next microtask if focus moved outside editable inputs
+                      if (_controller.isVisible) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          final primary = FocusManager.instance.primaryFocus;
+                          final isEditable = primary?.context?.findAncestorStateOfType<EditableTextState>() != null;
+                          if (!isEditable) {
+                            _controller.hide(unfocus: true);
+                          }
+                        });
+                      }
+                    },
+                    child: widget.child,
                   ),
+                ),
+                if (isVisible)
+                  VirtualKeyboardView(controller: _controller),
               ],
             ),
             // Floating summon button when an input is focused but keyboard is closed
@@ -96,22 +106,20 @@ class _VirtualKeyboardHostState extends State<VirtualKeyboardHost> {
               Positioned(
                 right: 20,
                 bottom: 20,
-                child: TextFieldTapRegion(
-                  child: Material(
-                    color: AppTheme.primary,
-                    shape: const CircleBorder(),
-                    elevation: 6,
-                    child: InkWell(
-                      canRequestFocus: false,
-                      customBorder: const CircleBorder(),
-                      onTap: _controller.show,
-                      child: const Padding(
-                        padding: EdgeInsets.all(14),
-                        child: Icon(
-                          Icons.keyboard_rounded,
-                          color: Colors.white,
-                          size: 26,
-                        ),
+                child: Material(
+                  color: AppTheme.primary,
+                  shape: const CircleBorder(),
+                  elevation: 6,
+                  child: InkWell(
+                    canRequestFocus: false,
+                    customBorder: const CircleBorder(),
+                    onTap: _controller.show,
+                    child: const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Icon(
+                        Icons.keyboard_rounded,
+                        color: Colors.white,
+                        size: 26,
                       ),
                     ),
                   ),

@@ -14,9 +14,8 @@ class VirtualKeyboardBridge {
   static EditableTextState? _activeEditableTextState;
   static FocusNode? _activeFocusNode;
 
-  /// Resolves the currently active [EditableTextState] from Flutter's
-  /// [FocusManager.instance.primaryFocus], with fallback to cached active state
-  /// while keyboard interaction is in progress.
+  /// Resolves the active [EditableTextState], preferring the current primary focus
+  /// if it is an input, or falling back to the actively tracked input during keyboard usage.
   static EditableTextState? get currentEditableTextState {
     final focus = FocusManager.instance.primaryFocus;
     if (focus != null && focus.context != null) {
@@ -27,14 +26,19 @@ class VirtualKeyboardBridge {
         return state;
       }
     }
-    // Return cached state if still mounted
     if (_activeEditableTextState != null && _activeEditableTextState!.mounted) {
       return _activeEditableTextState;
     }
     return null;
   }
 
-  /// Ensures that focus is restored and maintained on the active text field.
+  /// Explicitly registers an active [EditableTextState] and its [FocusNode].
+  static void registerActiveState(EditableTextState state, FocusNode focusNode) {
+    _activeEditableTextState = state;
+    _activeFocusNode = focusNode;
+  }
+
+  /// Restores focus to the active text input if not already focused.
   static void ensureFocus() {
     if (_activeFocusNode != null &&
         _activeFocusNode!.canRequestFocus &&
@@ -107,7 +111,6 @@ class VirtualKeyboardBridge {
     } else if (text.isNotEmpty) {
       final cursor = selection.isValid ? selection.baseOffset : text.length;
       if (cursor > 0) {
-        // Safe deletion of preceding character
         final deleteFrom = cursor - 1;
         final newText = text.replaceRange(deleteFrom, cursor, '');
         final newValue = value.copyWith(
