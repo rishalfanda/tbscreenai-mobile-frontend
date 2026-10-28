@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -35,7 +36,7 @@ class _XrayImageCardState extends State<XrayImageCard> {
       return const SizedBox(
         height: 320,
         child: Center(
-          child: Text(
+          child: AppText(
             'Pratinjau gambar tidak tersedia',
             style: TextStyle(color: kResultTextLoColor),
           ),
@@ -56,7 +57,7 @@ class _XrayImageCardState extends State<XrayImageCard> {
                 image!.bytes,
                 fit: BoxFit.contain,
                 errorBuilder: (_, _, _) => const Center(
-                  child: Text(
+                  child: AppText(
                     'Gambar tidak tersedia',
                     style: TextStyle(color: kResultTextLoColor),
                   ),
@@ -111,7 +112,7 @@ class _XrayImageCardState extends State<XrayImageCard> {
                         fit: BoxFit.contain,
                         gaplessPlayback: true,
                         errorBuilder: (_, _, _) => const Center(
-                          child: Text(
+                          child: AppText(
                             'Gambar tidak tersedia',
                             style: TextStyle(color: kResultTextLoColor),
                           ),
@@ -171,7 +172,7 @@ class _XrayImageCardState extends State<XrayImageCard> {
                 color: isSelected ? Colors.white : kResultTextLoColor,
               ),
               const SizedBox(width: 6),
-              Text(
+              AppText(
                 label,
                 style: TextStyle(
                   fontSize: 12.5,
@@ -247,7 +248,7 @@ class LesionLegendChip extends StatelessWidget {
           color: dimmed ? kResultBorderColor : color.withValues(alpha: 0.45),
         ),
       ),
-      child: Text(
+      child: AppText(
         '${kLesionNameLabels[entry.name.toLowerCase()] ?? entry.name} · '
         '${proportion.toStringAsFixed(1)}%',
         style: TextStyle(
@@ -259,4 +260,3 @@ class LesionLegendChip extends StatelessWidget {
     );
   }
 }
-

@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'result_theme.dart';
 
@@ -19,9 +20,13 @@ class EmptyResultState extends StatelessWidget {
           child: const Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.analytics_outlined, size: 56, color: kResultTextLoColor),
+              Icon(
+                Icons.analytics_outlined,
+                size: 56,
+                color: kResultTextLoColor,
+              ),
               SizedBox(height: 16),
-              Text(
+              AppText(
                 'Belum ada hasil analisis.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
@@ -31,7 +36,7 @@ class EmptyResultState extends StatelessWidget {
                 ),
               ),
               SizedBox(height: 8),
-              Text(
+              AppText(
                 'Lengkapi data pasien dan jalankan analisis pada tab Input Data.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
@@ -47,4 +52,3 @@ class EmptyResultState extends StatelessWidget {
     );
   }
 }
-

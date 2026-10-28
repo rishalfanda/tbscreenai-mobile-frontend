@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_palette.dart';
 
@@ -21,11 +22,11 @@ class OptionalFieldsPanel extends StatelessWidget {
           collapsedIconColor: diagnosisMuted,
           textColor: diagnosisText,
           collapsedTextColor: diagnosisText,
-          title: const Text(
+          title: const AppText(
             'Informasi Tambahan (Opsional)',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
           ),
-          subtitle: const Text(
+          subtitle: const AppText(
             'Gejala, lingkungan, dan hasil pemeriksaan klinis',
             style: TextStyle(color: diagnosisMuted, fontSize: 12),
           ),
@@ -35,4 +36,3 @@ class OptionalFieldsPanel extends StatelessWidget {
     );
   }
 }
-

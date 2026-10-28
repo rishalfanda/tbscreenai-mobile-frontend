@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_palette.dart';
 import 'package:myapp/features/diagnosis/presentation/widgets/input/dark_input_decoration.dart';
@@ -36,7 +37,7 @@ class DarkDropdown extends StatelessWidget {
       ),
       style: const TextStyle(color: diagnosisText, fontSize: 15),
       decoration: darkInputDecoration(),
-      hint: Text(
+      hint: AppText(
         hint,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -46,7 +47,7 @@ class DarkDropdown extends StatelessWidget {
           .map(
             (item) => DropdownMenuItem<String>(
               value: item,
-              child: Text(
+              child: AppText(
                 labels?[item] ?? item,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -59,4 +60,3 @@ class DarkDropdown extends StatelessWidget {
     );
   }
 }
-

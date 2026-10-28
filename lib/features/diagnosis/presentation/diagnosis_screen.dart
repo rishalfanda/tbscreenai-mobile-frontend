@@ -26,11 +26,18 @@ class DiagnosisScreen extends StatefulWidget {
 class _DiagnosisScreenState extends State<DiagnosisScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+  int _inputGeneration = 0;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: context.read<DiagnosisProvider>().lastOutcome == null
+          ? 0
+          : 1,
+    );
   }
 
   @override
@@ -64,12 +71,16 @@ class _DiagnosisScreenState extends State<DiagnosisScreen>
           : const NeverScrollableScrollPhysics(),
       children: [
         DiagnosisInputTab(
+          key: ValueKey(_inputGeneration),
           pickImage: widget.pickImage,
           hasModelOverride: widget.hasModelOverride,
           onAnalyzeSuccess: () => _tabController.animateTo(1),
         ),
         DiagnosisResultTab(
-          onNewScreening: () => _tabController.animateTo(0),
+          onNewScreening: () {
+            setState(() => _inputGeneration++);
+            _tabController.animateTo(0);
+          },
         ),
       ],
     );

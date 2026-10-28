@@ -10,6 +10,7 @@ import 'package:myapp/features/patients/presentation/patients_screen.dart';
 import 'package:myapp/features/sync/presentation/sync_center_screen.dart';
 import 'package:myapp/features/validation/presentation/validation_screen.dart';
 import 'package:myapp/features/shared/presentation/app_shell.dart';
+import 'package:myapp/features/institution/presentation/institution_screen.dart';
 import 'package:myapp/state/auth_provider.dart';
 
 class AppRouter {
@@ -26,7 +27,11 @@ class AppRouter {
         }
 
         if (isLoggedIn && isLoggingIn) {
-          return '/dashboard';
+          return authProvider.mobileRole.home;
+        }
+
+        if (isLoggedIn && !authProvider.mobileRole.allows(state.uri.path)) {
+          return authProvider.mobileRole.home;
         }
 
         return null;
@@ -42,6 +47,18 @@ class AppRouter {
           },
           routes: [
             GoRoute(
+              path: '/technician',
+              builder: (_, _) => const InstitutionScreen(),
+            ),
+            GoRoute(
+              path: '/users',
+              builder: (_, _) => const InstitutionScreen(section: 'users'),
+            ),
+            GoRoute(
+              path: '/models',
+              builder: (_, _) => const InstitutionScreen(section: 'models'),
+            ),
+            GoRoute(
               path: '/dashboard',
               builder: (context, state) => const DashboardScreen(),
             ),
@@ -53,6 +70,7 @@ class AppRouter {
               path: '/diagnosis',
               builder: (context, state) => const DiagnosisScreen(),
             ),
+            GoRoute(path: '/result', redirect: (_, _) => '/diagnosis'),
             GoRoute(
               path: '/validation',
               builder: (context, state) => const ValidationScreen(),

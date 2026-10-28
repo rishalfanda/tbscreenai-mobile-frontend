@@ -1,3 +1,6 @@
+import 'package:myapp/core/localization/app_text.dart';
+import 'package:myapp/core/localization/app_language.dart';
+import 'package:myapp/core/localization/language_toggle.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -6,6 +9,8 @@ import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
+import 'package:myapp/state/auth_provider.dart';
+import 'package:myapp/domain/models/access_scope.dart';
 
 /// Persistent navigation shell shared by all primary screens (ShellRoute).
 /// Collapsible tablet rail and modal navigation on compact Android windows.
@@ -16,6 +21,9 @@ class AppShell extends StatefulWidget {
   final Widget child;
 
   static const _items = <({String route, IconData icon, String label})>[
+    (route: '/technician', icon: Icons.build_outlined, label: 'Technician'),
+    (route: '/users', icon: Icons.manage_accounts_outlined, label: 'Users'),
+    (route: '/models', icon: Icons.memory_rounded, label: 'Models'),
     (
       route: '/dashboard',
       icon: Icons.space_dashboard_rounded,
@@ -42,15 +50,26 @@ class _AppShellState extends State<AppShell> {
   bool _railVisible = true;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   StreamSubscription<int>? _pendingSubscription;
+  String? _pendingOwner;
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final auth = context.watch<AuthProvider>();
+    final owner = auth.isLoggedIn && auth.mobileRole == MobileRole.clinician
+        ? '${auth.userId}:${auth.tenantId}'
+        : null;
+    if (owner == _pendingOwner) return;
+    unawaited(_pendingSubscription?.cancel());
+    _pendingSubscription = null;
+    _pendingOwner = owner;
+    _pendingCount = 0;
+    if (owner == null) return;
     _pendingSubscription = context
         .read<ValidationRepository>()
         .watchPendingCount()
         .listen((count) {
-          if (!mounted) return;
+          if (!mounted || _pendingOwner != owner) return;
           setState(() => _pendingCount = count);
         }, onError: (Object _) {});
   }
@@ -63,7 +82,11 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedIndex = AppShell._items.indexWhere(
+    final role = context.watch<AuthProvider>().mobileRole;
+    final items = AppShell._items
+        .where((item) => role.allows(item.route))
+        .toList();
+    final selectedIndex = items.indexWhere(
       (item) => widget.location.startsWith(item.route),
     );
 
@@ -71,23 +94,23 @@ class _AppShellState extends State<AppShell> {
     final index = selectedIndex < 0 ? 0 : selectedIndex;
     Future<void> navigate(String route) async {
       if (route == widget.location) return;
-      if (widget.location == '/result' &&
+      if ((widget.location == '/result' || widget.location == '/diagnosis') &&
           context.read<DiagnosisProvider>().requiresLeaveConfirmation) {
         final proceed = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            title: const Text('Leave this screening?'),
-            content: const Text(
+            title: const AppText('Leave this screening?'),
+            content: const AppText(
               'This result is not yet synced. Pending local data stays in the queue; an unsaved result needs saving before starting another screening.',
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Stay'),
+                child: const AppText('Stay'),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('Continue'),
+                child: const AppText('Continue'),
               ),
             ],
           ),
@@ -106,7 +129,7 @@ class _AppShellState extends State<AppShell> {
               shape: const RoundedRectangleBorder(),
               child: SafeArea(
                 child: _NavRail(
-                  items: AppShell._items,
+                  items: items,
                   selectedIndex: index,
                   pendingCount: _pendingCount,
                   onNavigate: navigate,
@@ -121,7 +144,7 @@ class _AppShellState extends State<AppShell> {
               width: !compact && _railVisible ? AppTheme.railWidth : 0,
               child: !compact && _railVisible
                   ? _NavRail(
-                      items: AppShell._items,
+                      items: items,
                       selectedIndex: index,
                       pendingCount: _pendingCount,
                       onNavigate: navigate,
@@ -161,8 +184,8 @@ class _AppShellState extends State<AppShell> {
                             },
                           ),
                           Expanded(
-                            child: Text(
-                              AppShell._items[index].label,
+                            child: AppText(
+                              items[index].label,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
@@ -170,6 +193,10 @@ class _AppShellState extends State<AppShell> {
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            child: LanguageToggle(),
                           ),
                         ],
                       ),
@@ -298,11 +325,11 @@ class _NavItemState extends State<_NavItem> {
     return Semantics(
       button: true,
       selected: widget.active,
-      label: widget.label,
+      label: localize(context, widget.label),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         child: Tooltip(
-          message: widget.label,
+          message: localize(context, widget.label),
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
             onEnter: (_) => _setHovered(true),
@@ -330,7 +357,7 @@ class _NavItemState extends State<_NavItem> {
                       children: [
                         Icon(widget.icon, size: 22, color: fg),
                         const SizedBox(height: 4),
-                        Text(
+                        AppText(
                           widget.label,
                           textAlign: TextAlign.center,
                           maxLines: 1,
@@ -363,7 +390,7 @@ class _NavItemState extends State<_NavItem> {
                               width: 1.5,
                             ),
                           ),
-                          child: Text(
+                          child: AppText(
                             '${widget.badgeCount}',
                             textAlign: TextAlign.center,
                             style: const TextStyle(

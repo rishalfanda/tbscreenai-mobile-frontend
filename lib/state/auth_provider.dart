@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:myapp/domain/models/access_scope.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/domain/repositories/auth_repository.dart';
 
@@ -31,6 +32,7 @@ class AuthProvider extends ChangeNotifier {
   String get userId => _profile?.userId ?? '';
   String get tenantId => _profile?.tenantId ?? '';
   String get role => _profile?.role ?? '';
+  MobileRole get mobileRole => _profile?.mobileRole ?? MobileRole.unsupported;
   String get email => _profile?.email ?? '';
   String get displayName => _profile?.displayName ?? '';
 

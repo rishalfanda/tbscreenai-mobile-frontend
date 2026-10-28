@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'result_theme.dart';
@@ -29,7 +30,7 @@ class RecommendationCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
+          const AppText(
             'Segera rujuk ke fasilitas kesehatan untuk di evaluasi dan dilakukan pemeriksaan tambahan oleh dokter',
             style: TextStyle(
               fontSize: 15,

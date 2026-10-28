@@ -1,3 +1,5 @@
+import 'package:myapp/core/localization/app_language.dart';
+import 'package:myapp/core/localization/app_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -120,7 +122,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
     if (newStatus == "disagreed" && note.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Please add a clinical note before disagreeing."),
+          content: AppText("Please add a clinical note before disagreeing."),
           backgroundColor: AppTheme.error,
         ),
       );
@@ -151,7 +153,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_submissionMessage(submission.state, newStatus)),
+          content: AppText(_submissionMessage(submission.state, newStatus)),
           backgroundColor:
               submission.state == ValidationSubmissionState.synced ||
                   submission.state == ValidationSubmissionState.demo
@@ -170,7 +172,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Validation was not saved: $error'),
+          content: AppText('Validation was not saved: $error'),
           backgroundColor: AppTheme.error,
         ),
       );
@@ -205,8 +207,8 @@ class _ValidationScreenState extends State<ValidationScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Confirm conflict decision'),
-        content: Text(switch (decision) {
+        title: const AppText('Confirm conflict decision'),
+        content: AppText(switch (decision) {
           ConflictDecision.keepServer =>
             'Use the server verdict and discard this local verdict?',
           ConflictDecision.reapplyLocal =>
@@ -217,11 +219,11 @@ class _ValidationScreenState extends State<ValidationScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Back'),
+            child: const AppText('Back'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Confirm'),
+            child: const AppText('Confirm'),
           ),
         ],
       ),
@@ -236,7 +238,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: AppText(
             decision == ConflictDecision.cancel
                 ? 'Conflict left open; decision was audited.'
                 : 'Conflict decision saved and audited.',
@@ -249,7 +251,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Conflict was not resolved: $error'),
+          content: AppText('Conflict was not resolved: $error'),
           backgroundColor: AppTheme.error,
         ),
       );
@@ -274,7 +276,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
               setState(() => _isLoading = true);
               unawaited(_load());
             },
-            child: const Text('Retry'),
+            child: const AppText('Retry'),
           ),
         ),
       );
@@ -304,7 +306,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      const AppText(
                         "Doctor Review",
                         style: TextStyle(
                           fontSize: 20,
@@ -312,7 +314,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                           color: AppTheme.navy,
                         ),
                       ),
-                      const Text(
+                      const AppText(
                         "Validate AI screening results",
                         style: TextStyle(
                           fontSize: 13,
@@ -379,7 +381,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   child: TextField(
                     onChanged: (v) => setState(() => _searchQuery = v),
                     decoration: InputDecoration(
-                      hintText: "Search patients...",
+                      hintText: localize(context, "Search patients..."),
                       prefixIcon: const Icon(Icons.search, size: 20),
                       contentPadding: const EdgeInsets.symmetric(vertical: 10),
                       enabledBorder: OutlineInputBorder(
@@ -481,7 +483,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                     color: AppTheme.navy,
                                   ),
                                 ),
-                                Text(
+                                AppText(
                                   "Patient ID: #${selectedCase.id}",
                                   style: const TextStyle(
                                     fontSize: 13,
@@ -541,7 +543,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                           },
                         ),
                         const SizedBox(height: 32),
-                        const Text(
+                        const AppText(
                           "AI Screening Result",
                           style: TextStyle(
                             fontSize: 15,
@@ -571,7 +573,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                       ).withValues(alpha: 0.2),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
-                                    child: Text(
+                                    child: AppText(
                                       "TBC ${selectedCase.aiScore}%",
                                       style: const TextStyle(
                                         color: Color(0xFFEF9F27),
@@ -590,7 +592,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                           context,
                                         ).showSnackBar(
                                           const SnackBar(
-                                            content: Text(
+                                            content: AppText(
                                               "Heatmap not available for this case",
                                             ),
                                           ),
@@ -607,7 +609,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                       foregroundColor: Colors.white,
                                       elevation: 0,
                                     ),
-                                    child: Text(
+                                    child: AppText(
                                       _isHeatmapView
                                           ? "Original View"
                                           : "Heatmap View",
@@ -629,7 +631,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                           ),
                         ],
                         const SizedBox(height: 32),
-                        const Text(
+                        const AppText(
                           "Doctor's Note",
                           style: TextStyle(
                             fontSize: 15,
@@ -646,8 +648,10 @@ class _ValidationScreenState extends State<ValidationScreen> {
                               selectedCase.hasConflict ||
                               selectedCase.status != "pending",
                           decoration: InputDecoration(
-                            hintText:
-                                "Add clinical notes or correction reason...",
+                            hintText: localize(
+                              context,
+                              "Add clinical notes or correction reason...",
+                            ),
                             fillColor: Colors.white,
                             filled: true,
                             enabledBorder: OutlineInputBorder(
@@ -684,7 +688,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                       vertical: 16,
                                     ),
                                   ),
-                                  child: const Text("Disagree"),
+                                  child: const AppText("Disagree"),
                                 ),
                               ),
                               const SizedBox(width: 16),
@@ -709,7 +713,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                             strokeWidth: 2,
                                           ),
                                         )
-                                      : const Text("Agree with AI Result"),
+                                      : const AppText("Agree with AI Result"),
                                 ),
                               ),
                             ],
@@ -739,7 +743,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                           : AppTheme.error,
                                     ),
                                     const SizedBox(width: 12),
-                                    Text(
+                                    AppText(
                                       selectedCase.status == "agreed"
                                           ? "You agreed with the AI result"
                                           : "You disagreed with the AI result",
@@ -755,7 +759,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                               ),
                               TextButton(
                                 onPressed: _resetStatus,
-                                child: const Text(
+                                child: const AppText(
                                   "Re-validate",
                                   style: TextStyle(
                                     color: AppTheme.cyan,
@@ -814,7 +818,7 @@ class _ConflictResolutionCard extends StatelessWidget {
           color: AppTheme.warning.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Text(
+        child: const AppText(
           'Conflict details are loading. No clinical value was overwritten.',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
@@ -836,7 +840,7 @@ class _ConflictResolutionCard extends StatelessWidget {
             children: [
               Icon(Icons.compare_arrows_rounded, color: AppTheme.warning),
               SizedBox(width: 8),
-              Text(
+              AppText(
                 'Doctor review conflict',
                 style: TextStyle(
                   color: AppTheme.navy,
@@ -876,25 +880,25 @@ class _ConflictResolutionCard extends StatelessWidget {
                 onPressed: busy
                     ? null
                     : () => onDecision(value, ConflictDecision.cancel),
-                child: const Text('Cancel / keep open'),
+                child: const AppText('Cancel / keep open'),
               ),
               OutlinedButton(
                 onPressed: busy || !value.hasServerSnapshot
                     ? null
                     : () => onDecision(value, ConflictDecision.keepServer),
-                child: const Text('Keep server'),
+                child: const AppText('Keep server'),
               ),
               FilledButton(
                 onPressed: busy || !value.hasServerSnapshot
                     ? null
                     : () => onDecision(value, ConflictDecision.reapplyLocal),
-                child: const Text('Reapply local'),
+                child: const AppText('Reapply local'),
               ),
             ],
           ),
           if (!value.hasServerSnapshot) ...[
             const SizedBox(height: 10),
-            const Text(
+            const AppText(
               'Reconnect to fetch the authoritative server snapshot.',
               style: TextStyle(color: AppTheme.error),
             ),
@@ -928,10 +932,10 @@ class _ConflictValue extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          AppText(title, style: const TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 6),
-          Text('Verdict: $status'),
-          Text('Note: ${note?.trim().isNotEmpty == true ? note : '-'}'),
+          AppText('Verdict: $status'),
+          AppText('Note: ${note?.trim().isNotEmpty == true ? note : '-'}'),
         ],
       ),
     );
@@ -953,7 +957,7 @@ class _SummaryItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(
+        AppText(
           count.toString(),
           style: TextStyle(
             fontSize: 16,
@@ -961,7 +965,7 @@ class _SummaryItem extends StatelessWidget {
             color: color,
           ),
         ),
-        Text(
+        AppText(
           label,
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 11, color: AppTheme.subtitleGrey),
@@ -999,7 +1003,7 @@ class _TabItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Text(
+            AppText(
               label,
               style: TextStyle(
                 color: active ? AppTheme.cyan : AppTheme.subtitleGrey,
@@ -1014,7 +1018,7 @@ class _TabItem extends StatelessWidget {
                   color: AppTheme.error,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text(
+                child: AppText(
                   count.toString(),
                   style: const TextStyle(color: Colors.white, fontSize: 10),
                 ),
@@ -1078,7 +1082,7 @@ class _PatientItem extends StatelessWidget {
                       color: AppTheme.navy,
                     ),
                   ),
-                  Text(
+                  AppText(
                     "TBC ${c.aiScore}% · ${c.diagnosisDate}",
                     style: const TextStyle(
                       fontSize: 12,
@@ -1094,7 +1098,7 @@ class _PatientItem extends StatelessWidget {
                 color: statusColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(999),
               ),
-              child: Text(
+              child: AppText(
                 c.status[0].toUpperCase() + c.status.substring(1),
                 style: TextStyle(
                   color: statusColor,
@@ -1139,12 +1143,12 @@ class _MetaField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        AppText(
           label,
           style: const TextStyle(fontSize: 12, color: AppTheme.subtitleGrey),
         ),
         const SizedBox(height: 4),
-        Text(
+        AppText(
           value,
           style: TextStyle(
             fontSize: 15,
@@ -1208,11 +1212,11 @@ class _FindingItem extends StatelessWidget {
 
     return Column(
       children: [
-        Text(
+        AppText(
           label,
           style: const TextStyle(fontSize: 11, color: AppTheme.subtitleGrey),
         ),
-        Text(
+        AppText(
           "${value.toStringAsFixed(1)}%",
           style: TextStyle(
             fontSize: 13,
@@ -1236,7 +1240,7 @@ class _EmptyState extends StatelessWidget {
         children: [
           Icon(Icons.person_search_outlined, size: 64, color: Colors.grey),
           SizedBox(height: 16),
-          Text(
+          AppText(
             "Select a patient from the list to review\nthe AI screening result",
             textAlign: TextAlign.center,
             style: TextStyle(color: AppTheme.subtitleGrey),

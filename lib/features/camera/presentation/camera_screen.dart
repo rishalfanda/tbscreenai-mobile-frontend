@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
@@ -90,8 +91,10 @@ class _CameraScreenState extends State<CameraScreen>
       }
       await controller.setFlashMode(FlashMode.off);
 
-      if (controller.value.deviceOrientation == DeviceOrientation.landscapeLeft ||
-          controller.value.deviceOrientation == DeviceOrientation.landscapeRight) {
+      if (controller.value.deviceOrientation ==
+              DeviceOrientation.landscapeLeft ||
+          controller.value.deviceOrientation ==
+              DeviceOrientation.landscapeRight) {
         _lastKnownLandscape = controller.value.deviceOrientation;
       }
       try {
@@ -300,7 +303,7 @@ class _CameraScreenState extends State<CameraScreen>
         child: FilledButton.icon(
           onPressed: _initializeCamera,
           icon: const Icon(Icons.refresh_rounded),
-          label: const Text('Try camera again'),
+          label: const AppText('Try camera again'),
         ),
       );
     }
@@ -454,7 +457,7 @@ class _CameraScreenState extends State<CameraScreen>
         OutlinedButton.icon(
           onPressed: _confirming ? null : _retake,
           icon: const Icon(Icons.replay_rounded),
-          label: const Text('Retake'),
+          label: const AppText('Retake'),
           style: OutlinedButton.styleFrom(
             foregroundColor: Colors.white,
             side: const BorderSide(color: Colors.white54),
@@ -474,7 +477,7 @@ class _CameraScreenState extends State<CameraScreen>
                   ),
                 )
               : const Icon(Icons.check_rounded),
-          label: Text(_confirming ? 'Memproses...' : 'Use this image'),
+          label: AppText(_confirming ? 'Memproses...' : 'Use this image'),
           style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
         ),
       ],
@@ -515,7 +518,7 @@ class _ErrorBanner extends StatelessWidget {
           color: const Color(0xFFE53935),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Text(
+        child: AppText(
           message,
           textAlign: TextAlign.center,
           style: const TextStyle(
@@ -581,4 +584,3 @@ int previewQuarterTurns(
       : (description.sensorOrientation - deviceDegrees + 360) % 360;
   return compensation ~/ 90;
 }
-

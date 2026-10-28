@@ -1,3 +1,5 @@
+import 'package:myapp/core/localization/app_language.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -27,6 +29,7 @@ import 'package:myapp/data/unavailable_repositories.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/repositories/repositories.dart';
 import 'package:myapp/state/auth_provider.dart';
+import 'package:myapp/state/institution_provider.dart';
 import 'package:myapp/state/dashboard_provider.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 
@@ -60,6 +63,8 @@ class TBScreenApp extends StatelessWidget {
 
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => AppLanguage()),
+        ChangeNotifierProvider(create: (_) => InstitutionProvider()),
         // === Section: Local storage & networking ===
         Provider<AppDatabase>.value(value: db),
         Provider<SecureTokenStorage>.value(value: secureStorage),
@@ -236,6 +241,9 @@ class _RouterViewState extends State<_RouterView> {
     AppConfig.validate();
     return MaterialApp.router(
       title: 'TBScreen',
+      locale: context.watch<AppLanguage>().locale,
+      supportedLocales: const [Locale('en'), Locale('id')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       routerConfig: _router,

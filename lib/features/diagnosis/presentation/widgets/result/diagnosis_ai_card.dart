@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'result_theme.dart';
@@ -38,7 +39,7 @@ class DiagnosisAiCard extends StatelessWidget {
             spacing: 12,
             runSpacing: 8,
             children: [
-              const Text(
+              const AppText(
                 'Screening AI',
                 style: TextStyle(
                   fontSize: 18,
@@ -56,7 +57,7 @@ class DiagnosisAiCard extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.22),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
+                child: AppText(
                   isPositive ? 'TBC' : 'Non-TBC',
                   style: const TextStyle(
                     fontSize: 14.5,
@@ -78,7 +79,7 @@ class DiagnosisAiCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    AppText(
                       'Skor Keyakinan AI',
                       style: TextStyle(
                         color: Colors.white,
@@ -87,7 +88,7 @@ class DiagnosisAiCard extends StatelessWidget {
                       ),
                     ),
                     SizedBox(height: 2),
-                    Text(
+                    AppText(
                       'Alat bantu skrining awal · Butuh konfirmasi dokter',
                       style: TextStyle(color: Colors.white70, fontSize: 12),
                     ),
@@ -107,7 +108,7 @@ class DiagnosisAiCard extends StatelessWidget {
                     color: Colors.white.withValues(alpha: 0.3),
                   ),
                 ),
-                child: Text(
+                child: AppText(
                   '$displayedConfidence%',
                   style: const TextStyle(
                     fontSize: 28,

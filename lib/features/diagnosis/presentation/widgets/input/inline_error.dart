@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_palette.dart';
 
@@ -23,7 +24,7 @@ class InlineError extends StatelessWidget {
             const Icon(Icons.error_outline_rounded, color: Color(0xFFFCA5A5)),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
+              child: AppText(
                 message,
                 style: const TextStyle(color: diagnosisText, fontSize: 13),
               ),
@@ -34,4 +35,3 @@ class InlineError extends StatelessWidget {
     );
   }
 }
-

@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:myapp/core/config/app_config.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -15,7 +16,7 @@ class DashboardScreen extends StatelessWidget {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text(
+          child: AppText(
             'Dashboard aggregation and institution filters unavailable: backend contract pending.',
           ),
         ),
@@ -69,7 +70,7 @@ class DashboardScreen extends StatelessWidget {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            AppText(
               'Dashboard',
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.w800,
@@ -77,7 +78,7 @@ class DashboardScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text(
+            AppText(
               'Welcome back, Dr. Anderson',
               style: Theme.of(
                 context,
@@ -105,7 +106,7 @@ class DashboardScreen extends StatelessWidget {
             FilledButton.icon(
               onPressed: () => context.go('/diagnosis'),
               icon: const Icon(Icons.add_rounded),
-              label: const Text('New Screening'),
+              label: const AppText('New Screening'),
               style: FilledButton.styleFrom(
                 backgroundColor: AppTheme.primary,
                 foregroundColor: Colors.white,
@@ -150,7 +151,7 @@ class DashboardScreen extends StatelessWidget {
               .map(
                 (s) => DropdownMenuItem(
                   value: s,
-                  child: Text(s, style: const TextStyle(fontSize: 14)),
+                  child: AppText(s, style: const TextStyle(fontSize: 14)),
                 ),
               )
               .toList(),
@@ -228,7 +229,7 @@ class DashboardScreen extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          AppText(
                             metric.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -243,7 +244,7 @@ class DashboardScreen extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Expanded(
-                                child: Text(
+                                child: AppText(
                                   metric.value,
                                   overflow: TextOverflow.ellipsis,
                                   style: Theme.of(context)
@@ -269,7 +270,7 @@ class DashboardScreen extends StatelessWidget {
                                           .withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: Text(
+                                child: AppText(
                                   metric.change,
                                   style: TextStyle(
                                     color: isPositive
@@ -284,7 +285,7 @@ class DashboardScreen extends StatelessWidget {
                           ),
                           if (metric.subtext != null) ...[
                             const SizedBox(height: 2),
-                            Text(
+                            AppText(
                               metric.subtext!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -336,7 +337,7 @@ class DashboardScreen extends StatelessWidget {
                       child: const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          AppText(
                             'Agreement Level',
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
@@ -345,7 +346,7 @@ class DashboardScreen extends StatelessWidget {
                             ),
                           ),
                           SizedBox(height: 2),
-                          Text(
+                          AppText(
                             'Consistency between AI screening and doctor review',
                             style: TextStyle(
                               color: AppTheme.subtitleGrey,
@@ -355,7 +356,7 @@ class DashboardScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                    Text(
+                    AppText(
                       '$agreementPct%',
                       style: Theme.of(context).textTheme.headlineSmall
                           ?.copyWith(
@@ -383,7 +384,7 @@ class DashboardScreen extends StatelessWidget {
                   children: const [
                     _StatusKey(color: AppTheme.success, label: 'Agreed 88.8%'),
                     _StatusKey(color: AppTheme.error, label: 'Disagreed 11.2%'),
-                    Text(
+                    AppText(
                       '3,139 validated cases',
                       style: TextStyle(
                         color: AppTheme.subtitleGrey,
@@ -421,7 +422,7 @@ class DashboardScreen extends StatelessWidget {
               spacing: 16,
               runSpacing: 8,
               children: [
-                const Text(
+                const AppText(
                   'Screening volume, last 30 days',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
@@ -476,7 +477,7 @@ class DashboardScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 6),
-        Text(
+        AppText(
           label,
           style: const TextStyle(fontSize: 12, color: AppTheme.subtitleGrey),
         ),
@@ -505,7 +506,7 @@ class DashboardScreen extends StatelessWidget {
               spacing: 16,
               runSpacing: 8,
               children: [
-                const Text(
+                const AppText(
                   'TB Case Distribution',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
@@ -531,7 +532,7 @@ class DashboardScreen extends StatelessWidget {
                           .map(
                             (s) => DropdownMenuItem(
                               value: s,
-                              child: Text(
+                              child: AppText(
                                 s,
                                 style: const TextStyle(fontSize: 14),
                               ),
@@ -571,7 +572,7 @@ class DashboardScreen extends StatelessWidget {
               },
             ),
             const SizedBox(height: 12),
-            const Text(
+            const AppText(
               'Doctor distribution only includes validated cases.',
               style: TextStyle(
                 color: AppTheme.subtitleGrey,
@@ -614,7 +615,7 @@ class DashboardScreen extends StatelessWidget {
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
+                    AppText(
                       '$positivePct%',
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
@@ -622,7 +623,7 @@ class DashboardScreen extends StatelessWidget {
                         color: AppTheme.navy,
                       ),
                     ),
-                    const Text(
+                    const AppText(
                       'Positive',
                       style: TextStyle(
                         fontSize: 11,
@@ -637,7 +638,7 @@ class DashboardScreen extends StatelessWidget {
           final details = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              AppText(
                 title,
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
@@ -646,7 +647,7 @@ class DashboardScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
+              AppText(
                 totalLabel,
                 style: const TextStyle(
                   color: AppTheme.subtitleGrey,
@@ -707,7 +708,7 @@ class DashboardScreen extends StatelessWidget {
               spacing: 16,
               runSpacing: 4,
               children: [
-                const Text(
+                const AppText(
                   'Recent Activity',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
@@ -717,7 +718,7 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 TextButton(
                   onPressed: null,
-                  child: const Text(
+                  child: const AppText(
                     'Full history unavailable',
                     style: TextStyle(color: AppTheme.primary),
                   ),
@@ -739,7 +740,7 @@ class DashboardScreen extends StatelessWidget {
                     CircleAvatar(
                       backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
                       foregroundColor: AppTheme.primaryDark,
-                      child: Text(
+                      child: AppText(
                         activity.name
                             .split(' ')
                             .where((part) => part.isNotEmpty)
@@ -753,7 +754,7 @@ class DashboardScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          AppText(
                             activity.name,
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
@@ -761,7 +762,7 @@ class DashboardScreen extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 2),
-                          Text(
+                          AppText(
                             '${activity.timestamp} · ${activity.institution}',
                             style: const TextStyle(
                               color: AppTheme.subtitleGrey,
@@ -771,40 +772,42 @@ class DashboardScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: activity.result == 'Positive'
-                                ? AppTheme.red.withValues(alpha: 0.1)
-                                : AppTheme.green.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            activity.result,
-                            style: TextStyle(
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
                               color: activity.result == 'Positive'
-                                  ? AppTheme.red
-                                  : AppTheme.green,
-                              fontWeight: FontWeight.w700,
+                                  ? AppTheme.red.withValues(alpha: 0.1)
+                                  : AppTheme.green.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: AppText(
+                              activity.result,
+                              style: TextStyle(
+                                color: activity.result == 'Positive'
+                                    ? AppTheme.red
+                                    : AppTheme.green,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          AppText(
+                            '${activity.confidence}% confidence',
+                            style: const TextStyle(
+                              color: AppTheme.subtitleGrey,
                               fontSize: 12,
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${activity.confidence}% confidence',
-                          style: const TextStyle(
-                            color: AppTheme.subtitleGrey,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -834,7 +837,7 @@ class _StatusKey extends StatelessWidget {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
-        Text(
+        AppText(
           label,
           style: const TextStyle(fontSize: 12, color: AppTheme.subtitleGrey),
         ),

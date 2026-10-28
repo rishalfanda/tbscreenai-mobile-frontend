@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -23,16 +24,19 @@ class SyncCenterScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // === Section: Header ===
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
             children: [
-              Text(
+              AppText(
                 'Sync Center',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
                   color: AppTheme.navy,
                 ),
               ),
-              const Spacer(),
               const _ConnectionChip(),
             ],
           ),
@@ -108,7 +112,7 @@ class _ConnectionChipState extends State<_ConnectionChip> {
         size: 10,
         color: isOnline ? AppTheme.success : AppTheme.textSecondary,
       ),
-      label: Text(
+      label: AppText(
         isOnline ? 'Online' : 'Offline',
         style: TextStyle(
           fontSize: 12,
@@ -248,7 +252,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
     if (!mounted) return;
     final newVersion = _updateInfo?.latestVersion ?? _currentVersion;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Model berhasil diperbarui ke $newVersion')),
+      SnackBar(content: AppText('Model berhasil diperbarui ke $newVersion')),
     );
     setState(() {
       _state = _ModelSyncState.idle;
@@ -298,7 +302,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            AppText(
               'Pembaruan Model AI',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
@@ -338,14 +342,14 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        AppText(
           _currentVersion.isEmpty
               ? 'Belum ada model terpasang'
               : 'Versi Saat Ini: $_currentVersion',
           style: const TextStyle(color: AppTheme.textSecondary),
         ),
         const SizedBox(height: AppTheme.sp4),
-        Text(
+        AppText(
           'Terakhir diperiksa: ${_formatLastChecked()}',
           style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
         ),
@@ -353,11 +357,11 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         ElevatedButton.icon(
           onPressed: _isOnline ? _checkForUpdate : null,
           icon: const Icon(Icons.search_rounded, size: 18),
-          label: const Text('Periksa Pembaruan Model'),
+          label: const AppText('Periksa Pembaruan Model'),
         ),
         if (!_isOnline) ...[
           const SizedBox(height: AppTheme.sp8),
-          const Text(
+          const AppText(
             'Tidak ada koneksi internet',
             style: TextStyle(fontSize: 12, color: AppTheme.error),
           ),
@@ -378,7 +382,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
               child: CircularProgressIndicator(strokeWidth: 2.5),
             ),
             SizedBox(width: AppTheme.sp12),
-            Text('Memeriksa server...'),
+            AppText('Memeriksa server...'),
           ],
         ),
         SizedBox(height: AppTheme.sp8),
@@ -398,7 +402,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
               size: 32,
             ),
             const SizedBox(width: AppTheme.sp12),
-            Text(
+            AppText(
               _currentVersion.isEmpty
                   ? 'Tidak ada pembaruan model tersedia'
                   : 'Model sudah versi terbaru ($_currentVersion)',
@@ -412,10 +416,10 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         const SizedBox(height: AppTheme.sp16),
         TextButton(
           onPressed: _isOnline ? _checkForUpdate : null,
-          child: const Text('Periksa Ulang'),
+          child: const AppText('Periksa Ulang'),
         ),
         if (!_isOnline)
-          const Text(
+          const AppText(
             'Tidak ada koneksi internet',
             style: TextStyle(fontSize: 12, color: AppTheme.error),
           ),
@@ -432,7 +436,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Chip(
-          label: const Text(
+          label: const AppText(
             'Versi Baru Tersedia',
             style: TextStyle(
               fontWeight: FontWeight.w600,
@@ -452,7 +456,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         const SizedBox(height: AppTheme.sp8),
         ExpansionTile(
           tilePadding: EdgeInsets.zero,
-          title: const Text(
+          title: const AppText(
             'Lihat Changelog',
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
           ),
@@ -463,12 +467,12 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      const AppText(
                         '• ',
                         style: TextStyle(color: AppTheme.textSecondary),
                       ),
                       Expanded(
-                        child: Text(c, style: const TextStyle(fontSize: 13)),
+                        child: AppText(c, style: const TextStyle(fontSize: 13)),
                       ),
                     ],
                   ),
@@ -482,21 +486,21 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
             Expanded(
               child: ElevatedButton(
                 onPressed: _isOnline ? _startDownload : null,
-                child: const Text('Perbarui Sekarang'),
+                child: const AppText('Perbarui Sekarang'),
               ),
             ),
             const SizedBox(width: AppTheme.sp12),
             Expanded(
               child: OutlinedButton(
                 onPressed: () => setState(() => _state = _ModelSyncState.idle),
-                child: const Text('Lewati'),
+                child: const AppText('Lewati'),
               ),
             ),
           ],
         ),
         if (!_isOnline) ...[
           const SizedBox(height: AppTheme.sp8),
-          const Text(
+          const AppText(
             'Tidak ada koneksi internet',
             style: TextStyle(fontSize: 12, color: AppTheme.error),
           ),
@@ -515,11 +519,11 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Mengunduh pembaruan model...'),
+        const AppText('Mengunduh pembaruan model...'),
         const SizedBox(height: AppTheme.sp12),
         LinearProgressIndicator(value: _progress),
         const SizedBox(height: AppTheme.sp8),
-        Text(
+        AppText(
           '$percent% · $downloaded MB / $fileSizeLabel',
           style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
         ),
@@ -539,11 +543,11 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
               child: CircularProgressIndicator(strokeWidth: 2.5),
             ),
             SizedBox(width: AppTheme.sp12),
-            Expanded(child: Text('Memverifikasi dan memasang model...')),
+            Expanded(child: AppText('Memverifikasi dan memasang model...')),
           ],
         ),
         SizedBox(height: AppTheme.sp8),
-        Text(
+        AppText(
           'Model sedang diverifikasi keasliannya dan diuji sebelum diaktifkan.',
           style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
         ),
@@ -560,7 +564,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
             const Icon(Icons.error_rounded, color: AppTheme.error, size: 28),
             const SizedBox(width: AppTheme.sp8),
             Expanded(
-              child: Text(
+              child: AppText(
                 _errorMessage ?? 'Gagal menghubungi server',
                 style: const TextStyle(
                   color: AppTheme.error,
@@ -576,7 +580,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
             _state = _ModelSyncState.idle;
             _errorMessage = null;
           }),
-          child: const Text('Coba Lagi'),
+          child: const AppText('Coba Lagi'),
         ),
       ],
     );
@@ -598,7 +602,7 @@ class _InfoRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 130,
-            child: Text(
+            child: AppText(
               label,
               style: const TextStyle(
                 fontSize: 13,
@@ -607,7 +611,7 @@ class _InfoRow extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Text(
+            child: AppText(
               value,
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
@@ -671,12 +675,12 @@ class _DataBackupCardState extends State<_DataBackupCard> {
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
             return AlertDialog(
-              title: const Text('Konfirmasi Pengiriman Data'),
+              title: const AppText('Konfirmasi Pengiriman Data'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  const AppText(
                     'Data pasien akan dikirimkan ke server menggunakan enkripsi end-to-end. '
                     'Pastikan Anda memiliki wewenang untuk mengirim data medis ini.',
                   ),
@@ -686,7 +690,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
                     value: consentChecked,
                     onChanged: (v) =>
                         setDialogState(() => consentChecked = v ?? false),
-                    title: const Text(
+                    title: const AppText(
                       'Saya menyetujui pengiriman data medis ini ke server',
                       style: TextStyle(fontSize: 13),
                     ),
@@ -697,13 +701,13 @@ class _DataBackupCardState extends State<_DataBackupCard> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Batal'),
+                  child: const AppText('Batal'),
                 ),
                 ElevatedButton(
                   onPressed: consentChecked
                       ? () => Navigator.pop(ctx, true)
                       : null,
-                  child: const Text('Lanjutkan'),
+                  child: const AppText('Lanjutkan'),
                 ),
               ],
             );
@@ -767,7 +771,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            AppText(
               'Cadangan Data Medis',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
@@ -810,7 +814,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
             size: 14,
             color: AppTheme.error,
           ),
-          label: const Text(
+          label: const AppText(
             'Data Medis Sensitif',
             style: TextStyle(
               fontSize: 12,
@@ -822,12 +826,12 @@ class _DataBackupCardState extends State<_DataBackupCard> {
           side: BorderSide(color: AppTheme.error.withValues(alpha: 0.4)),
         ),
         const SizedBox(height: AppTheme.sp12),
-        Text(
+        AppText(
           '${summary.totalPatients} Pasien · ${summary.totalDiagnoses} Screening · ~${summary.totalSizeMB} MB',
           style: const TextStyle(color: AppTheme.textSecondary),
         ),
         const SizedBox(height: AppTheme.sp4),
-        Text(
+        AppText(
           _formatDate(_lastSyncDate),
           style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
         ),
@@ -835,7 +839,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
         ElevatedButton.icon(
           onPressed: _showConsentDialog,
           icon: const Icon(Icons.cloud_upload_rounded, size: 18),
-          label: const Text('Pilih Data & Unggah'),
+          label: const AppText('Pilih Data & Unggah'),
         ),
       ],
     );
@@ -847,7 +851,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        AppText(
           'Pilih Pasien untuk Dicadangkan',
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w700,
@@ -861,11 +865,11 @@ class _DataBackupCardState extends State<_DataBackupCard> {
               onPressed: () => setState(
                 () => _selectedIds.addAll(patients.map((p) => p.id)),
               ),
-              child: const Text('Pilih Semua'),
+              child: const AppText('Pilih Semua'),
             ),
             TextButton(
               onPressed: () => setState(() => _selectedIds.clear()),
-              child: const Text('Batal Pilih'),
+              child: const AppText('Batal Pilih'),
             ),
           ],
         ),
@@ -887,7 +891,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
               }),
               secondary: CircleAvatar(
                 backgroundColor: AppTheme.primary.withValues(alpha: 0.15),
-                child: Text(
+                child: AppText(
                   initials,
                   style: const TextStyle(
                     color: AppTheme.primaryDark,
@@ -896,14 +900,14 @@ class _DataBackupCardState extends State<_DataBackupCard> {
                   ),
                 ),
               ),
-              title: Text(
+              title: AppText(
                 p.name,
                 style: const TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
                 ),
               ),
-              subtitle: Text(
+              subtitle: AppText(
                 'Kunjungan terakhir: ${p.lastVisit}',
                 style: const TextStyle(fontSize: 12),
               ),
@@ -914,7 +918,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
         const SizedBox(height: AppTheme.sp16),
         Row(
           children: [
-            Text(
+            AppText(
               '${_selectedIds.length} pasien dipilih',
               style: const TextStyle(
                 color: AppTheme.textSecondary,
@@ -924,7 +928,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
             const Spacer(),
             ElevatedButton(
               onPressed: _selectedIds.isEmpty ? null : _startUpload,
-              child: const Text('Mulai Unggah'),
+              child: const AppText('Mulai Unggah'),
             ),
           ],
         ),
@@ -937,7 +941,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        AppText(
           'Mengunggah data pasien...',
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
@@ -946,7 +950,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
           value: total > 0 ? _uploadedCount / total : null,
         ),
         const SizedBox(height: AppTheme.sp8),
-        Text(
+        AppText(
           'Mengunggah $_uploadedCount/$total pasien...',
           style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
         ),
@@ -974,7 +978,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
               size: 28,
             ),
             const SizedBox(width: AppTheme.sp8),
-            Text(
+            AppText(
               hasProblems
                   ? 'Sinkronisasi selesai sebagian'
                   : 'Sinkronisasi selesai',
@@ -987,7 +991,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
           ],
         ),
         const SizedBox(height: AppTheme.sp8),
-        Text(
+        AppText(
           '$succeeded pasien berhasil diunggah',
           style: const TextStyle(color: AppTheme.textSecondary),
         ),
@@ -1014,7 +1018,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
                 ),
                 const SizedBox(width: AppTheme.sp8),
                 Expanded(
-                  child: Text(
+                  child: AppText(
                     '${report.conflicts} data konflik — versi di server lebih baru. '
                     'Data TIDAK ditimpa; perlu ditinjau manual oleh dokter.',
                     style: const TextStyle(fontSize: 13, color: AppTheme.navy),
@@ -1026,7 +1030,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
         ],
         if (report != null && report.failed > 0) ...[
           const SizedBox(height: AppTheme.sp8),
-          Text(
+          AppText(
             '${report.failed} gagal terkirim — tetap tersimpan di antrean, '
             'akan dicoba lagi saat sinkronisasi berikutnya.',
             style: const TextStyle(fontSize: 13, color: AppTheme.error),
@@ -1040,7 +1044,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
             _uploadedCount = 0;
             _report = null;
           }),
-          child: const Text('Selesai'),
+          child: const AppText('Selesai'),
         ),
       ],
     );
@@ -1054,7 +1058,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
           children: [
             Icon(Icons.error_rounded, color: AppTheme.error, size: 28),
             SizedBox(width: AppTheme.sp8),
-            Text(
+            AppText(
               'Tidak ada koneksi internet. Hubungkan perangkat dan coba lagi.',
               style: TextStyle(color: AppTheme.error),
             ),
@@ -1063,7 +1067,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
         const SizedBox(height: AppTheme.sp12),
         TextButton(
           onPressed: () => setState(() => _state = _DataSyncState.idle),
-          child: const Text('Coba Lagi'),
+          child: const AppText('Coba Lagi'),
         ),
       ],
     );

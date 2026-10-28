@@ -1,10 +1,9 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_palette.dart';
 
 class NoModelBanner extends StatelessWidget {
-  const NoModelBanner({super.key, required this.onGoToSync});
-
-  final VoidCallback onGoToSync;
+  const NoModelBanner({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -25,26 +24,16 @@ class NoModelBanner extends StatelessWidget {
               const Icon(Icons.info_outline_rounded, color: diagnosisAccent),
               const SizedBox(width: 10),
               const Expanded(
-                child: Text(
-                  'Model AI belum terpasang di perangkat ini. Unduh model dari '
-                  'Pusat Sinkronisasi sebelum menjalankan analisis.',
+                child: AppText(
+                  'Model AI belum terpasang di perangkat ini. Hubungi teknisi '
+                  'instansi untuk memasang model sebelum menjalankan analisis.',
                   style: TextStyle(color: diagnosisText, fontSize: 13),
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              onPressed: onGoToSync,
-              style: TextButton.styleFrom(foregroundColor: diagnosisAccent),
-              child: const Text('Buka Pusat Sinkronisasi'),
-            ),
           ),
         ],
       ),
     );
   }
 }
-

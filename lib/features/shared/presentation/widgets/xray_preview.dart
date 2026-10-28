@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 
 import 'package:myapp/core/theme/app_theme.dart';
@@ -40,10 +41,13 @@ class XrayPreview extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.image_outlined,
-                        size: 48, color: Colors.white24),
+                    const Icon(
+                      Icons.image_outlined,
+                      size: 48,
+                      color: Colors.white24,
+                    ),
                     const SizedBox(height: 12),
-                    Text(
+                    AppText(
                       label,
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Colors.white38),
