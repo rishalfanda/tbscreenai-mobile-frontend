@@ -93,12 +93,12 @@ file dist/bundle/myapp
 Copy the `dist/bundle` directory to your Raspberry Pi 5 using `scp` or a USB flash drive:
 
 ```sh
-scp -r dist/bundle pi@<RASPBERRY_PI_IP>:~/tbscreen-bundle
+scp -r dist/bundle tbscreen@tbscreen.local:~/tbscreen-bundle
 ```
 
 Copy the helper scripts as well:
 ```sh
-scp tools/pi-build/setup_pi.sh tools/pi-build/run_pi.sh pi@<RASPBERRY_PI_IP>:~/
+scp tools/pi-build/setup_pi.sh tools/pi-build/run_pi.sh tbscreen@tbscreen.local:~/
 ```
 
 ---

@@ -103,9 +103,16 @@ install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
 foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})
   install(FILES "${bundled_library}"
     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-    FOLLOW_SYMLINK_CHAIN
     COMPONENT Runtime)
 endforeach(bundled_library)
+
+# Ensure soname symlink exists for libonnxruntime if bundled
+install(CODE "
+  set(BUNDLE_LIB_DIR \"\${CMAKE_INSTALL_PREFIX}/lib\")
+  if(EXISTS \"\${BUNDLE_LIB_DIR}/libonnxruntime.so\" AND NOT EXISTS \"\${BUNDLE_LIB_DIR}/libonnxruntime.so.1\")
+    execute_process(COMMAND \${CMAKE_COMMAND} -E create_symlink libonnxruntime.so \"\${BUNDLE_LIB_DIR}/libonnxruntime.so.1\")
+  endif()
+" COMPONENT Runtime)
 
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/linux/")

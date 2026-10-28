@@ -31,6 +31,7 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+/dist/
 
 # Golden test failure diff artifacts (regenerated locally on a failed run)
 /test/failures/
