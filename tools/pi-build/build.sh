@@ -36,8 +36,14 @@ docker run --rm --platform linux/arm64 \
       --flavor "$FLAVOR" \
       --dart-define=APP_ENV="$APP_ENV" \
       --dart-define=API_BASE_URL="$API_BASE_URL"
+    
+    BUNDLE_SRC="build/linux/arm64/$FLAVOR/release/bundle"
+    if [ ! -d "$BUNDLE_SRC" ]; then
+      BUNDLE_SRC="build/linux/arm64/release/bundle"
+    fi
+
     rm -rf /out/bundle
-    cp -r build/linux/arm64/release/bundle /out/bundle
+    cp -r "$BUNDLE_SRC" /out/bundle
     if [ -n "${HOST_UID:-}" ]; then
       chown -R "$HOST_UID:$HOST_GID" /out/bundle || true
     fi
