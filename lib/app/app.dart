@@ -26,6 +26,7 @@ import 'package:myapp/data/secure/secure_token_storage.dart';
 import 'package:myapp/data/unavailable_repositories.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/repositories/repositories.dart';
+import 'package:myapp/features/virtual_keyboard/presentation/virtual_keyboard_host.dart';
 import 'package:myapp/state/auth_provider.dart';
 import 'package:myapp/state/dashboard_provider.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
@@ -242,7 +243,7 @@ class _RouterViewState extends State<_RouterView> {
       builder: (context, child) => Banner(
         message: AppConfig.isDemo ? 'DEMO - SYNTHETIC' : 'STAGING',
         location: BannerLocation.topEnd,
-        child: child!,
+        child: VirtualKeyboardHost(child: child!),
       ),
       scrollBehavior: AppScrollBehavior(),
     );
