@@ -1,6 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show DeviceOrientation;
 import 'package:go_router/go_router.dart';
@@ -32,6 +31,12 @@ class _CameraScreenState extends State<CameraScreen>
   bool _isInitializing = false;
   DeviceOrientation _lastKnownLandscape = DeviceOrientation.landscapeLeft;
 
+  bool get _isDesktop =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.linux ||
+          defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.macOS);
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +46,8 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_isDesktop) return;
+
     final cameraController = _controller;
 
     // App state changed before controller finished initializing (e.g. when the
@@ -88,21 +95,30 @@ class _CameraScreenState extends State<CameraScreen>
         await controller.dispose();
         return;
       }
-      await controller.setFlashMode(FlashMode.off);
+      try {
+        await controller.setFlashMode(FlashMode.off);
+      } catch (_) {
+        // Flash mode might not be supported on desktop webcams without flash hardware.
+      }
 
-      if (controller.value.deviceOrientation == DeviceOrientation.landscapeLeft ||
-          controller.value.deviceOrientation == DeviceOrientation.landscapeRight) {
+      if (!_isDesktop &&
+          (controller.value.deviceOrientation == DeviceOrientation.landscapeLeft ||
+              controller.value.deviceOrientation == DeviceOrientation.landscapeRight)) {
         _lastKnownLandscape = controller.value.deviceOrientation;
       }
-      try {
-        await controller.lockCaptureOrientation(_lastKnownLandscape);
-      } catch (_) {
-        // Platform might not support orientation locking.
+      if (!_isDesktop) {
+        try {
+          await controller.lockCaptureOrientation(_lastKnownLandscape);
+        } catch (_) {
+          // Platform might not support orientation locking.
+        }
       }
       if (!mounted || _controller != controller) {
         return;
       }
-      controller.addListener(_onCameraValueChanged);
+      if (!_isDesktop) {
+        controller.addListener(_onCameraValueChanged);
+      }
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -217,6 +233,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void _onCameraValueChanged() {
+    if (_isDesktop) return;
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
     final orientation = controller.value.deviceOrientation;
@@ -354,6 +371,7 @@ class _CameraScreenState extends State<CameraScreen>
             value.deviceOrientation,
             lockedOrientation: value.lockedCaptureOrientation,
           ),
+          isDesktop: _isDesktop,
         );
         return ClipRect(
           child: FittedBox(
@@ -399,21 +417,28 @@ class _CameraScreenState extends State<CameraScreen>
 
   int _previewQuarterTurns(
     CameraDescription description,
-    DeviceOrientation orientation,
-  ) {
-    return previewQuarterTurns(description, orientation);
+    DeviceOrientation orientation, {
+    bool isDesktop = false,
+  }) {
+    return previewQuarterTurns(
+      description,
+      orientation,
+      isDesktop: isDesktop,
+    );
   }
 
   Widget _captureControls() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _roundButton(
-          tooltip: _flashOn ? 'Turn flash off' : 'Turn flash on',
-          icon: _flashOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
-          onPressed: _toggleFlash,
-        ),
-        const SizedBox(width: 36),
+        if (!_isDesktop) ...[
+          _roundButton(
+            tooltip: _flashOn ? 'Turn flash off' : 'Turn flash on',
+            icon: _flashOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
+            onPressed: _toggleFlash,
+          ),
+          const SizedBox(width: 36),
+        ],
         Semantics(
           button: true,
           label: 'Capture X-ray image',
@@ -437,12 +462,14 @@ class _CameraScreenState extends State<CameraScreen>
             ),
           ),
         ),
-        const SizedBox(width: 36),
-        _roundButton(
-          tooltip: 'Switch camera',
-          icon: Icons.cameraswitch_rounded,
-          onPressed: _cameras.length > 1 ? _switchCamera : null,
-        ),
+        if (!_isDesktop || _cameras.length > 1) ...[
+          const SizedBox(width: 36),
+          _roundButton(
+            tooltip: 'Switch camera',
+            icon: Icons.cameraswitch_rounded,
+            onPressed: _cameras.length > 1 ? _switchCamera : null,
+          ),
+        ],
       ],
     );
   }
@@ -565,10 +592,15 @@ DeviceOrientation effectiveCameraOrientation(
 /// raw camera buffer needs to appear upright for the device's current
 /// physical orientation, independent of the app's own (locked) UI
 /// orientation.
+///
+/// On desktop (Linux/Windows/macOS), webcams are mounted upright in landscape
+/// without physical rotation sensors, so compensation should always be 0 quarter-turns.
 int previewQuarterTurns(
   CameraDescription description,
-  DeviceOrientation orientation,
-) {
+  DeviceOrientation orientation, {
+  bool isDesktop = false,
+}) {
+  if (isDesktop) return 0;
   const degreesByOrientation = {
     DeviceOrientation.portraitUp: 0,
     DeviceOrientation.landscapeLeft: 90,
@@ -581,4 +613,3 @@ int previewQuarterTurns(
       : (description.sensorOrientation - deviceDegrees + 360) % 360;
   return compensation ~/ 90;
 }
-

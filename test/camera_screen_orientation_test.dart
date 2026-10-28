@@ -145,5 +145,44 @@ void main() {
       );
     });
   });
-}
 
+  group('previewQuarterTurns on desktop', () {
+    const desktopWebcam0 = CameraDescription(
+      name: '0',
+      lensDirection: CameraLensDirection.external,
+      sensorOrientation: 0,
+    );
+
+    const desktopWebcam90 = CameraDescription(
+      name: '1',
+      lensDirection: CameraLensDirection.back,
+      sensorOrientation: 90,
+    );
+
+    const desktopWebcam270 = CameraDescription(
+      name: '2',
+      lensDirection: CameraLensDirection.front,
+      sensorOrientation: 270,
+    );
+
+    test(
+      'always returns 0 quarter turns regardless of sensor and device orientation when isDesktop is true',
+      () {
+        for (final orientation in DeviceOrientation.values) {
+          expect(
+            previewQuarterTurns(desktopWebcam0, orientation, isDesktop: true),
+            0,
+          );
+          expect(
+            previewQuarterTurns(desktopWebcam90, orientation, isDesktop: true),
+            0,
+          );
+          expect(
+            previewQuarterTurns(desktopWebcam270, orientation, isDesktop: true),
+            0,
+          );
+        }
+      },
+    );
+  });
+}
