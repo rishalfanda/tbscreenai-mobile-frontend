@@ -34,7 +34,6 @@ docker run --rm --platform linux/arm64 \
     flutter pub get
     flutter build linux --release \
       --flavor "$FLAVOR" \
-      --dart-define=FLUTTER_APP_FLAVOR="$FLAVOR" \
       --dart-define=APP_ENV="$APP_ENV" \
       --dart-define=API_BASE_URL="$API_BASE_URL"
     rm -rf /out/bundle
@@ -45,4 +44,3 @@ docker run --rm --platform linux/arm64 \
   '
 
 echo "Build complete! Output bundle located at: dist/bundle"
-
