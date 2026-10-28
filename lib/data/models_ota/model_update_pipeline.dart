@@ -10,11 +10,7 @@ import 'package:myapp/data/models_ota/bundle_download.dart';
 import 'package:myapp/data/models_ota/bundle_verifier.dart';
 import 'package:myapp/data/models_ota/model_store.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
-import 'package:myapp/domain/models/available_model_bundle.dart';
-import 'package:myapp/domain/models/installed_bundle_info.dart';
-import 'package:myapp/domain/models/model_version_info.dart';
-
-enum ModelInstallPhase { downloading, verifying, activating, smokeTesting }
+import 'package:myapp/domain/models/models.dart';
 
 /// Which stage of the install pipeline failed, for the UI to pick the right
 /// Bahasa Indonesia error copy.
@@ -40,12 +36,13 @@ class ModelUpdatePipeline {
   final OnnxInferenceEngine _engine;
   final ModelStore _store = ModelStore();
 
-  /// Downloads, verifies and activates a specific model bundle.
-  Stream<double> installBundle({
+  /// Downloads, verifies, and stages a model bundle with speed and cancellation support.
+  Stream<ModelDownloadProgress> installBundleWithProgress({
     required String bundleKey,
     required String version,
     required String downloadUrl,
     String? sha256,
+    CancelToken? cancelToken,
     Map<String, dynamic>? metadata,
     required Uint8List smokeTestSampleBytes,
   }) async* {
@@ -62,34 +59,65 @@ class ModelUpdatePipeline {
       '${tempDir.path}${Platform.pathSeparator}model_$incomingName.zip',
     );
 
+    var lastReceived = 0;
+    var lastTotal = 0;
+
     try {
-      final progressController = StreamController<double>();
+      final progressController = StreamController<ModelDownloadProgress>();
       unawaited(
         downloadBundleZip(
               dio: _dio,
               url: downloadUrl,
               dest: zipFile,
               sha256Hex: sha256,
-              onProgress: (received, total) {
+              cancelToken: cancelToken,
+              onProgress: (received, total, speed) {
+                lastReceived = received;
+                lastTotal = total;
                 if (!progressController.isClosed) {
-                  progressController.add(total > 0 ? received / total : 0.0);
+                  final fraction = total > 0 ? received / total : 0.0;
+                  progressController.add(
+                    ModelDownloadProgress(
+                      fraction: fraction.clamp(0.0, 1.0),
+                      receivedBytes: received,
+                      totalBytes: total,
+                      bytesPerSecond: speed,
+                      speedText: ModelDownloadProgress.formatSpeed(speed),
+                      phase: ModelInstallPhase.downloading,
+                    ),
+                  );
                 }
               },
             )
             .then((_) => progressController.close())
             .catchError((Object e) {
-              progressController.addError(e);
-              progressController.close();
+              if (!progressController.isClosed) {
+                progressController.addError(e);
+                progressController.close();
+              }
             }),
       );
 
       await for (final progress in progressController.stream) {
-        yield progress.clamp(0.0, 1.0);
+        yield progress;
       }
     } catch (e) {
       await _cleanupTemp(zipFile);
+      if (e is ModelInstallCancelledException) rethrow;
       throw ModelInstallException(ModelInstallPhase.downloading, '$e');
     }
+
+    if (cancelToken?.isCancelled ?? false) {
+      await _cleanupTemp(zipFile);
+      throw const ModelInstallCancelledException();
+    }
+
+    yield ModelDownloadProgress(
+      fraction: 1.0,
+      receivedBytes: lastReceived,
+      totalBytes: lastTotal,
+      phase: ModelInstallPhase.verifying,
+    );
 
     late final Directory incomingDir;
     try {
@@ -131,6 +159,36 @@ class ModelUpdatePipeline {
       );
       throw ModelInstallException(ModelInstallPhase.verifying, '$e');
     }
+
+    yield ModelDownloadProgress(
+      fraction: 1.0,
+      receivedBytes: lastReceived,
+      totalBytes: lastTotal,
+      phase: ModelInstallPhase.completed,
+    );
+  }
+
+  /// Downloads, verifies and activates a specific model bundle (returns 0.0..1.0 progress).
+  Stream<double> installBundle({
+    required String bundleKey,
+    required String version,
+    required String downloadUrl,
+    String? sha256,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? metadata,
+    required Uint8List smokeTestSampleBytes,
+  }) async* {
+    await for (final p in installBundleWithProgress(
+      bundleKey: bundleKey,
+      version: version,
+      downloadUrl: downloadUrl,
+      sha256: sha256,
+      cancelToken: cancelToken,
+      metadata: metadata,
+      smokeTestSampleBytes: smokeTestSampleBytes,
+    )) {
+      yield p.fraction;
+    }
   }
 
   /// Downloads, verifies and activates [info]'s bundle. Emits download
@@ -140,6 +198,7 @@ class ModelUpdatePipeline {
   Stream<double> install({
     required ModelVersionInfo info,
     required Uint8List smokeTestSampleBytes,
+    CancelToken? cancelToken,
   }) async* {
     final url = info.downloadUrl;
     if (url == null || url.isEmpty) {
@@ -153,6 +212,7 @@ class ModelUpdatePipeline {
       version: info.latestVersion,
       downloadUrl: url,
       sha256: info.sha256,
+      cancelToken: cancelToken,
       smokeTestSampleBytes: smokeTestSampleBytes,
     );
     await activateExisting(info.latestVersion);

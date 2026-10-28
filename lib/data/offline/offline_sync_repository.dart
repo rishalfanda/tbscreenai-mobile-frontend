@@ -5,10 +5,7 @@ import 'package:myapp/data/local/mappers.dart';
 import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/models_ota/model_update_service.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
-import 'package:myapp/domain/models/available_model_bundle.dart';
-import 'package:myapp/domain/models/model_version_info.dart';
-import 'package:myapp/domain/models/patient.dart';
-import 'package:myapp/domain/models/sync_summary.dart';
+import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 
 /// Sync Center backed by the local database and the real sync endpoints.
@@ -40,6 +37,15 @@ class OfflineSyncRepository implements SyncRepository {
 
   @override
   Stream<double> downloadModel() => _modelUpdate.downloadModel();
+
+  @override
+  Stream<ModelDownloadProgress> downloadModelWithProgress({
+    AvailableModelBundle? model,
+  }) =>
+      _modelUpdate.downloadModelWithProgress(model: model);
+
+  @override
+  void cancelModelDownload() => _modelUpdate.cancelModelDownload();
 
   @override
   Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo() =>
@@ -74,8 +80,9 @@ class OfflineSyncRepository implements SyncRepository {
       _modelUpdate.verifyModelBundle(bundleKey);
 
   @override
-  Future<void> deleteModelBundle(String bundleKey) =>
-      _modelUpdate.deleteModelBundle(bundleKey);
+  Future<void> deleteModelBundle(String bundleKey) async {
+    await _modelUpdate.deleteModelBundle(bundleKey);
+  }
 
   @override
   Future<SyncSummary> getSyncSummary() async {

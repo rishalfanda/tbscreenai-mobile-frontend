@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'package:myapp/core/config/app_config.dart';
@@ -8,8 +9,7 @@ import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/models_ota/model_store.dart';
 import 'package:myapp/data/models_ota/model_update_pipeline.dart';
-import 'package:myapp/domain/models/available_model_bundle.dart';
-import 'package:myapp/domain/models/model_version_info.dart';
+import 'package:myapp/domain/models/models.dart';
 
 const _channel = 'stable';
 const _appVersion = '1.0.0';
@@ -27,7 +27,7 @@ Map<String, dynamic>? _asJsonMap(dynamic raw) {
 
 /// The real (non-mock) AI-model update mechanism:
 /// - GET /models: discovers all available model bundles across channels.
-/// - GET /models/check: legacy check for latest stable update.
+/// - GET /models/check: check for latest stable update.
 /// - ModelUpdatePipeline: signed download -> verify -> activate -> smoke-test.
 class ModelUpdateService {
   ModelUpdateService({
@@ -48,6 +48,8 @@ class ModelUpdateService {
   final ModelUpdatePipeline _modelPipeline;
   final ModelStore _store;
 
+  CancelToken? _currentDownloadCancelToken;
+
   /// `null` means no model bundle is installed on this device yet.
   Future<String?> getInstalledModelVersion() =>
       _settings.readInstalledModelVersion();
@@ -55,6 +57,12 @@ class ModelUpdateService {
   /// Returns list of all installed bundle keys on disk.
   Future<List<String>> getInstalledModelKeys() =>
       _store.listInstalledBundleKeys();
+
+  /// Cancels any currently active model download.
+  void cancelModelDownload() {
+    _currentDownloadCancelToken?.cancel('Dibatalkan oleh pengguna');
+    _currentDownloadCancelToken = null;
+  }
 
   /// Fetches available model bundles across channels.
   /// When [localOnly] is true, returns only local models on device without network queries.
@@ -152,7 +160,6 @@ class ModelUpdateService {
           ),
         );
       } else {
-        // Fallback if no meta.json exists: parse key
         final parts = key.split('_');
         final channel = parts.length > 1 ? parts.first : 'stable';
         final version = parts.length > 1 ? parts.sublist(1).join('_') : key;
@@ -171,37 +178,95 @@ class ModelUpdateService {
     return result;
   }
 
-  /// Downloads, verifies, and stages the specified model bundle.
-  Stream<double> downloadModelBundle(AvailableModelBundle model) async* {
+  /// Downloads, verifies, and stages the specified model bundle with real-time speed.
+  Stream<ModelDownloadProgress> downloadModelWithProgress({
+    AvailableModelBundle? model,
+  }) async* {
     final session = _db.sessionGeneration;
-    final url = model.bundleZip ?? AppConfig.modelBundleUrl;
+    _currentDownloadCancelToken = CancelToken();
 
-    if (url == null || url.isEmpty) {
-      // Fallback simulation when no download URL is provided (e.g. dev/demo)
-      var progress = 0.0;
-      while (progress < 1.0) {
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-        if (session != _db.sessionGeneration) return;
-        progress += 0.05;
-        yield progress.clamp(0.0, 1.0);
+    try {
+      AvailableModelBundle? target = model;
+      if (target == null) {
+        final info = await checkForUpdate();
+        target = AvailableModelBundle(
+          channel: _channel,
+          version: info.latestVersion,
+          isLatest: true,
+          bundleZip: info.downloadUrl,
+          bundleZipSha256: info.sha256,
+          changelog: info.changelog,
+        );
       }
-      await _store.setBundleStatus(model.id, ModelBundleStatus.verified);
-      return;
-    }
 
-    final sample = await rootBundle.load('assets/sample/xray.png');
-    await for (final progress in _modelPipeline.installBundle(
-      bundleKey: model.id,
-      version: model.version,
-      downloadUrl: url,
-      sha256: model.bundleZipSha256,
-      metadata: model.toJson(),
-      smokeTestSampleBytes: sample.buffer.asUint8List(),
-    )) {
-      if (session != _db.sessionGeneration) return;
-      yield progress;
+      final url = target.bundleZip ?? AppConfig.modelBundleUrl;
+      final bundleKey = target.id;
+      final version = target.version;
+
+      if (url == null || url.isEmpty) {
+        // Fallback simulation when no download URL is provided (e.g. dev/demo)
+        var progress = 0.0;
+        while (progress < 1.0) {
+          if (_currentDownloadCancelToken?.isCancelled ?? false) {
+            throw const ModelInstallCancelledException();
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+          if (_currentDownloadCancelToken?.isCancelled ?? false) {
+            throw const ModelInstallCancelledException();
+          }
+          if (session != _db.sessionGeneration) return;
+          progress = (progress + 0.1).clamp(0.0, 1.0);
+          yield ModelDownloadProgress(
+            fraction: progress,
+            receivedBytes: (progress * 528571936).round(),
+            totalBytes: 528571936,
+            bytesPerSecond: 2.4 * 1024 * 1024,
+            speedText: '2.4 MB/s',
+            phase: progress < 1.0
+                ? ModelInstallPhase.downloading
+                : ModelInstallPhase.verifying,
+          );
+        }
+        await _store.setBundleStatus(bundleKey, ModelBundleStatus.verified);
+        if (session == _db.sessionGeneration) {
+          await _db.writeForSession(
+            session,
+            () => _settings.saveInstalledModelVersion(bundleKey),
+          );
+        }
+        yield const ModelDownloadProgress(
+          fraction: 1.0,
+          receivedBytes: 528571936,
+          totalBytes: 528571936,
+          phase: ModelInstallPhase.completed,
+        );
+        return;
+      }
+
+      final sample = await rootBundle.load('assets/sample/xray.png');
+      await for (final progress in _modelPipeline.installBundleWithProgress(
+        bundleKey: bundleKey,
+        version: version,
+        downloadUrl: url,
+        sha256: target.bundleZipSha256,
+        cancelToken: _currentDownloadCancelToken,
+        metadata: target.toJson(),
+        smokeTestSampleBytes: sample.buffer.asUint8List(),
+      )) {
+        if (session != _db.sessionGeneration) return;
+        yield progress;
+      }
+
+      // Automatically activate after successful installation
+      await activateModelBundle(bundleKey);
+    } finally {
+      _currentDownloadCancelToken = null;
     }
   }
+
+  /// Downloads, verifies, and stages the specified model bundle.
+  Stream<double> downloadModelBundle(AvailableModelBundle model) =>
+      downloadModelWithProgress(model: model).map((p) => p.fraction);
 
   /// Verifies an already downloaded bundle on disk.
   Future<bool> verifyModelBundle(String bundleKey) =>
@@ -236,7 +301,7 @@ class ModelUpdateService {
     );
   }
 
-  /// Legacy single-version check for updates.
+  /// Check for updates from API.
   Future<ModelVersionInfo> checkForUpdate() async {
     final installed = await _settings.readInstalledModelVersion();
     final response = await _client.dio.get<dynamic>(
@@ -259,16 +324,19 @@ class ModelUpdateService {
       );
     } else {
       final sizeBytes = (data['size_bytes'] as num?)?.toInt();
+      final latest = (data['latest_version'] as String?) ??
+          (data['latest'] as String?) ??
+          (installed ?? '');
       info = ModelVersionInfo(
         currentVersion: installed ?? '',
-        latestVersion: (data['latest'] as String?) ?? (installed ?? ''),
+        latestVersion: latest,
         fileSize: sizeBytes != null
             ? '${(sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB'
             : '-',
-        releaseDate: '-',
+        releaseDate: (data['released_utc'] as String?) ?? '-',
         changelog: List<String>.from(data['changelog'] as List? ?? const []),
-        downloadUrl: data['bundle_zip'] as String?,
-        sha256: data['bundle_zip_sha256'] as String?,
+        downloadUrl: (data['bundle_zip'] as String?) ?? (data['download_url'] as String?),
+        sha256: (data['bundle_zip_sha256'] as String?) ?? (data['sha256'] as String?),
       );
     }
     await _cacheCheck(info);
@@ -313,46 +381,6 @@ class ModelUpdateService {
     }
   }
 
-  Stream<double> downloadModel() async* {
-    final session = _db.sessionGeneration;
-    final info = await checkForUpdate();
-    final url = info.downloadUrl ?? AppConfig.modelBundleUrl;
-
-    if (url == null) {
-      var progress = 0.0;
-      while (progress < 1.0) {
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-        if (session != _db.sessionGeneration) return;
-        progress += 0.05;
-        yield progress.clamp(0.0, 1.0);
-      }
-      await _db.writeForSession(
-        session,
-        () => _settings.saveInstalledModelVersion(info.latestVersion),
-      );
-      return;
-    }
-
-    final sample = await rootBundle.load('assets/sample/xray.png');
-    await for (final progress in _modelPipeline.install(
-      info: ModelVersionInfo(
-        currentVersion: info.currentVersion,
-        latestVersion: info.latestVersion,
-        fileSize: info.fileSize,
-        releaseDate: info.releaseDate,
-        changelog: info.changelog,
-        downloadUrl: url,
-        sha256: info.sha256,
-      ),
-      smokeTestSampleBytes: sample.buffer.asUint8List(),
-    )) {
-      if (session != _db.sessionGeneration) return;
-      yield progress;
-    }
-    if (session != _db.sessionGeneration) return;
-    await _db.writeForSession(
-      session,
-      () => _settings.saveInstalledModelVersion(info.latestVersion),
-    );
-  }
+  Stream<double> downloadModel() =>
+      downloadModelWithProgress().map((p) => p.fraction);
 }

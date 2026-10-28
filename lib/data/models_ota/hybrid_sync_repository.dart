@@ -1,8 +1,5 @@
 import 'package:myapp/data/models_ota/model_update_service.dart';
-import 'package:myapp/domain/models/available_model_bundle.dart';
-import 'package:myapp/domain/models/model_version_info.dart';
-import 'package:myapp/domain/models/patient.dart';
-import 'package:myapp/domain/models/sync_summary.dart';
+import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 
 /// Sources model-update calls from the real [ModelUpdateService] while
@@ -26,6 +23,15 @@ class HybridSyncRepository implements SyncRepository {
 
   @override
   Stream<double> downloadModel() => _modelUpdate.downloadModel();
+
+  @override
+  Stream<ModelDownloadProgress> downloadModelWithProgress({
+    AvailableModelBundle? model,
+  }) =>
+      _modelUpdate.downloadModelWithProgress(model: model);
+
+  @override
+  void cancelModelDownload() => _modelUpdate.cancelModelDownload();
 
   @override
   Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo() =>

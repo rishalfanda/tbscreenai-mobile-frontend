@@ -1,9 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:myapp/data/mock/mock_seed_data.dart';
-import 'package:myapp/domain/models/available_model_bundle.dart';
-import 'package:myapp/domain/models/model_version_info.dart';
-import 'package:myapp/domain/models/patient.dart';
-import 'package:myapp/domain/models/sync_summary.dart';
+import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 
 /// Mock Sync Center backend.
@@ -15,6 +12,8 @@ class MockSyncRepository implements SyncRepository {
     'beta_2026.09.04': ModelBundleStatus.verificationFailed,
     'stable_2026.08.15': ModelBundleStatus.notDownloaded,
   };
+
+  bool _downloadCancelled = false;
 
   @override
   Future<String?> getInstalledModelVersion() =>
@@ -36,14 +35,55 @@ class MockSyncRepository implements SyncRepository {
   }
 
   @override
-  Stream<double> downloadModel() async* {
-    var progress = 0.0;
-    while (progress < 1.0) {
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      progress += 0.05;
-      yield progress.clamp(0.0, 1.0);
-    }
+  void cancelModelDownload() {
+    _downloadCancelled = true;
   }
+
+  @override
+  Stream<ModelDownloadProgress> downloadModelWithProgress({
+    AvailableModelBundle? model,
+  }) async* {
+    _downloadCancelled = false;
+    final total = model?.sizeBytes != null && model!.sizeBytes > 0
+        ? model.sizeBytes
+        : 528571936; // ~504 MB
+    var fraction = 0.0;
+    while (fraction < 1.0) {
+      if (_downloadCancelled) return;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      if (_downloadCancelled) return;
+      fraction = (fraction + 0.1).clamp(0.0, 1.0);
+      final received = (fraction * total).round();
+      yield ModelDownloadProgress(
+        fraction: fraction,
+        receivedBytes: received,
+        totalBytes: total,
+        bytesPerSecond: 2.4 * 1024 * 1024,
+        speedText: '2.4 MB/s',
+        phase: fraction < 1.0
+            ? ModelInstallPhase.downloading
+            : ModelInstallPhase.verifying,
+      );
+    }
+
+    if (_downloadCancelled) return;
+
+    final key = model?.id ?? 'stable_${MockSeedData.modelVersionInfo.latestVersion}';
+    _installedKeys.add(key);
+    _modelStatuses[key] = ModelBundleStatus.verified;
+
+    yield ModelDownloadProgress(
+      fraction: 1.0,
+      receivedBytes: total,
+      totalBytes: total,
+      speedText: '',
+      phase: ModelInstallPhase.completed,
+    );
+  }
+
+  @override
+  Stream<double> downloadModel() =>
+      downloadModelWithProgress().map((p) => p.fraction);
 
   @override
   Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo() =>
@@ -86,16 +126,8 @@ class MockSyncRepository implements SyncRepository {
       SynchronousFuture(_installedKeys.toList());
 
   @override
-  Stream<double> downloadModelBundle(AvailableModelBundle model) async* {
-    var progress = 0.0;
-    while (progress < 1.0) {
-      await Future<void>.delayed(const Duration(milliseconds: 150));
-      progress += 0.1;
-      yield progress.clamp(0.0, 1.0);
-    }
-    _installedKeys.add(model.id);
-    _modelStatuses[model.id] = ModelBundleStatus.verified;
-  }
+  Stream<double> downloadModelBundle(AvailableModelBundle model) =>
+      downloadModelWithProgress(model: model).map((p) => p.fraction);
 
   @override
   Future<bool> verifyModelBundle(String bundleKey) async {

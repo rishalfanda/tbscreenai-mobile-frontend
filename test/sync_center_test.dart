@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/data/mock/mock_repositories.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 import 'package:myapp/features/sync/presentation/sync_center_screen.dart';
@@ -9,7 +10,12 @@ import 'package:myapp/features/sync/presentation/sync_center_screen.dart';
 Widget _wrap([SyncRepository? repo]) {
   return Provider<SyncRepository>(
     create: (_) => repo ?? MockSyncRepository(),
-    child: const MaterialApp(home: Scaffold(body: SyncCenterScreen())),
+    child: MaterialApp(
+      theme: AppTheme.lightTheme.copyWith(
+        splashFactory: InkRipple.splashFactory,
+      ),
+      home: const Scaffold(body: SyncCenterScreen()),
+    ),
   );
 }
 
@@ -20,138 +26,175 @@ void main() {
     addTearDown(tester.view.reset);
   }
 
-  group('SyncCenterScreen TabView navigation', () {
-    testWidgets('displays Model AI and Data Medis tabs', (tester) async {
-      sizeTablet(tester);
-      await tester.pumpWidget(_wrap());
-      await tester.pumpAndSettle();
-
-      expect(find.text('Model AI'), findsOneWidget);
-      expect(find.text('Data Medis'), findsOneWidget);
-      expect(find.text('Model AI Aktif'), findsOneWidget);
-    });
-
-    testWidgets('can switch between Model AI and Data Medis tabs',
+  group('SyncCenterScreen single-page layout', () {
+    testWidgets('displays both Model Update and Data Backup cards simultaneously',
         (tester) async {
       sizeTablet(tester);
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
-      // On Tab 1 (Model AI) initially
-      expect(find.text('Model AI Aktif'), findsOneWidget);
+      // No TabBar tabs
+      expect(find.byType(TabBar), findsNothing);
 
-      // Switch to Tab 2 (Data Medis)
-      await tester.tap(find.text('Data Medis'));
-      await tester.pumpAndSettle();
-
+      // Both cards are visible on the same page
+      expect(find.text('Pembaruan Model AI'), findsOneWidget);
       expect(find.text('Cadangan Data Medis'), findsOneWidget);
-      expect(find.text('Pilih Data & Unggah'), findsOneWidget);
-
-      // Switch back to Tab 1 (Model AI)
-      await tester.tap(find.text('Model AI'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Model AI Aktif'), findsOneWidget);
+      expect(find.text('Sync Center'), findsOneWidget);
+      expect(find.text('Online'), findsOneWidget);
     });
   });
 
-  group('Model AI Tab catalog and interactions', () {
-    testWidgets('initially displays only downloaded models without auto-syncing',
+  group('ModelUpdateCard state machine & Latest Model Lifecycle', () {
+    testWidgets('starts idle with active model banner and check button',
         (tester) async {
       sizeTablet(tester);
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
+      expect(find.text('Model AI Aktif'), findsOneWidget);
+      expect(find.text('stable_2026.09.04'), findsOneWidget);
+      expect(find.text('SIAP INFERENSI'), findsOneWidget);
       expect(find.text('Periksa Pembaruan Model'), findsOneWidget);
-      expect(find.text('Model Tersimpan di Perangkat (2)'), findsOneWidget);
-      expect(find.text('LOKAL'), findsOneWidget);
-      expect(find.text('Sedang Digunakan'), findsOneWidget);
-      expect(find.text('Gagal Verifikasi'), findsOneWidget);
-      expect(find.text('Verify Ulang'), findsOneWidget);
-      // Unduh Model is not visible until user checks remote catalog
-      expect(find.text('Unduh Model'), findsNothing);
-      expect(find.byIcon(Icons.delete_outline_rounded), findsWidgets);
+      expect(find.text('Perbarui Sekarang'), findsNothing);
     });
 
-    testWidgets('tapping Periksa Pembaruan Model fetches full remote catalog',
+    testWidgets('idle -> checking -> updateAvailable shows version table',
         (tester) async {
       sizeTablet(tester);
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
-      // Tap Periksa Pembaruan Model
       await tester.tap(find.text('Periksa Pembaruan Model'));
-      await tester.pump();
+      await tester.pump(); // enters checking
 
       expect(find.text('Memeriksa server...'), findsOneWidget);
 
-      await tester.pump(const Duration(seconds: 1));
+      // Mock resolves after 2s
+      await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();
 
-      // Full catalog of 3 models is now visible including undownloaded model
-      expect(find.text('Katalog Model Tersedia (3)'), findsOneWidget);
-      expect(find.text('Unduh Model'), findsOneWidget);
+      expect(find.text('Versi Baru Tersedia'), findsOneWidget);
+      expect(find.text('Perbarui Sekarang'), findsOneWidget);
+      expect(find.text('v1.3.1'), findsOneWidget);
     });
 
-    testWidgets('filter chips filter models by channel and quantization',
+    testWidgets(
+        'downloading displays transfer speed and can be cancelled via Batal button',
         (tester) async {
       sizeTablet(tester);
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
 
-      // Check remote first to have all 3 models
+      // Check update
       await tester.tap(find.text('Periksa Pembaruan Model'));
-      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();
 
-      // Tap Beta filter chip
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Beta'));
+      // Start download
+      await tester.tap(find.text('Perbarui Sekarang'));
+      await tester.pump(); // start stream
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Downloading state displays progress, speed badge, and Batal button
+      expect(find.text('Mengunduh model AI...'), findsOneWidget);
+      expect(find.text('2.4 MB/s'), findsOneWidget);
+      expect(find.widgetWithText(OutlinedButton, 'Batal'), findsOneWidget);
+
+      // Tap Batal
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Batal'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Katalog Model Tersedia (1)'), findsOneWidget);
-      expect(find.text('Gagal Verifikasi'), findsOneWidget);
-
-      // Tap Semua channel filter chip
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Semua').first);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Katalog Model Tersedia (3)'), findsOneWidget);
+      // Download is cancelled and UI returns to updateAvailable with snackbar
+      expect(find.text('Unduhan model dibatalkan.'), findsOneWidget);
+      expect(find.text('Perbarui Sekarang'), findsOneWidget);
     });
 
+    testWidgets('full download completes and activates new model',
+        (tester) async {
+      sizeTablet(tester);
+      await tester.pumpWidget(_wrap());
+      await tester.pumpAndSettle();
+
+      // Check update
+      await tester.tap(find.text('Periksa Pembaruan Model'));
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+
+      // Start download
+      await tester.tap(find.text('Perbarui Sekarang'));
+      await tester.pump();
+
+      // Let download finish (10 ticks x 100ms)
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 150));
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pembaruan Selesai'), findsOneWidget);
+    });
+  });
+
+  group('Stored Models Show/Hide container & deletion', () {
     testWidgets(
-        'Verify Ulang button verifies bundle and switches to Gunakan Model',
+        'stored models list is collapsed by default and expands on tap',
+        (tester) async {
+      sizeTablet(tester);
+      await tester.pumpWidget(_wrap());
+      await tester.pumpAndSettle();
+
+      // Header is visible showing 2 models
+      expect(find.text('Model Tersimpan di Perangkat (2)'), findsOneWidget);
+      // Individual items are hidden
+      expect(find.text('Gagal Verifikasi'), findsNothing);
+      expect(find.text('Verify Ulang'), findsNothing);
+
+      // Tap header to expand
+      await tester.tap(find.text('Model Tersimpan di Perangkat (2)'));
+      await tester.pumpAndSettle();
+
+      // Now items are visible
+      expect(find.text('Gagal Verifikasi'), findsOneWidget);
+      expect(find.text('Verify Ulang'), findsOneWidget);
+      expect(find.text('Aktif'), findsOneWidget);
+    });
+
+    testWidgets('can re-verify failed model in stored models list',
         (tester) async {
       sizeTablet(tester);
       final repo = MockSyncRepository();
       await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      // Expand list
+      await tester.tap(find.text('Model Tersimpan di Perangkat (2)'));
       await tester.pumpAndSettle();
 
       expect(find.text('Verify Ulang'), findsOneWidget);
-      expect(find.text('Gunakan Model'), findsNothing);
+      expect(find.text('Gunakan'), findsNothing);
 
       // Tap Verify Ulang
       await tester.tap(find.text('Verify Ulang'));
-      await tester.pump(); // starts verifying
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pumpAndSettle();
 
-      // Verification passed -> status verified -> Gunakan Model button appears
-      expect(find.text('Terverifikasi'), findsOneWidget);
-      expect(find.text('Gunakan Model'), findsOneWidget);
+      // Verified and Gunakan button appears
+      expect(find.text('Terverifikasi'), findsWidgets);
+      expect(find.text('Gunakan'), findsOneWidget);
     });
 
-    testWidgets(
-        'deleting active model clears active model banner and leaves no model selected',
+    testWidgets('deleting a stored model shows confirmation dialog and removes it',
         (tester) async {
       sizeTablet(tester);
       final repo = MockSyncRepository();
       await tester.pumpWidget(_wrap(repo));
       await tester.pumpAndSettle();
 
-      expect(find.text('SIAP INFERENSI'), findsOneWidget);
-      expect(find.text('Sedang Digunakan'), findsOneWidget);
+      // Expand list
+      await tester.tap(find.text('Model Tersimpan di Perangkat (2)'));
+      await tester.pumpAndSettle();
 
-      // First delete icon button is for the active model
+      // Tap delete on active model (first delete icon)
       final deleteButtons = find.byIcon(Icons.delete_outline_rounded);
       expect(deleteButtons, findsWidgets);
 
@@ -169,20 +212,15 @@ void main() {
       // Active model banner now shows no active model
       expect(find.text('Belum Ada Model Aktif'), findsOneWidget);
       expect(find.text('TIDAK ADA MODEL AKTIF'), findsOneWidget);
-      expect(find.text('Sedang Digunakan'), findsNothing);
+      expect(find.text('Model Tersimpan di Perangkat (1)'), findsOneWidget);
     });
   });
 
-  group('Data Medis Tab (DataBackupCard)', () {
+  group('DataBackupCard consent dialog and upload', () {
     Future<void> openDialog(WidgetTester tester) async {
       sizeTablet(tester);
       await tester.pumpWidget(_wrap());
       await tester.pumpAndSettle();
-
-      // Navigate to Tab 2
-      await tester.tap(find.text('Data Medis'));
-      await tester.pumpAndSettle();
-
       await tester.tap(find.text('Pilih Data & Unggah'));
       await tester.pumpAndSettle();
     }
@@ -210,7 +248,7 @@ void main() {
           matching: find.byType(ElevatedButton),
         ),
       );
-      expect(enabled.onPressed, isNotNull); // now enabled
+      expect(enabled.onPressed, isNotNull); // enabled
     });
 
     testWidgets('cannot be dismissed by tapping the barrier', (tester) async {
@@ -232,7 +270,7 @@ void main() {
       expect(find.text('Pilih Data & Unggah'), findsOneWidget);
     });
 
-    testWidgets('consent → selection list appears', (tester) async {
+    testWidgets('consent -> selection list appears', (tester) async {
       await openDialog(tester);
 
       await tester.tap(find.byType(CheckboxListTile));
@@ -241,7 +279,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Pilih Pasien untuk Dicadangkan'), findsOneWidget);
-      expect(find.text('Pilih Semua'), findsOneWidget);
+      expect(find.text('Batal Semua'), findsOneWidget);
     });
   });
 }

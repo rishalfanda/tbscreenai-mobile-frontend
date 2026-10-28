@@ -1,7 +1,4 @@
-import 'package:myapp/domain/models/available_model_bundle.dart';
-import 'package:myapp/domain/models/model_version_info.dart';
-import 'package:myapp/domain/models/patient.dart';
-import 'package:myapp/domain/models/sync_summary.dart';
+import 'package:myapp/domain/models/models.dart';
 
 /// Contract for the Sync Center: AI model updates + medical-data backup.
 /// Offline-first — every operation is user-initiated, never automatic.
@@ -15,6 +12,14 @@ abstract class SyncRepository {
 
   /// Downloads the latest model, emitting progress 0.0 → 1.0.
   Stream<double> downloadModel();
+
+  /// Downloads model bundle with progress and transfer speed reporting.
+  Stream<ModelDownloadProgress> downloadModelWithProgress({
+    AvailableModelBundle? model,
+  });
+
+  /// Cancels an in-progress model download.
+  void cancelModelDownload();
 
   /// The last update-check result persisted on this device, and when it was
   /// fetched — lets the Sync Center restore its Model Update card without
