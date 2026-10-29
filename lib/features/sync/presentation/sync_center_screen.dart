@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -23,16 +24,19 @@ class SyncCenterScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // === Section: Header ===
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
             children: [
-              Text(
+              AppText(
                 'Sync Center',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
                   color: AppTheme.navy,
                 ),
               ),
-              const Spacer(),
               const _ConnectionChip(),
             ],
           ),
@@ -327,7 +331,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
                 _downloadSpeed = '';
               });
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Unduhan model dibatalkan.')),
+                const SnackBar(content: AppText('Unduhan model dibatalkan.')),
               );
               return;
             }
@@ -374,7 +378,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       _downloadSpeed = '';
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Unduhan model dibatalkan.')),
+      const SnackBar(content: AppText('Unduhan model dibatalkan.')),
     );
   }
 
@@ -441,12 +445,12 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Batal'),
+            child: const AppText('Batal'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppTheme.error),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Hapus'),
+            child: const AppText('Hapus'),
           ),
         ],
       ),
@@ -492,11 +496,13 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
                   ),
                 ),
                 const SizedBox(width: AppTheme.sp12),
-                Text(
-                  'Pembaruan Model AI',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.navy,
+                Expanded(
+                  child: AppText(
+                    'Pembaruan Model AI',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.navy,
+                    ),
                   ),
                 ),
               ],
@@ -617,7 +623,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         ElevatedButton.icon(
           onPressed: _checkForUpdate,
           icon: const Icon(Icons.sync_rounded, size: 18),
-          label: const Text('Periksa Pembaruan Model'),
+          label: const AppText('Periksa Pembaruan Model'),
         ),
       ],
     );
@@ -823,7 +829,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('• ', style: TextStyle(color: AppTheme.textSecondary)),
+                  const Text('â€¢ ', style: TextStyle(color: AppTheme.textSecondary)),
                   Expanded(
                     child: Text(
                       item,
@@ -841,7 +847,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         const SizedBox(height: AppTheme.sp16),
         ElevatedButton(
           onPressed: _startDownload,
-          child: const Text('Perbarui Sekarang'),
+          child: const AppText('Perbarui Sekarang'),
         ),
       ],
     );
@@ -901,7 +907,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
               ),
               onPressed: _cancelDownload,
               icon: const Icon(Icons.stop_circle_outlined, size: 16),
-              label: const Text('Batal'),
+              label: const AppText('Batal'),
             ),
           ],
         ),
@@ -1064,15 +1070,17 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
                   color: AppTheme.navy,
                 ),
                 const SizedBox(width: AppTheme.sp8),
-                Text(
-                  'Model Tersimpan di Perangkat ($count)',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                    color: AppTheme.navy,
+                Expanded(
+                  child: Text(
+                    'Model Tersimpan di Perangkat ($count)',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: AppTheme.navy,
+                    ),
                   ),
                 ),
-                const Spacer(),
                 Icon(
                   _showStoredModels
                       ? Icons.expand_less_rounded
@@ -1177,7 +1185,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
                     ),
                     const SizedBox(width: 8),
                     const Text(
-                      '•',
+                      'â€¢',
                       style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                     ),
                     const SizedBox(width: 8),
@@ -1424,11 +1432,13 @@ class _DataBackupCardState extends State<_DataBackupCard> {
                   ),
                 ),
                 const SizedBox(width: AppTheme.sp12),
-                Text(
-                  'Cadangan Data Medis',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.navy,
+                Expanded(
+                  child: AppText(
+                    'Cadangan Data Medis',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.navy,
+                    ),
                   ),
                 ),
               ],
@@ -1555,7 +1565,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
                         ),
                       ),
                       subtitle: Text(
-                        '${patient.age} th • ${patient.gender == 'M' ? 'Laki-laki' : 'Perempuan'}',
+                        '${patient.age} th â€¢ ${patient.gender == 'M' ? 'Laki-laki' : 'Perempuan'}',
                         style: const TextStyle(fontSize: 11),
                       ),
                       onChanged: (val) {
@@ -1576,7 +1586,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
           children: [
             TextButton(
               onPressed: () => setState(() => _state = _DataSyncState.idle),
-              child: const Text('Batal'),
+              child: const AppText('Batal'),
             ),
             const SizedBox(width: AppTheme.sp8),
             Text(
@@ -1678,7 +1688,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
                 const SizedBox(width: AppTheme.sp8),
                 Expanded(
                   child: Text(
-                    '${report.conflicts} data konflik — versi di server lebih baru. '
+                    '${report.conflicts} data konflik â€” versi di server lebih baru. '
                     'Data TIDAK ditimpa; perlu ditinjau manual oleh dokter.',
                     style: const TextStyle(fontSize: 13, color: AppTheme.navy),
                   ),
@@ -1690,7 +1700,7 @@ class _DataBackupCardState extends State<_DataBackupCard> {
         if (report != null && report.failed > 0) ...[
           const SizedBox(height: AppTheme.sp8),
           Text(
-            '${report.failed} gagal terkirim — tetap tersimpan di antrean, '
+            '${report.failed} gagal terkirim â€” tetap tersimpan di antrean, '
             'akan dicoba lagi saat sinkronisasi berikutnya.',
             style: const TextStyle(fontSize: 13, color: AppTheme.error),
           ),
@@ -1812,7 +1822,7 @@ class _ConsentDialogState extends State<_ConsentDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, false),
-          child: const Text('Batal'),
+          child: const AppText('Batal'),
         ),
         ElevatedButton(
           onPressed: _agreed ? () => Navigator.pop(context, true) : null,

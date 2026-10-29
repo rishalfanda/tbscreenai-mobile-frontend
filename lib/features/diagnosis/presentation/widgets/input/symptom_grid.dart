@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_palette.dart';
 
@@ -40,7 +41,7 @@ class SymptomGrid extends StatelessWidget {
                     child: CheckboxListTile(
                       value: selected.contains(symptom),
                       onChanged: (value) => onChanged(symptom, value ?? false),
-                      title: Text(
+                      title: AppText(
                         labels?[symptom] ?? symptom,
                         style: const TextStyle(
                           color: diagnosisText,
@@ -67,4 +68,3 @@ class SymptomGrid extends StatelessWidget {
     );
   }
 }
-

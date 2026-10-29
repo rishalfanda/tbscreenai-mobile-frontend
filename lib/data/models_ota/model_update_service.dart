@@ -203,44 +203,11 @@ class ModelUpdateService {
       final bundleKey = target.id;
       final version = target.version;
 
-      if (url == null || url.isEmpty) {
-        // Fallback simulation when no download URL is provided (e.g. dev/demo)
-        var progress = 0.0;
-        while (progress < 1.0) {
-          if (_currentDownloadCancelToken?.isCancelled ?? false) {
-            throw const ModelInstallCancelledException();
-          }
-          await Future<void>.delayed(const Duration(milliseconds: 200));
-          if (_currentDownloadCancelToken?.isCancelled ?? false) {
-            throw const ModelInstallCancelledException();
-          }
-          if (session != _db.sessionGeneration) return;
-          progress = (progress + 0.1).clamp(0.0, 1.0);
-          yield ModelDownloadProgress(
-            fraction: progress,
-            receivedBytes: (progress * 528571936).round(),
-            totalBytes: 528571936,
-            bytesPerSecond: 2.4 * 1024 * 1024,
-            speedText: '2.4 MB/s',
-            phase: progress < 1.0
-                ? ModelInstallPhase.downloading
-                : ModelInstallPhase.verifying,
-          );
-        }
-        await _store.setBundleStatus(bundleKey, ModelBundleStatus.verified);
-        if (session == _db.sessionGeneration) {
-          await _db.writeForSession(
-            session,
-            () => _settings.saveInstalledModelVersion(bundleKey),
-          );
-        }
-        yield const ModelDownloadProgress(
-          fraction: 1.0,
-          receivedBytes: 528571936,
-          totalBytes: 528571936,
-          phase: ModelInstallPhase.completed,
+      if (url == null || url.trim().isEmpty) {
+        throw ModelInstallException(
+          ModelInstallPhase.downloading,
+          'Bundle model belum tersedia. Minta admin menyediakan URL download.',
         );
-        return;
       }
 
       final sample = await rootBundle.load('assets/sample/xray.png');
@@ -381,6 +348,10 @@ class ModelUpdateService {
     }
   }
 
+  /// Downloads, verifies and activates the new model bundle (see
+  /// `ModelUpdatePipeline`), then records the new version on this device.
+  ///
+  /// Missing bundles fail without changing the installed version.
   Stream<double> downloadModel() =>
       downloadModelWithProgress().map((p) => p.fraction);
 }

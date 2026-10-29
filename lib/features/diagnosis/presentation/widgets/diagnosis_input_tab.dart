@@ -1,8 +1,9 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter/services.dart';
 import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/domain/models/xray_image.dart';
@@ -338,7 +339,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
               children: [
                 CircularProgressIndicator(color: diagnosisAccent),
                 SizedBox(height: 18),
-                Text(
+                AppText(
                   'Menganalisis citra rontgen...',
                   style: TextStyle(
                     color: diagnosisText,
@@ -363,11 +364,11 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
       builder: (context) => AlertDialog(
         key: const Key('reset-confirm-dialog'),
         backgroundColor: diagnosisPanel,
-        title: const Text(
+        title: const AppText(
           'Konfirmasi Atur Ulang',
           style: TextStyle(color: diagnosisText),
         ),
-        content: const Text(
+        content: const AppText(
           'Apakah Anda yakin ingin mengatur ulang data? Seluruh data pasien '
           'yang telah diisi dan hasil analisis (jika ada) akan dihapus dan '
           'tidak dapat dikembalikan.',
@@ -378,7 +379,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
             key: const Key('reset-confirm-cancel-button'),
             onPressed: () => Navigator.of(context).pop(false),
             style: TextButton.styleFrom(foregroundColor: diagnosisMuted),
-            child: const Text('Batal'),
+            child: const AppText('Batal'),
           ),
           FilledButton(
             key: const Key('reset-confirm-confirm-button'),
@@ -386,7 +387,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFB91C1C),
             ),
-            child: const Text('Ya, Atur Ulang'),
+            child: const AppText('Ya, Atur Ulang'),
           ),
         ],
       ),
@@ -413,7 +414,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(message),
+          content: AppText(message),
           backgroundColor: isError ? const Color(0xFFB91C1C) : diagnosisPanel,
         ),
       );
@@ -795,7 +796,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
           ],
         ),
         const SizedBox(height: 22),
-        const Text(
+        const AppText(
           'A. Bakteriologi',
           style: TextStyle(
             color: diagnosisText,
@@ -841,7 +842,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
           ],
         ),
         const SizedBox(height: 18),
-        const Text(
+        const AppText(
           'B. Lainnya',
           style: TextStyle(
             color: diagnosisText,
@@ -903,7 +904,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (!checkingModel && !hasModel) ...[
-          NoModelBanner(onGoToSync: () => context.go('/sync')),
+          const NoModelBanner(),
           const SizedBox(height: 18),
         ],
         IgnorePointer(
@@ -951,7 +952,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: const Text(
+                  child: const AppText(
                     'Atur Ulang',
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
                   ),
@@ -977,7 +978,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: const Text(
+                  child: const AppText(
                     'Analisis',
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
                   ),

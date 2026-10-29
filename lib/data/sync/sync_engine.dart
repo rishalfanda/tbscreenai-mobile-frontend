@@ -405,33 +405,66 @@ class SyncEngine {
   Future<void> pull() async {
     final session = _db.sessionGeneration;
     final since = await _settings.readLastSyncAt();
-    final response = await _client.dio.get<Map<String, dynamic>>(
-      '/sync/pull',
-      queryParameters: {
-        if (since != null) 'since': since.toUtc().toIso8601String(),
-      },
-    );
-    final data = response.data;
-    if (data == null) {
-      throw const FormatException('Sync pull response is empty');
-    }
-    final rawPatients = data['patients'];
-    final rawDiagnoses = data['diagnoses'];
-    if (rawPatients is! List || rawDiagnoses is! List) {
-      throw const FormatException('Sync pull response is incomplete');
-    }
-    final serverTime = DateTime.tryParse(data['server_time'] as String? ?? '');
-    if (serverTime == null) {
-      throw const FormatException('Sync pull server_time is invalid');
-    }
-    final patients = rawPatients
-        .map((row) => patientRowFromJson((row as Map).cast<String, dynamic>()))
-        .toList();
-    final diagnoses = rawDiagnoses
-        .map(
+    final patients = <LocalPatientsCompanion>[];
+    final diagnoses = <LocalDiagnosesCompanion>[];
+    final seenCursors = <String>{};
+    String? cursor;
+    DateTime? snapshotTime;
+    do {
+      if (session != _db.sessionGeneration) return;
+      final response = await _client.dio.get<Map<String, dynamic>>(
+        '/sync/pull',
+        queryParameters: {
+          'limit': 500,
+          'cursor': ?cursor,
+          if (cursor == null && since != null)
+            'since': since.toUtc().toIso8601String(),
+        },
+      );
+      final data = response.data;
+      if (data == null) {
+        throw const FormatException('Sync pull response is empty');
+      }
+      final rawPatients = data['patients'];
+      final rawDiagnoses = data['diagnoses'];
+      if (rawPatients is! List || rawDiagnoses is! List) {
+        throw const FormatException('Sync pull response is incomplete');
+      }
+      final serverTime = DateTime.tryParse(
+        data['server_time'] as String? ?? '',
+      );
+      if (serverTime == null) {
+        throw const FormatException('Sync pull server_time is invalid');
+      }
+      snapshotTime ??= serverTime;
+      if (serverTime != snapshotTime) {
+        throw const FormatException('Sync pull snapshot changed between pages');
+      }
+      patients.addAll(
+        rawPatients.map(
+          (row) => patientRowFromJson((row as Map).cast<String, dynamic>()),
+        ),
+      );
+      diagnoses.addAll(
+        rawDiagnoses.map(
           (row) => diagnosisRowFromJson((row as Map).cast<String, dynamic>()),
-        )
-        .toList();
+        ),
+      );
+      final hasMore = data['has_more'];
+      if (hasMore != null && hasMore is! bool) {
+        throw const FormatException('Sync pull has_more is invalid');
+      }
+      cursor = null;
+      if (hasMore == true) {
+        final next = data['next_cursor'];
+        if (next is! String || next.trim().isEmpty || !seenCursors.add(next)) {
+          throw const FormatException(
+            'Sync pull cursor is missing or repeated',
+          );
+        }
+        cursor = next;
+      }
+    } while (cursor != null);
     await _db.writeForSession(session, () async {
       if (since == null) {
         await _db.replacePatientCache(patients);
@@ -440,7 +473,7 @@ class SyncEngine {
         await _db.mergePatientChanges(patients);
         await _db.mergeDiagnosisChanges(diagnoses);
       }
-      await _settings.saveLastSyncAt(serverTime);
+      await _settings.saveLastSyncAt(snapshotTime!);
     });
   }
 

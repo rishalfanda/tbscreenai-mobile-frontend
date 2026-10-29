@@ -29,10 +29,10 @@ class DiagnosisResultTab extends StatelessWidget {
     final isPositive = result.isPositive;
     // On-device segmentation produces TB confidence directly (0..100).
     // HTTP/mock without segmentation returns decision confidence.
-    final tbScore = result.segmentation != null
+    final displayedConfidence = isPositive
         ? result.confidence
-        : (isPositive ? result.confidence : 100 - result.confidence);
-    final category = ScreeningLevel.fromScore(tbScore);
+        : 100 - result.confidence;
+    final category = ScreeningLevel.fromScore(displayedConfidence);
 
     return ColoredBox(
       key: const Key('diagnosis-result-content'),
@@ -85,7 +85,7 @@ class DiagnosisResultTab extends StatelessWidget {
                                   Expanded(
                                     child: DiagnosisAiCard(
                                       isPositive: isPositive,
-                                      displayedConfidence: tbScore,
+                                      displayedConfidence: displayedConfidence,
                                       category: category,
                                     ),
                                   ),
@@ -145,7 +145,7 @@ class DiagnosisResultTab extends StatelessWidget {
                     const SizedBox(height: 10),
                     DiagnosisAiCard(
                       isPositive: isPositive,
-                      displayedConfidence: tbScore,
+                      displayedConfidence: displayedConfidence,
                       category: category,
                     ),
                     const SizedBox(height: 10),

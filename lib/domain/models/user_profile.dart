@@ -1,4 +1,6 @@
-/// Authenticated user of the app (Doctor role in this repo).
+import 'package:myapp/domain/models/access_scope.dart';
+
+/// Authenticated identity and institution assigned by the server.
 class UserProfile {
   const UserProfile({
     required this.userId,
@@ -13,4 +15,6 @@ class UserProfile {
   final String displayName;
   final String email;
   final String role;
+  MobileRole get mobileRole => MobileRole.parse(role);
+  String get institution => demoInstitutions[tenantId] ?? tenantId;
 }

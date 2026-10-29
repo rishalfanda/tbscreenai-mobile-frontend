@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_palette.dart';
 
@@ -16,7 +17,7 @@ class FieldLabel extends StatelessWidget {
           const SizedBox(width: 5),
         ],
         Flexible(
-          child: Text(
+          child: AppText(
             text,
             maxLines: 2,
             style: const TextStyle(
@@ -30,4 +31,3 @@ class FieldLabel extends StatelessWidget {
     );
   }
 }
-

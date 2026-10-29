@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/screening_category.dart';
@@ -51,7 +52,7 @@ class DiagnosisAiCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text(
+          const AppText(
             'Screening AI',
             style: TextStyle(
               fontSize: 18,

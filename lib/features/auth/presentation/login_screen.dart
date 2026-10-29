@@ -1,3 +1,5 @@
+import 'package:myapp/core/localization/app_language.dart';
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -38,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _isSubmitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
+          content: AppText(
             'Login gagal — periksa email/password atau koneksi server',
           ),
           backgroundColor: AppTheme.error,
@@ -100,7 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   excludeFromSemantics: true,
                                 ),
                                 const SizedBox(width: 12),
-                                Text(
+                                AppText(
                                   'TBScreen.AI',
                                   style: Theme.of(context)
                                       .textTheme
@@ -114,7 +116,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           const SizedBox(height: 32),
-                          Text(
+                          AppText(
                             'Welcome Back',
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.headlineSmall
@@ -124,7 +126,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                           ),
                           const SizedBox(height: 8),
-                          const Text(
+                          const AppText(
                             'AI-Powered TB Screening',
                             textAlign: TextAlign.center,
                             style: TextStyle(
@@ -135,7 +137,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 40),
 
                           // Email field
-                          const Text(
+                          const AppText(
                             'Email',
                             style: TextStyle(
                               color: AppTheme.navy,
@@ -148,7 +150,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
                             decoration: InputDecoration(
-                              hintText: 'Enter your email',
+                              hintText: localize(context, 'Enter your email'),
                               hintStyle: const TextStyle(
                                 color: AppTheme.textSecondary,
                               ),
@@ -189,7 +191,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 24),
 
                           // Password field
-                          const Text(
+                          const AppText(
                             'Password',
                             style: TextStyle(
                               color: AppTheme.navy,
@@ -202,7 +204,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             controller: _passwordController,
                             obscureText: true,
                             decoration: InputDecoration(
-                              hintText: 'Enter your password',
+                              hintText: localize(
+                                context,
+                                'Enter your password',
+                              ),
                               hintStyle: const TextStyle(
                                 color: AppTheme.textSecondary,
                               ),
@@ -275,7 +280,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         strokeWidth: 2.5,
                                       ),
                                     )
-                                  : const Text(
+                                  : const AppText(
                                       'Sign In',
                                       style: TextStyle(
                                         fontSize: 16,
@@ -296,7 +301,7 @@ class _LoginScreenState extends State<LoginScreen> {
             bottom: 24,
             left: 0,
             right: 0,
-            child: Text(
+            child: AppText(
               '© 2026 TBScreen. All rights reserved.',
               textAlign: TextAlign.center,
               style: TextStyle(

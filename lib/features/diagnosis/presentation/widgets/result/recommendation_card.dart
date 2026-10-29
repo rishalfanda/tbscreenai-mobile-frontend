@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/screening_category.dart';
@@ -50,7 +51,7 @@ class RecommendationCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Text(
+          AppText(
             followUpText,
             style: const TextStyle(
               fontSize: 15,

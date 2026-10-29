@@ -5,6 +5,9 @@ import 'package:provider/provider.dart';
 import 'package:myapp/data/mock/mock_validation_repository.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
 import 'package:myapp/features/shared/presentation/app_shell.dart';
+import 'package:myapp/data/mock/mock_auth_repository.dart';
+import 'package:myapp/domain/models/user_profile.dart';
+import 'package:myapp/state/auth_provider.dart';
 
 Future<GoRouter> mountShell(WidgetTester tester, double width) async {
   tester.view.physicalSize = Size(width, 1000);
@@ -31,8 +34,24 @@ Future<GoRouter> mountShell(WidgetTester tester, double width) async {
   );
   addTearDown(router.dispose);
   await tester.pumpWidget(
-    Provider<ValidationRepository>.value(
-      value: MockValidationRepository(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => AuthProvider(
+            MockAuthRepository(),
+            initialProfile: const UserProfile(
+              userId: 'synthetic-doctor',
+              tenantId: 'synthetic-tenant',
+              displayName: 'Synthetic doctor',
+              email: 'doctor@example.invalid',
+              role: 'doctor',
+            ),
+          ),
+        ),
+        Provider<ValidationRepository>(
+          create: (_) => MockValidationRepository(),
+        ),
+      ],
       child: MaterialApp.router(routerConfig: router),
     ),
   );
