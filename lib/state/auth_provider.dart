@@ -35,6 +35,34 @@ class AuthProvider extends ChangeNotifier {
   MobileRole get mobileRole => _profile?.mobileRole ?? MobileRole.unsupported;
   String get email => _profile?.email ?? '';
   String get displayName => _profile?.displayName ?? '';
+  bool get mustChangePassword => _profile?.mustChangePassword ?? false;
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final repository = _authRepository;
+    if (!isLoggedIn || repository is! PasswordChangeRepository) {
+      throw StateError('Password change unavailable');
+    }
+    final generation = _generation;
+    final previous = _profile!;
+    final updated = await (repository as PasswordChangeRepository)
+        .changePassword(
+          currentPassword: currentPassword,
+          newPassword: newPassword,
+        );
+    _ensureCurrent(generation);
+    if (updated.userId != previous.userId ||
+        updated.tenantId != previous.tenantId ||
+        updated.role != previous.role ||
+        updated.mustChangePassword) {
+      await logout();
+      throw StateError('Password change identity mismatch');
+    }
+    _profile = updated;
+    _notifyIfAlive();
+  }
 
   /// A new login waits for cleanup; a logout invalidates any pending login.
   Future<void> login({required String email, String password = ''}) async {

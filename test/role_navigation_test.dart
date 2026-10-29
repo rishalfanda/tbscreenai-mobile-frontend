@@ -1,4 +1,7 @@
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
+import 'package:dio/dio.dart';
+import 'package:myapp/data/http/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -56,6 +59,23 @@ class _NoModelEngine extends OnnxInferenceEngine {
   Future<bool> get ready => SynchronousFuture(false);
 }
 
+class _UserAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<List<int>>? stream,
+    Future<void>? cancelFuture,
+  ) async => ResponseBody.fromString(
+    jsonEncode({'items': [], 'total': 0, 'limit': 20, 'offset': 0}),
+    200,
+    headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType],
+    },
+  );
+  @override
+  void close({bool force = false}) {}
+}
+
 Future<(GoRouter, AuthProvider, _ValidationRepository)> mountRole(
   WidgetTester tester,
   String role,
@@ -77,6 +97,12 @@ Future<(GoRouter, AuthProvider, _ValidationRepository)> mountRole(
         ChangeNotifierProvider(create: (_) => auth),
         ChangeNotifierProvider(create: (_) => AppLanguage()),
         ChangeNotifierProvider(create: (_) => InstitutionProvider()),
+        Provider<ApiClient>(
+          create: (_) =>
+              ApiClient(baseUrl: 'https://synthetic.invalid')
+                ..dio.httpClientAdapter = _UserAdapter(),
+          dispose: (_, api) => api.close(),
+        ),
         ChangeNotifierProvider(
           create: (_) => DashboardProvider(MockDashboardRepository()),
         ),
@@ -113,7 +139,7 @@ void main() {
       expect(router.routeInformationProvider.value.uri.path, '/users');
       if (AppConfig.useHttp) {
         expect(find.text('Add user'), findsNothing);
-        expect(find.text('Data not available'), findsOneWidget);
+        expect(find.text('Add doctor'), findsOneWidget);
       } else {
         await tester.tap(find.text('Add user'));
         await tester.pumpAndSettle();
@@ -141,7 +167,8 @@ void main() {
         '/diagnosis',
         '/patients',
         '/validation',
-        '/dataset',
+        '/sync',
+        '/models',
         '/result',
         '/camera',
       ]) {
@@ -153,22 +180,16 @@ void main() {
       expect(validation.subscriptions, 0);
       router.go('/models');
       await tester.pumpAndSettle();
-      expect(router.routeInformationProvider.value.uri.path, '/models');
+      expect(router.routeInformationProvider.value.uri.path, '/technician');
       expect(
         tester.takeException(),
         isNull,
         reason: 'technician model catalog',
       );
-      expect(
-        find.text('TBScreen demo v1'),
-        AppConfig.useHttp ? findsNothing : findsOneWidget,
-      );
-      if (AppConfig.useHttp) {
-        expect(find.text('Data not available'), findsOneWidget);
-      }
+      expect(find.text('TBScreen demo v1'), findsNothing);
       router.go('/sync');
       await tester.pumpAndSettle();
-      expect(router.routeInformationProvider.value.uri.path, '/sync');
+      expect(router.routeInformationProvider.value.uri.path, '/technician');
       expect(tester.takeException(), isNull, reason: 'technician sync center');
       expect(auth.role, 'technician');
       expect(tester.takeException(), isNull);

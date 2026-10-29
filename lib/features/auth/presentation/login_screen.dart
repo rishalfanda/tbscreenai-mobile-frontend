@@ -3,6 +3,7 @@ import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:dio/dio.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/state/auth_provider.dart';
 
@@ -34,14 +35,29 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text,
       );
       if (!mounted) return;
-      context.go('/dashboard');
-    } catch (_) {
+      _passwordController.clear();
+      context.go(
+        auth.mustChangePassword ? '/change-password' : auth.mobileRole.home,
+      );
+    } catch (failure) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
+      final data = failure is DioException ? failure.response?.data : null;
+      final detail = data is Map ? data['detail'] : null;
+      final expired =
+          detail is Map && detail['code'] == 'temporary_password_expired';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: AppText(
-            'Login gagal — periksa email/password atau koneksi server',
+        SnackBar(
+          content: Text(
+            expired
+                ? context.trRead(
+                    'Password sementara kedaluwarsa. Minta teknisi mereset password.',
+                    'Temporary password expired. Ask your technician for a reset.',
+                  )
+                : context.trRead(
+                    'Login gagal — periksa email/password atau koneksi server',
+                    'Login failed — check email/password or server connection',
+                  ),
           ),
           backgroundColor: AppTheme.error,
         ),

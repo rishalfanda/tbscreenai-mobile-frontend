@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/domain/repositories/dashboard_repository.dart';
 import 'package:myapp/domain/models/dashboard_snapshot.dart';
-import 'package:myapp/domain/models/access_scope.dart';
 import 'package:myapp/state/auth_provider.dart';
 
 class DashboardProvider extends ChangeNotifier {
@@ -37,7 +36,9 @@ class DashboardProvider extends ChangeNotifier {
     final session = _session;
     final next = session == null
         ? 'isolated-dashboard'
-        : session.isLoggedIn && session.mobileRole == MobileRole.clinician
+        : session.isLoggedIn &&
+              !session.mustChangePassword &&
+              session.mobileRole.allows('/dashboard')
         ? '${session.userId}:${session.tenantId}'
         : null;
     if (next == _owner) return;

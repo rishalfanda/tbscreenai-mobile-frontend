@@ -1,6 +1,9 @@
 import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
+import 'package:myapp/core/config/app_config.dart';
+import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/state/auth_provider.dart';
 
 class AccountScreen extends StatelessWidget {
@@ -17,17 +20,21 @@ class AccountScreen extends StatelessWidget {
         ListTile(title: Text(auth.displayName), subtitle: Text(auth.email)),
         ListTile(title: const AppText('Role'), subtitle: Text(auth.role)),
         ListTile(title: const AppText('Tenant'), subtitle: Text(auth.tenantId)),
-        const AppText(
-          'Profile editing and security status unavailable: backend contract pending.',
+        Text(
+          context.tr(
+            'Edit profil dan 2FA belum tersedia.',
+            'Profile editing and 2FA are not available yet.',
+          ),
         ),
         const OutlinedButton(
           onPressed: null,
           child: AppText('Edit profile unavailable'),
         ),
-        const OutlinedButton(
-          onPressed: null,
-          child: AppText('Password / 2FA unavailable'),
-        ),
+        if (AppConfig.useHttp)
+          OutlinedButton(
+            onPressed: () => context.go('/change-password'),
+            child: Text(context.tr('Ganti password', 'Change password')),
+          ),
         FilledButton(
           onPressed: () async {
             try {

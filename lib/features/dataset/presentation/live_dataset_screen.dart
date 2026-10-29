@@ -7,6 +7,7 @@ import 'package:myapp/domain/models/dataset_page.dart';
 import 'package:myapp/domain/repositories/dataset_repository.dart';
 import 'package:myapp/state/auth_provider.dart';
 import 'package:myapp/state/live_dataset_provider.dart';
+import 'dataset_write_actions.dart';
 
 class LiveDatasetScreen extends StatelessWidget {
   const LiveDatasetScreen({super.key});
@@ -73,6 +74,7 @@ class _DatasetBodyState extends State<_DatasetBody> {
         ),
         const SizedBox(height: 12),
         const AppText('Data mengikuti instansi akun yang sedang login.'),
+        const DatasetWriteActions(),
         const SizedBox(height: 20),
         if (!detail)
           TextField(
@@ -151,6 +153,7 @@ class _DatasetBodyState extends State<_DatasetBody> {
             Card(
               child: ListTile(
                 title: Text(item.patientCode),
+                trailing: RemoveDatasetItem(id: item.diagnosisId),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

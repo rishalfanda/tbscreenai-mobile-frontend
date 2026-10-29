@@ -122,7 +122,13 @@ class DashboardScreen extends StatelessWidget {
               ),
             ],
             FilledButton.icon(
-              onPressed: () => context.go('/diagnosis'),
+              onPressed:
+                  context.watch<AuthProvider?>()?.mobileRole.allows(
+                        '/diagnosis',
+                      ) ==
+                      true
+                  ? () => context.go('/diagnosis')
+                  : null,
               icon: const Icon(Icons.add_rounded),
               label: const AppText('New Screening'),
               style: FilledButton.styleFrom(

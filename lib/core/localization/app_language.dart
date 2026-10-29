@@ -19,6 +19,10 @@ class AppLanguage extends ChangeNotifier {
 extension InstitutionLanguage on BuildContext {
   String tr(String indonesian, String english) =>
       watch<AppLanguage?>()?.locale.languageCode == 'id' ? indonesian : english;
+
+  /// Event handlers must not register inherited-provider dependencies.
+  String trRead(String indonesian, String english) =>
+      read<AppLanguage?>()?.locale.languageCode == 'id' ? indonesian : english;
 }
 
 String localize(BuildContext context, String text) {
@@ -58,6 +62,12 @@ String localize(BuildContext context, String text) {
 
 // Copy used by the refactored staging screening widgets.
 const _stagingEnglish = <String, String>{
+  'Dataset diarsipkan. Buka kembali sebelum mengubah item.':
+      'This dataset is archived. Reopen it before changing items.',
+  'Sebagian hasil screening tidak ditemukan dalam instansi ini. Tidak ada item ditambahkan.':
+      'Some screenings were not found in this institution. No items were added.',
+  'Perubahan dataset gagal. Periksa koneksi, data dan izin akun lalu coba lagi.':
+      'Dataset changes failed. Check your connection, data and account permissions, then retry.',
   'Dataset belum tersedia.': 'Datasets are not available.',
   'Data mengikuti instansi akun yang sedang login.':
       'Data belongs to the signed-in account institution.',

@@ -27,7 +27,9 @@ class LiveDatasetProvider extends ChangeNotifier {
 
   void _sessionChanged() {
     final owner =
-        _session.isLoggedIn && _session.mobileRole == MobileRole.clinician
+        _session.isLoggedIn &&
+            !_session.mustChangePassword &&
+            _session.mobileRole.allows('/dataset')
         ? '${_session.userId}:${_session.tenantId}'
         : null;
     if (owner == _owner) return;
@@ -111,6 +113,54 @@ class LiveDatasetProvider extends ChangeNotifier {
   Future<void> refresh() => selectedId == null
       ? loadList(offset: _listOffset)
       : open(selectedId!, offset: _itemsOffset);
+
+  bool get canWrite =>
+      !_disposed &&
+      _owner != null &&
+      _session.mobileRole == MobileRole.technician &&
+      _repository is DatasetWriteRepository;
+  Future<bool> mutate(
+    Future<DatasetEntry?> Function(DatasetWriteRepository) operation, {
+    bool deleted = false,
+  }) async {
+    if (!canWrite || busy) return false;
+    final generation = ++_generation;
+    busy = true;
+    error = null;
+    notifyListeners();
+    try {
+      final entry = await operation(_repository as DatasetWriteRepository);
+      if (!_current(generation)) return false;
+      if (entry != null) _verifyTenant(entry);
+      busy = false;
+      if (deleted || selectedId == null) {
+        await loadList();
+      } else {
+        await open(selectedId!);
+      }
+      return true;
+    } catch (failure) {
+      if (!_current(generation)) return false;
+      error = _writeMessage(failure);
+      busy = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  String _writeMessage(Object failure) {
+    final raw = failure is DioException ? failure.response?.data : null;
+    final detail = raw is Map ? raw['detail'] : null;
+    final code = detail is Map ? detail['code'] : null;
+    return switch (code) {
+      'dataset_archived' =>
+        'Dataset diarsipkan. Buka kembali sebelum mengubah item.',
+      'diagnosis_unknown' =>
+        'Sebagian hasil screening tidak ditemukan dalam instansi ini. Tidak ada item ditambahkan.',
+      _ =>
+        'Perubahan dataset gagal. Periksa koneksi, data dan izin akun lalu coba lagi.',
+    };
+  }
 
   void _verifyTenant(DatasetEntry entry) {
     if (entry.tenantId != _session.tenantId) {
