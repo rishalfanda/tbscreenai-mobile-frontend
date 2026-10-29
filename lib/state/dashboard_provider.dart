@@ -1,13 +1,99 @@
 import 'package:flutter/foundation.dart';
 import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/domain/repositories/dashboard_repository.dart';
+import 'package:myapp/domain/models/dashboard_snapshot.dart';
+import 'package:myapp/domain/models/access_scope.dart';
+import 'package:myapp/state/auth_provider.dart';
 
 class DashboardProvider extends ChangeNotifier {
-  DashboardProvider(this._repository) {
-    _loadDashboardData();
+  DashboardProvider(this._repository, {AuthProvider? session})
+    : _session = session {
+    if (isLive) {
+      _session?.addListener(_sessionChanged);
+      _sessionChanged();
+    } else {
+      _loadDashboardData();
+    }
   }
 
   final DashboardRepository _repository;
+  final AuthProvider? _session;
+  DashboardSnapshot? _snapshot;
+  String? _owner;
+  String? _error;
+  int _generation = 0;
+  bool _disposed = false;
+  bool get isLive => _repository is DashboardSnapshotRepository;
+  DashboardSnapshot? get snapshot => _snapshot;
+  String? get error => _error;
+  int get days => switch (_selectedTimePeriod) {
+    'Last 60 days' => 60,
+    'Last 3 months' => 90,
+    'Last 6 months' => 180,
+    _ => 30,
+  };
+
+  void _sessionChanged() {
+    final session = _session;
+    final next = session == null
+        ? 'isolated-dashboard'
+        : session.isLoggedIn && session.mobileRole == MobileRole.clinician
+        ? '${session.userId}:${session.tenantId}'
+        : null;
+    if (next == _owner) return;
+    _owner = next;
+    _generation++;
+    _clearLive();
+    if (next == null) {
+      notifyListeners();
+    } else {
+      refresh();
+    }
+  }
+
+  void _clearLive() {
+    _snapshot = null;
+    _metrics = const [];
+    _recentActivities = const [];
+    _trendData = const [];
+    _systemStatuses = const [];
+    _isLoading = false;
+    _error = null;
+  }
+
+  Future<void> refresh() async {
+    if (!isLive) return _fetchData();
+    if (_disposed || _owner == null) return;
+    final generation = ++_generation;
+    _clearLive();
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final result = await (_repository as DashboardSnapshotRepository).load(
+        days: days,
+        tzOffsetMinutes: DateTime.now().timeZoneOffset.inMinutes,
+      );
+      if (_disposed || generation != _generation) return;
+      _snapshot = result;
+      _metrics = result.metrics;
+      _recentActivities = result.activities;
+      _trendData = result.trend;
+    } catch (_) {
+      if (_disposed || generation != _generation) return;
+      _error = 'Dashboard tidak dapat dimuat. Periksa koneksi dan coba lagi.';
+    }
+    if (_disposed || generation != _generation) return;
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _generation++;
+    _session?.removeListener(_sessionChanged);
+    super.dispose();
+  }
 
   String _selectedTimePeriod = 'Last 30 days';
   String _selectedInstitution = 'All Institutions';
@@ -66,6 +152,7 @@ class DashboardProvider extends ChangeNotifier {
   }
 
   void setTimePeriod(String value) {
+    if (!timePeriods.contains(value)) return;
     if (_selectedTimePeriod != value) {
       _selectedTimePeriod = value;
       _fetchData();
@@ -74,6 +161,7 @@ class DashboardProvider extends ChangeNotifier {
   }
 
   void setInstitution(String value) {
+    if (isLive) return;
     if (_selectedInstitution != value) {
       _selectedInstitution = value;
       _fetchData();
@@ -89,6 +177,7 @@ class DashboardProvider extends ChangeNotifier {
   }
 
   Future<void> _fetchData() async {
+    if (isLive) return refresh();
     _isLoading = true;
     notifyListeners();
 

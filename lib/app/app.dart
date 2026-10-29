@@ -11,6 +11,7 @@ import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/core/config/scroll_behavior.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/data/http/http_repositories.dart';
+import 'package:myapp/data/http/http_dashboard_repository.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/encrypted_xray_store.dart';
 import 'package:myapp/data/local/settings_store.dart';
@@ -152,8 +153,8 @@ class TBScreenApp extends StatelessWidget {
                 ),
         ),
         Provider<DashboardRepository>(
-          create: (_) => useHttp
-              ? UnavailableDashboardRepository()
+          create: (c) => useHttp
+              ? HttpDashboardRepository(c.read<ApiClient>())
               : MockDashboardRepository(),
         ),
         Provider<DiagnosisRepository>(
@@ -195,8 +196,10 @@ class TBScreenApp extends StatelessWidget {
           },
         ),
         ChangeNotifierProvider(
-          create: (context) =>
-              DashboardProvider(context.read<DashboardRepository>()),
+          create: (context) => DashboardProvider(
+            context.read<DashboardRepository>(),
+            session: context.read<AuthProvider>(),
+          ),
         ),
       ],
       child: const _RouterView(),

@@ -1,4 +1,5 @@
 import 'package:myapp/core/localization/app_text.dart';
+import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/config/app_config.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -6,24 +7,18 @@ import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/state/dashboard_provider.dart';
+import 'package:myapp/state/auth_provider.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    if (!AppConfig.isDemo || AppConfig.useHttp) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: AppText(
-            'Dashboard aggregation and institution filters unavailable: backend contract pending.',
-          ),
-        ),
-      );
-    }
     return Consumer<DashboardProvider>(
       builder: (context, dashboard, child) {
+        if (AppConfig.useHttp && !dashboard.isLive) {
+          return const Center(child: AppText('Dashboard belum tersedia.'));
+        }
         return LayoutBuilder(
           builder: (context, constraints) {
             final pagePadding = constraints.maxWidth < 700 ? 16.0 : 24.0;
@@ -37,10 +32,19 @@ class DashboardScreen extends StatelessWidget {
                   const SizedBox(height: 20),
                   if (dashboard.isLoading)
                     const Center(child: CircularProgressIndicator())
+                  else if (dashboard.error != null) ...[
+                    AppText(dashboard.error!),
+                    const SizedBox(height: 12),
+                    FilledButton(
+                      onPressed: dashboard.refresh,
+                      child: const AppText('Coba Lagi'),
+                    ),
+                  ] else if (dashboard.isLive && dashboard.snapshot == null)
+                    const AppText('Belum ada data dashboard.')
                   else ...[
                     _buildStatCards(context, dashboard),
                     const SizedBox(height: 16),
-                    _buildAgreementLevelRow(context),
+                    _buildAgreementLevelRow(context, dashboard),
                     const SizedBox(height: 16),
                     _buildDiagnosisTrendsChart(context, dashboard),
                     const SizedBox(height: 16),
@@ -79,7 +83,9 @@ class DashboardScreen extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             AppText(
-              'Welcome back, Dr. Anderson',
+              dashboard.isLive
+                  ? 'Welcome back, ${context.watch<AuthProvider?>()?.displayName ?? ''}'
+                  : 'Welcome back, Dr. Anderson',
               style: Theme.of(
                 context,
               ).textTheme.bodyLarge?.copyWith(color: AppTheme.subtitleGrey),
@@ -97,12 +103,24 @@ class DashboardScreen extends StatelessWidget {
               onChanged: (v) => dashboard.setTimePeriod(v!),
               width: isCompact ? 160 : 180,
             ),
-            _buildDropdown(
-              value: dashboard.selectedInstitution,
-              items: dashboard.institutions,
-              onChanged: (v) => dashboard.setInstitution(v!),
-              width: isCompact ? 200 : 220,
-            ),
+            if (!dashboard.isLive)
+              _buildDropdown(
+                value: dashboard.selectedInstitution,
+                items: dashboard.institutions,
+                onChanged: (v) => dashboard.setInstitution(v!),
+                width: isCompact ? 200 : 220,
+              ),
+            if (dashboard.isLive) ...[
+              const Chip(
+                avatar: Icon(Icons.lock_outline, size: 18),
+                label: AppText('Instansi akun'),
+              ),
+              IconButton(
+                tooltip: localize(context, 'Refresh dashboard'),
+                onPressed: dashboard.isLoading ? null : dashboard.refresh,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
             FilledButton.icon(
               onPressed: () => context.go('/diagnosis'),
               icon: const Icon(Icons.add_rounded),
@@ -308,8 +326,13 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAgreementLevelRow(BuildContext context) {
-    const double agreementPct = 88.8;
+  Widget _buildAgreementLevelRow(
+    BuildContext context,
+    DashboardProvider dashboard,
+  ) {
+    final agreementPct = dashboard.isLive
+        ? dashboard.snapshot?.agreementRate
+        : 88.8;
     return Card(
       color: AppTheme.success.withValues(alpha: 0.035),
       shape: RoundedRectangleBorder(
@@ -357,7 +380,9 @@ class DashboardScreen extends StatelessWidget {
                       ),
                     ),
                     AppText(
-                      '$agreementPct%',
+                      agreementPct == null
+                          ? '—'
+                          : '${agreementPct.toStringAsFixed(1)}%',
                       style: Theme.of(context).textTheme.headlineSmall
                           ?.copyWith(
                             fontWeight: FontWeight.w800,
@@ -370,7 +395,7 @@ class DashboardScreen extends StatelessWidget {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: LinearProgressIndicator(
-                    value: agreementPct / 100,
+                    value: (agreementPct ?? 0) / 100,
                     minHeight: 10,
                     backgroundColor: AppTheme.error.withValues(alpha: 0.18),
                     color: AppTheme.success,
@@ -381,12 +406,26 @@ class DashboardScreen extends StatelessWidget {
                   spacing: 16,
                   runSpacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
-                  children: const [
-                    _StatusKey(color: AppTheme.success, label: 'Agreed 88.8%'),
-                    _StatusKey(color: AppTheme.error, label: 'Disagreed 11.2%'),
+                  children: [
+                    _StatusKey(
+                      color: AppTheme.success,
+                      label: dashboard.isLive
+                          ? 'Agreed ${dashboard.snapshot!.agreed}'
+                          : 'Agreed 88.8%',
+                    ),
+                    _StatusKey(
+                      color: AppTheme.error,
+                      label: dashboard.isLive
+                          ? 'Disagreed ${dashboard.snapshot!.disagreed}'
+                          : 'Disagreed 11.2%',
+                    ),
                     AppText(
-                      '3,139 validated cases',
-                      style: TextStyle(
+                      dashboard.isLive
+                          ? agreementPct == null
+                                ? 'No validated screenings'
+                                : '${dashboard.snapshot!.agreed + dashboard.snapshot!.disagreed} validated cases'
+                          : '3,139 validated cases',
+                      style: const TextStyle(
                         color: AppTheme.subtitleGrey,
                         fontSize: 11,
                       ),
@@ -422,9 +461,9 @@ class DashboardScreen extends StatelessWidget {
               spacing: 16,
               runSpacing: 8,
               children: [
-                const AppText(
-                  'Screening volume, last 30 days',
-                  style: TextStyle(
+                AppText(
+                  'Screening volume, last ${dashboard.days} days',
+                  style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     color: AppTheme.navy,
                     fontSize: 17,
@@ -436,7 +475,7 @@ class DashboardScreen extends StatelessWidget {
                   children: [
                     _buildLegendItem('Total Screenings', AppTheme.primaryDark),
                     _buildLegendItem(
-                      'Total Patients',
+                      dashboard.isLive ? 'Patients screened' : 'Total Patients',
                       AppTheme.navy,
                       dashed: true,
                     ),
@@ -514,35 +553,36 @@ class DashboardScreen extends StatelessWidget {
                     fontSize: 17,
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                    border: Border.all(color: AppTheme.borderLight),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: dashboard.selectedDistributionFilter,
-                      icon: const Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: AppTheme.subtitleGrey,
-                      ),
-                      items: dashboard.distributionFilters
-                          .map(
-                            (s) => DropdownMenuItem(
-                              value: s,
-                              child: AppText(
-                                s,
-                                style: const TextStyle(fontSize: 14),
+                if (!dashboard.isLive)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(AppTheme.inputRadius),
+                      border: Border.all(color: AppTheme.borderLight),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: dashboard.selectedDistributionFilter,
+                        icon: const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: AppTheme.subtitleGrey,
+                        ),
+                        items: dashboard.distributionFilters
+                            .map(
+                              (s) => DropdownMenuItem(
+                                value: s,
+                                child: AppText(
+                                  s,
+                                  style: const TextStyle(fontSize: 14),
+                                ),
                               ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) => dashboard.setDistributionFilter(v!),
+                            )
+                            .toList(),
+                        onChanged: (v) => dashboard.setDistributionFilter(v!),
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -550,8 +590,22 @@ class DashboardScreen extends StatelessWidget {
               builder: (context, constraints) {
                 final stackPanels = constraints.maxWidth < 700;
                 final panels = [
-                  _buildDonut('AI screening', 65, '428 cases'),
-                  _buildDonut('Doctor review', 58, '247 validated'),
+                  _buildDonut(
+                    'AI screening',
+                    dashboard.isLive ? dashboard.snapshot!.ai.positivePct : 65,
+                    dashboard.isLive
+                        ? '${dashboard.snapshot!.ai.total} cases'
+                        : '428 cases',
+                  ),
+                  _buildDonut(
+                    'Doctor review',
+                    dashboard.isLive
+                        ? dashboard.snapshot!.doctor.positivePct
+                        : 58,
+                    dashboard.isLive
+                        ? '${dashboard.snapshot!.doctor.total} validated'
+                        : '247 validated',
+                  ),
                 ];
                 if (stackPanels) {
                   return Column(
@@ -586,8 +640,13 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDonut(String title, int positivePct, String totalLabel) {
-    final negativePct = 100 - positivePct;
+  Widget _buildDonut(String title, num? positivePct, String totalLabel) {
+    final positiveLabel = positivePct == null
+        ? '—'
+        : '${positivePct.toStringAsFixed(1)}%';
+    final negativeLabel = positivePct == null
+        ? '—'
+        : '${(100 - positivePct).toStringAsFixed(1)}%';
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -606,7 +665,7 @@ class DashboardScreen extends StatelessWidget {
                   width: 94,
                   height: 94,
                   child: CircularProgressIndicator(
-                    value: positivePct / 100,
+                    value: (positivePct ?? 0) / 100,
                     strokeWidth: 12,
                     backgroundColor: AppTheme.success.withValues(alpha: 0.22),
                     color: AppTheme.error,
@@ -616,7 +675,7 @@ class DashboardScreen extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     AppText(
-                      '$positivePct%',
+                      positiveLabel,
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 20,
@@ -657,12 +716,12 @@ class DashboardScreen extends StatelessWidget {
               const SizedBox(height: 12),
               _StatusKey(
                 color: AppTheme.error,
-                label: 'Positive $positivePct%',
+                label: 'Positive $positiveLabel',
               ),
               const SizedBox(height: 6),
               _StatusKey(
                 color: AppTheme.success,
-                label: 'Negative $negativePct%',
+                label: 'Negative $negativeLabel',
               ),
             ],
           );
@@ -726,6 +785,8 @@ class DashboardScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
+            if (dashboard.isLive && dashboard.recentActivities.isEmpty)
+              const AppText('Belum ada aktivitas screening.'),
             ...dashboard.recentActivities.map(
               (activity) => Container(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -740,7 +801,7 @@ class DashboardScreen extends StatelessWidget {
                     CircleAvatar(
                       backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
                       foregroundColor: AppTheme.primaryDark,
-                      child: AppText(
+                      child: Text(
                         activity.name
                             .split(' ')
                             .where((part) => part.isNotEmpty)
@@ -754,7 +815,7 @@ class DashboardScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          AppText(
+                          Text(
                             activity.name,
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
@@ -762,7 +823,7 @@ class DashboardScreen extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 2),
-                          AppText(
+                          Text(
                             '${activity.timestamp} · ${activity.institution}',
                             style: const TextStyle(
                               color: AppTheme.subtitleGrey,
@@ -902,9 +963,18 @@ class TrendsChartPainter extends CustomPainter {
 
     // X-Axis Labels
     for (int i = 0; i < data.length; i++) {
-      double x = padding + (i * chartWidth / (data.length - 1));
+      double x =
+          padding + (i * chartWidth / (data.length > 1 ? data.length - 1 : 1));
 
-      final textSpan = TextSpan(text: data[i].date, style: labelStyle);
+      if (data.length > 7 &&
+          i % (data.length / 6).ceil() != 0 &&
+          i != data.length - 1) {
+        continue;
+      }
+      final label = data[i].date.length == 10
+          ? data[i].date.substring(5)
+          : data[i].date;
+      final textSpan = TextSpan(text: label, style: labelStyle);
       final textPainter = TextPainter(
         text: textSpan,
         textDirection: TextDirection.ltr,
@@ -958,13 +1028,16 @@ class TrendsChartPainter extends CustomPainter {
     final path = Path();
 
     for (int i = 0; i < data.length; i++) {
-      double x = padding + (i * width / (data.length - 1));
+      double x =
+          padding + (i * width / (data.length > 1 ? data.length - 1 : 1));
       double y = padding + (height - (data[i] * height));
 
       if (i == 0) {
         path.moveTo(x, y);
       } else {
-        double prevX = padding + ((i - 1) * width / (data.length - 1));
+        double prevX =
+            padding +
+            ((i - 1) * width / (data.length > 1 ? data.length - 1 : 1));
         double prevY = padding + (height - (data[i - 1] * height));
 
         // Use cubic bezier for smooth curves
@@ -1001,7 +1074,8 @@ class TrendsChartPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     for (int i = 0; i < data.length; i++) {
-      double x = padding + (i * width / (data.length - 1));
+      double x =
+          padding + (i * width / (data.length > 1 ? data.length - 1 : 1));
       double y = padding + (height - (data[i] * height));
       canvas.drawCircle(Offset(x, y), 5, dotPaint);
       canvas.drawCircle(Offset(x, y), 5, dotOutlinePaint);
