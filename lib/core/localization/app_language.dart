@@ -58,6 +58,11 @@ String localize(BuildContext context, String text) {
 
 // Copy used by the refactored staging screening widgets.
 const _stagingEnglish = <String, String>{
+  'Dashboard tidak dapat dimuat. Periksa koneksi dan coba lagi.':
+      'Unable to load the dashboard. Check the connection and try again.',
+  'Dashboard belum tersedia.': 'Dashboard is not available.',
+  'Belum ada data dashboard.': 'No dashboard data yet.',
+  'Belum ada aktivitas screening.': 'No screening activity yet.',
   'Model AI belum terpasang di perangkat ini. Hubungi teknisi instansi untuk memasang model sebelum menjalankan analisis.':
       'No AI model is installed on this device. Contact your institution technician to install a model before analysis.',
   'Identitas Pasien': 'Patient Identity',
@@ -109,6 +114,10 @@ const _stagingEnglish = <String, String>{
 };
 
 final _stagingIndonesian = <String, String>{
+  'Patients registered': 'Pasien terdaftar',
+  'Patients screened': 'Pasien diskrining',
+  'No validated screenings': 'Belum ada skrining tervalidasi',
+  'Refresh dashboard': 'Muat ulang dashboard',
   'Technician': 'Teknisi',
   'Users': 'Pengguna',
   'Models': 'Model',
