@@ -30,7 +30,7 @@ void main() {
       addTearDown(tester.view.reset);
       final provider = DiagnosisProvider(MockDiagnosisRepository())
         ..lastOutcome = DiagnosisOutcome(
-          isPositive: false,
+          isPositive: true,
           confidence: 91,
           processingTime: '2.9s',
           modelVersion: 'onnx-2026.09.04',
@@ -45,7 +45,7 @@ void main() {
             home: MediaQuery(
               data: MediaQueryData(
                 size: size,
-                textScaler: TextScaler.linear(2),
+                textScaler: const TextScaler.linear(2),
               ),
               child: Scaffold(body: DiagnosisResultTab(onNewScreening: () {})),
             ),
@@ -97,12 +97,13 @@ void main() {
     await tester.pump();
 
     expect(find.text('Belum ada hasil analisis.'), findsNothing);
-    // 73 comes from the outcome; the old code would have shown a hardcoded 85.
     expect(find.text('73%'), findsOneWidget);
     expect(find.text('85%'), findsNothing);
+    expect(find.text('Screening AI'), findsOneWidget);
+    expect(find.text('Level Indikasi TB: High'), findsOneWidget);
   });
 
-  testWidgets('a negative verdict preserves backend decision confidence', (
+  testWidgets('a negative verdict displays Non-TB and corresponding risk category', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1600, 1000);
@@ -121,12 +122,49 @@ void main() {
     await tester.pumpWidget(_wrap(provider));
     await tester.pump();
 
-    // The stored value (73, confidence of the TB class) is flipped only
-    // for display since the verdict is Normal — the model stays untouched.
-    expect(find.text('Non-TBC'), findsOneWidget);
-    expect(find.text('73%'), findsOneWidget);
-    expect(find.text('27%'), findsNothing);
+    // 100 - 73 = 27% (Low risk)
+    expect(find.text('Screening AI'), findsOneWidget);
+    expect(find.text('Level Indikasi TB: Low'), findsOneWidget);
+    expect(find.text('27%'), findsOneWidget);
+    expect(
+      find.text('Kemungkinan TB rendah, namun belum dapat sepenuhnya dikesampingkan.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Hasil skrining negatif. Pemeriksaan lanjutan bila terdapat gejala atau faktor risiko tinggi.'),
+      findsOneWidget,
+    );
     expect(provider.lastOutcome?.confidence, 73);
+  });
+
+  testWidgets('renders Grey Area category when score is in 40-60%', (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final provider = DiagnosisProvider(MockDiagnosisRepository())
+      ..lastOutcome = DiagnosisOutcome(
+        isPositive: false,
+        confidence: 50,
+        processingTime: '2.0s',
+        modelVersion: 'TBScreen v2.1.0',
+        createdAt: DateTime(2026, 7, 24, 10, 30),
+      );
+
+    await tester.pumpWidget(_wrap(provider));
+    await tester.pump();
+
+    expect(find.text('Screening AI'), findsOneWidget);
+    expect(find.text('Level Indikasi TB: Grey Area'), findsOneWidget);
+    expect(find.text('50%'), findsOneWidget);
+    expect(
+      find.text('Model tidak dapat memberikan keputusan dengan keyakinan yang cukup.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Wajib dilakukan validasi tambahan oleh dokter, disertai evaluasi klinis dan pemeriksaan penunjang.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
@@ -220,17 +258,26 @@ void main() {
 
       // Heading "Screening AI"
       expect(find.text('Screening AI'), findsOneWidget);
-      // Status pill & confidence
-      expect(find.text('TBC'), findsOneWidget);
+      // Level & confidence
+      expect(find.text('Level Indikasi TB: Very High'), findsOneWidget);
       expect(find.text('88%'), findsOneWidget);
+
+      // Interpretation text
+      expect(
+        find.text(
+          'Model menunjukkan indikasi TB dengan keyakinan sangat tinggi.',
+        ),
+        findsOneWidget,
+      );
 
       // Patient identity card
       expect(find.text('Identitas Pasien'), findsOneWidget);
 
-      // Updated recommendation text
+      // Tindak Lanjut card
+      expect(find.text('Tindak Lanjut'), findsOneWidget);
       expect(
         find.text(
-          'Segera rujuk ke fasilitas kesehatan untuk di evaluasi dan dilakukan pemeriksaan tambahan oleh dokter',
+          'Hasil skrining positif. Perlu dilanjutkan dengan pemeriksaan lanjutan.',
         ),
         findsOneWidget,
       );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:myapp/domain/models/screening_category.dart';
 import 'package:myapp/features/diagnosis/presentation/widgets/result/widgets.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 
@@ -26,10 +27,12 @@ class DiagnosisResultTab extends StatelessWidget {
     }
 
     final isPositive = result.isPositive;
-    // HTTP returns decision confidence; local segmentation uses TB confidence.
-    final displayedConfidence = result.segmentation != null && !isPositive
-        ? 100 - result.confidence
-        : result.confidence;
+    // On-device segmentation produces TB confidence directly (0..100).
+    // HTTP/mock without segmentation returns decision confidence.
+    final tbScore = result.segmentation != null
+        ? result.confidence
+        : (isPositive ? result.confidence : 100 - result.confidence);
+    final category = ScreeningLevel.fromScore(tbScore);
 
     return ColoredBox(
       key: const Key('diagnosis-result-content'),
@@ -82,7 +85,8 @@ class DiagnosisResultTab extends StatelessWidget {
                                   Expanded(
                                     child: DiagnosisAiCard(
                                       isPositive: isPositive,
-                                      displayedConfidence: displayedConfidence,
+                                      displayedConfidence: tbScore,
+                                      category: category,
                                     ),
                                   ),
                                   const SizedBox(height: 10),
@@ -90,6 +94,7 @@ class DiagnosisResultTab extends StatelessWidget {
                                   Expanded(
                                     child: RecommendationCard(
                                       isPositive: isPositive,
+                                      category: category,
                                     ),
                                   ),
                                 ],
@@ -140,10 +145,14 @@ class DiagnosisResultTab extends StatelessWidget {
                     const SizedBox(height: 10),
                     DiagnosisAiCard(
                       isPositive: isPositive,
-                      displayedConfidence: displayedConfidence,
+                      displayedConfidence: tbScore,
+                      category: category,
                     ),
                     const SizedBox(height: 10),
-                    RecommendationCard(isPositive: isPositive),
+                    RecommendationCard(
+                      isPositive: isPositive,
+                      category: category,
+                    ),
                     const SizedBox(height: 14),
                     ClinicalDetailsCard(snapshot: snapshot),
                     const SizedBox(height: 14),

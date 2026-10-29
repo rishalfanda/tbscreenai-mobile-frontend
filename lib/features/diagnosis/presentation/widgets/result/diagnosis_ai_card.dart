@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:myapp/core/theme/app_theme.dart';
+import 'package:myapp/domain/models/screening_category.dart';
 import 'result_theme.dart';
 
 /// Card C: Hasil Screening / Presentase (Diagnosis AI).
@@ -8,20 +9,36 @@ class DiagnosisAiCard extends StatelessWidget {
     super.key,
     required this.isPositive,
     required this.displayedConfidence,
+    this.category,
   });
 
   final bool isPositive;
   final num displayedConfidence;
+  final ScreeningLevel? category;
 
   @override
   Widget build(BuildContext context) {
+    final cat = category ?? ScreeningLevel.fromScore(displayedConfidence);
+    final List<Color> gradientColors = switch (cat) {
+      ScreeningLevel.veryLow || ScreeningLevel.low => [
+        AppTheme.success,
+        AppTheme.successDark,
+      ],
+      ScreeningLevel.greyArea => [
+        const Color(0xFFF59E0B),
+        const Color(0xFFD97706),
+      ],
+      ScreeningLevel.high || ScreeningLevel.veryHigh => [
+        AppTheme.error,
+        AppTheme.errorDark,
+      ],
+    };
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: isPositive
-              ? [AppTheme.error, AppTheme.errorDark]
-              : [AppTheme.success, AppTheme.successDark],
+          colors: gradientColors,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -34,67 +51,43 @@ class DiagnosisAiCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              const Text(
-                'Screening AI',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
-
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 3,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.22),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  isPositive ? 'TBC' : 'Non-TBC',
-                  style: const TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
+          const Text(
+            'Screening AI',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.start,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(
-                width: 220,
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Skor Keyakinan AI',
-                      style: TextStyle(
+                      'Level Indikasi TB: ${cat.label}',
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 15.5,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
-                      'Alat bantu skrining awal · Butuh konfirmasi dokter',
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                      cat.interpretation,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -108,7 +101,7 @@ class DiagnosisAiCard extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  '$displayedConfidence%',
+                  '${displayedConfidence.round()}%',
                   style: const TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w800,
