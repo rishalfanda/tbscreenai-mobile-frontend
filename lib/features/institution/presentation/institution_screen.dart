@@ -9,6 +9,8 @@ import 'package:myapp/features/shared/presentation/widgets/empty_state.dart';
 import 'package:myapp/features/shared/presentation/widgets/section_header.dart';
 import 'package:myapp/state/auth_provider.dart';
 import 'package:myapp/state/institution_provider.dart';
+import 'package:myapp/core/config/app_config.dart';
+import 'live_users_screen.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'institution_overview.dart';
 import 'institution_users.dart';
@@ -25,6 +27,56 @@ class InstitutionScreen extends StatelessWidget {
       return const SizedBox.shrink();
     }
     if (actor == null) return const SizedBox.shrink();
+    if (section == 'overview' || AppConfig.useHttp) {
+      if (section == 'users' && AppConfig.useHttp) {
+        return const LiveUsersScreen();
+      }
+      return ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Text(
+            context.tr('Ruang kerja teknisi', 'Technician workspace'),
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            context.tr(
+              'Kelola akun dokter dan dataset dalam instansi akun. Screening, validasi dan sinkronisasi bukan akses teknisi.',
+              'Manage doctor accounts and datasets in your institution. Screening, validation and sync are not technician permissions.',
+            ),
+          ),
+          const SizedBox(height: 24),
+          for (final task in [
+            (
+              '/users',
+              context.tr('Kelola akun dokter', 'Manage doctor accounts'),
+              Icons.manage_accounts,
+            ),
+            (
+              '/dataset',
+              context.tr('Kelola dataset', 'Manage datasets'),
+              Icons.table_chart,
+            ),
+            (
+              '/dashboard',
+              context.tr(
+                'Lihat ringkasan instansi',
+                'View institution summary',
+              ),
+              Icons.dashboard,
+            ),
+          ])
+            Card(
+              child: ListTile(
+                leading: Icon(task.$3),
+                title: Text(task.$2),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.go(task.$1),
+              ),
+            ),
+        ],
+      );
+    }
     final store = context.watch<InstitutionProvider>();
     final technician = actor.mobileRole == MobileRole.technician;
     final available =

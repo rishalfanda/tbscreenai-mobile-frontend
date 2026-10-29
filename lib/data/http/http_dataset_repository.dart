@@ -4,10 +4,60 @@ import 'package:myapp/domain/models/dataset_page.dart';
 import 'package:myapp/domain/repositories/dataset_repository.dart';
 
 class HttpDatasetRepository
-    implements DatasetRepository, DatasetReadRepository {
+    implements
+        DatasetRepository,
+        DatasetReadRepository,
+        DatasetWriteRepository {
   HttpDatasetRepository(this._client);
   final ApiClient _client;
   static const pageSize = 20;
+
+  @override
+  Future<DatasetEntry> create({
+    required String name,
+    String? description,
+  }) async => _entry(
+    (await _client.dio.post<Object?>(
+      '/datasets',
+      data: {'name': name.trim(), 'description': description},
+    )).data,
+  );
+  @override
+  Future<DatasetEntry> update(String id, Map<String, Object?> changes) async {
+    final entry = _entry(
+      (await _client.dio.patch<Object?>(
+        '/datasets/${Uri.encodeComponent(id)}',
+        data: changes,
+      )).data,
+    );
+    if (entry.id != id) {
+      throw const FormatException('Dataset identity mismatch');
+    }
+    return entry;
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    await _client.dio.delete<void>('/datasets/${Uri.encodeComponent(id)}');
+  }
+
+  @override
+  Future<void> addItems(String id, List<String> diagnosisIds) async {
+    if (diagnosisIds.isEmpty || diagnosisIds.length > 500) {
+      throw ArgumentError('Select 1-500 screenings');
+    }
+    await _client.dio.post<Object?>(
+      '/datasets/${Uri.encodeComponent(id)}/items',
+      data: {'diagnosis_ids': diagnosisIds},
+    );
+  }
+
+  @override
+  Future<void> removeItem(String id, String diagnosisId) async {
+    await _client.dio.delete<void>(
+      '/datasets/${Uri.encodeComponent(id)}/items/${Uri.encodeComponent(diagnosisId)}',
+    );
+  }
 
   @override
   Future<DatasetPage<DatasetEntry>> list({

@@ -5,7 +5,7 @@ import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/domain/repositories/auth_repository.dart';
 
 /// Live auth against POST /auth/login + /auth/refresh.
-class HttpAuthRepository implements AuthRepository {
+class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
   HttpAuthRepository(this._client, {SettingsStore? settings, AppDatabase? db})
     : _settings = settings,
       _db = db;
@@ -15,6 +15,7 @@ class HttpAuthRepository implements AuthRepository {
   final AppDatabase? _db;
   int _operation = 0;
   Future<void>? _cleanup;
+  UserProfile? _identity;
 
   @override
   Future<UserProfile> login({
@@ -24,6 +25,7 @@ class HttpAuthRepository implements AuthRepository {
     // Invalidate in-flight work immediately, but retain the previous owner's
     // cache until the replacement account has authenticated successfully.
     final operation = ++_operation;
+    _identity = null;
     _db?.invalidateSession();
     final clearingTokens = _client.tokens.clear();
     final cleanup = _cleanup;
@@ -60,7 +62,9 @@ class HttpAuthRepository implements AuthRepository {
         tenantId.isEmpty ||
         displayName is! String ||
         userEmail is! String ||
-        role is! String) {
+        role is! String ||
+        (user.containsKey('must_change_password') &&
+            user['must_change_password'] is! bool)) {
       throw const FormatException('Authenticated user identity is incomplete');
     }
     _ensureCurrent(operation, tokenGeneration: tokenGeneration);
@@ -71,6 +75,7 @@ class HttpAuthRepository implements AuthRepository {
       displayName: displayName,
       email: userEmail,
       role: role,
+      mustChangePassword: user['must_change_password'] == true,
     );
 
     try {
@@ -105,6 +110,7 @@ class HttpAuthRepository implements AuthRepository {
       }
       rethrow;
     }
+    _identity = profile;
     return profile;
   }
 
@@ -117,8 +123,61 @@ class HttpAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<UserProfile> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final operation = _operation;
+    final generation = _client.tokens.generation;
+    final response = await _client.dio.post<Map<String, dynamic>>(
+      '/auth/change-password',
+      data: {'current_password': currentPassword, 'new_password': newPassword},
+    );
+    _ensureCurrent(operation, tokenGeneration: generation);
+    final data = response.data;
+    final user = data?['user'];
+    final access = data?['access_token'];
+    final refresh = data?['refresh_token'];
+    if (user is! Map<String, dynamic> ||
+        access is! String ||
+        access.isEmpty ||
+        refresh is! String ||
+        refresh.isEmpty ||
+        user['id'] is! String ||
+        user['tenant_id'] is! String ||
+        user['full_name'] is! String ||
+        user['email'] is! String ||
+        user['role'] is! String ||
+        user['must_change_password'] != false) {
+      throw const FormatException('Password change response is invalid');
+    }
+    final identity = _identity;
+    if (identity == null ||
+        user['id'] != identity.userId ||
+        user['tenant_id'] != identity.tenantId ||
+        user['role'] != identity.role) {
+      throw const FormatException('Password change identity mismatch');
+    }
+    final owner = await _settings?.readSessionOwner();
+    _ensureCurrent(operation, tokenGeneration: generation);
+    if (owner != null && owner != '${user['tenant_id']}:${user['id']}') {
+      throw const FormatException('Password change identity mismatch');
+    }
+    await _client.tokens.replaceSession(access: access, refresh: refresh);
+    _ensureCurrent(operation);
+    return UserProfile(
+      userId: user['id'] as String,
+      tenantId: user['tenant_id'] as String,
+      displayName: user['full_name'] as String,
+      email: user['email'] as String,
+      role: user['role'] as String,
+    );
+  }
+
+  @override
   Future<void> logout() {
     _operation++;
+    _identity = null;
     return _clearSession();
   }
 

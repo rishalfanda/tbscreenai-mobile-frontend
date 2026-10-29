@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myapp/features/account/presentation/account_screen.dart';
 import 'package:myapp/features/auth/presentation/login_screen.dart';
+import 'package:myapp/features/auth/presentation/change_password_screen.dart';
 import 'package:myapp/features/camera/presentation/camera_screen.dart';
 import 'package:myapp/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:myapp/features/dataset/presentation/dataset_screen.dart';
@@ -26,6 +27,13 @@ class AppRouter {
           return '/login';
         }
 
+        if (isLoggedIn && authProvider.mustChangePassword) {
+          return state.uri.path == '/change-password'
+              ? null
+              : '/change-password';
+        }
+        if (isLoggedIn && state.uri.path == '/change-password') return null;
+
         if (isLoggedIn && isLoggingIn) {
           return authProvider.mobileRole.home;
         }
@@ -37,6 +45,10 @@ class AppRouter {
         return null;
       },
       routes: [
+        GoRoute(
+          path: '/change-password',
+          builder: (_, _) => const ChangePasswordScreen(),
+        ),
         GoRoute(
           path: '/login',
           builder: (context, state) => const LoginScreen(),

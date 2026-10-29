@@ -104,6 +104,26 @@ class TokenStore {
     return _serializeSecure(_deleteSecureValues);
   }
 
+  /// Password changes revoke the previous server session. Fence off old
+  /// refreshes/responses before exposing the new, already-valid token pair.
+  Future<void> replaceSession({
+    required String access,
+    required String refresh,
+  }) async {
+    if (access.isEmpty || refresh.isEmpty) {
+      throw ArgumentError('Tokens must not be empty');
+    }
+    final replacementGeneration = ++generation;
+    accessToken = access;
+    refreshToken = refresh;
+    try {
+      await update(access: access, refresh: refresh);
+    } catch (_) {
+      if (generation == replacementGeneration) await clear();
+      rethrow;
+    }
+  }
+
   /// Platform key stores are async. Serialize mutations so a delayed write
   /// from an obsolete login can never delete or replace a newer token pair.
   Future<T> _serializeSecure<T>(Future<T> Function() action) {
@@ -282,10 +302,14 @@ class ApiClient {
       final response = await dio.fetch<dynamic>(retryOptions);
       return handler.resolve(response);
     } on DioException catch (refreshError) {
-      await _expire(SessionEndReason.refreshRejected);
+      if (generation == tokens.generation) {
+        await _expire(SessionEndReason.refreshRejected);
+      }
       return handler.next(refreshError);
     } catch (_) {
-      await _expire(SessionEndReason.refreshRejected);
+      if (generation == tokens.generation) {
+        await _expire(SessionEndReason.refreshRejected);
+      }
       return handler.next(error);
     }
   }
