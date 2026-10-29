@@ -183,14 +183,72 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
 
   Future<void> _pickImage() async {
     if (_pickingImage) return;
+
+    // Fast-path for testing: if pickImage callback is injected, use it directly
+    if (widget.pickImage != null) {
+      setState(() {
+        _pickingImage = true;
+        _imageLoadingMessage = 'Sedang memproses citra rontgen...';
+      });
+      try {
+        final image = await widget.pickImage!();
+        if (image != null && mounted) {
+          final normalized = await prepareInferenceImage(image);
+          if (mounted) {
+            context.read<DiagnosisProvider>().attachImage(normalized);
+          }
+        }
+      } on XrayImageValidationException catch (error) {
+        if (mounted) _showMessage(error.message, isError: true);
+      } on PlatformException catch (error) {
+        if (mounted) {
+          _showMessage(
+            error.message ?? 'Berkas citra tidak dapat dibuka.',
+            isError: true,
+          );
+        }
+      } catch (_) {
+        if (mounted) {
+          _showMessage('Citra rontgen tidak dapat dibuka.', isError: true);
+        }
+      } finally {
+        if (mounted) setState(() => _pickingImage = false);
+      }
+      return;
+    }
+
+    final source = await showModalBottomSheet<XrayPickSource>(
+      context: context,
+      backgroundColor: diagnosisPanel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => const _ImageSourceSheet(),
+    );
+
+    if (source == null) return;
+
     setState(() {
       _pickingImage = true;
       _imageLoadingMessage = 'Sedang memproses citra rontgen...';
     });
     try {
-      final image =
-          await (widget.pickImage?.call() ?? _imagePicker.pickFromGallery());
-      if (image != null && mounted) {
+      final XrayImage? image = switch (source) {
+        XrayPickSource.usbFiles => await _imagePicker.pickFromFiles(),
+        XrayPickSource.gallery => await _imagePicker.pickFromGallery(),
+      };
+
+      if (image == null) {
+        if (source == XrayPickSource.usbFiles && mounted) {
+          _showMessage(
+            'Tidak ada citra yang dipilih. Jika menggunakan flashdisk USB, pastikan sudah terpasang dengan baik.',
+            isError: false,
+          );
+        }
+        return;
+      }
+
+      if (mounted) {
         setState(() {
           _imageLoadingMessage = 'Sedang memproses citra rontgen...';
         });
@@ -204,13 +262,20 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     } on PlatformException catch (error) {
       if (mounted) {
         _showMessage(
-          error.message ?? 'Galeri gambar tidak dapat dibuka.',
+          error.message ?? 'Berkas/galeri gambar tidak dapat dibuka.',
           isError: true,
         );
       }
     } catch (_) {
       if (mounted) {
-        _showMessage('Citra rontgen tidak dapat dibuka.', isError: true);
+        if (source == XrayPickSource.usbFiles) {
+          _showMessage(
+            'Gagal membaca berkas dari flashdisk USB. Pastikan flashdisk terpasang dengan baik.',
+            isError: true,
+          );
+        } else {
+          _showMessage('Citra rontgen tidak dapat dibuka.', isError: true);
+        }
       }
     } finally {
       if (mounted) setState(() => _pickingImage = false);
@@ -931,4 +996,160 @@ String _numberText(double? value) {
   return value == value.roundToDouble()
       ? value.toInt().toString()
       : value.toString();
+}
+
+class _ImageSourceSheet extends StatelessWidget {
+  const _ImageSourceSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Row(
+              children: [
+                SizedBox(width: 8),
+                Text(
+                  'Pilih Sumber Citra',
+                  style: TextStyle(
+                    color: diagnosisText,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _SourceTile(
+              icon: Icons.usb_rounded,
+              title: 'Flashdisk USB / Berkas',
+              subtitle:
+                  'Buka pengelola berkas untuk memilih citra dari flashdisk USB atau memori',
+              badge: 'Pastikan flashdisk USB sudah terpasang di perangkat',
+              onTap: () => Navigator.of(context).pop(XrayPickSource.usbFiles),
+            ),
+            const SizedBox(height: 12),
+            _SourceTile(
+              icon: Icons.photo_library_outlined,
+              title: 'Galeri Foto',
+              subtitle: 'Pilih citra dari galeri foto perangkat',
+              onTap: () => Navigator.of(context).pop(XrayPickSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceTile extends StatelessWidget {
+  const _SourceTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.badge,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final String? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: diagnosisInput,
+            border: Border.all(color: diagnosisBorder),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                backgroundColor: diagnosisAccent.withValues(alpha: 0.15),
+                radius: 22,
+                child: Icon(icon, color: diagnosisAccent, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: diagnosisText,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: diagnosisMuted,
+                      ),
+                    ),
+                    if (badge != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade900.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: Colors.amber.shade700.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 13,
+                              color: Colors.amber.shade300,
+                            ),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                badge!,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.amber.shade300,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right, color: diagnosisMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
