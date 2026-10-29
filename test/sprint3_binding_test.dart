@@ -8,12 +8,12 @@ import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/mock/mock_repositories.dart';
 import 'package:myapp/data/http/http_repositories.dart';
 import 'package:myapp/data/http/http_dashboard_repository.dart';
+import 'package:myapp/data/http/http_dataset_repository.dart';
 import 'package:myapp/data/offline/offline_patient_repository.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/offline/offline_validation_repository.dart';
 import 'package:myapp/data/models_ota/hybrid_sync_repository.dart';
 import 'package:myapp/data/onnx/hybrid_diagnosis_repository.dart';
-import 'package:myapp/data/unavailable_repositories.dart';
 import 'package:myapp/domain/repositories/repositories.dart';
 
 void main() {
@@ -65,9 +65,7 @@ void main() {
       );
       expect(
         context.read<DatasetRepository>(),
-        live
-            ? isA<UnavailableDatasetRepository>()
-            : isA<MockDatasetRepository>(),
+        live ? isA<HttpDatasetRepository>() : isA<MockDatasetRepository>(),
       );
       await tester.pumpWidget(const SizedBox());
       await db.close();

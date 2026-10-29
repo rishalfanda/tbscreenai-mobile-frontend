@@ -12,6 +12,7 @@ import 'package:myapp/core/config/scroll_behavior.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/data/http/http_repositories.dart';
 import 'package:myapp/data/http/http_dashboard_repository.dart';
+import 'package:myapp/data/http/http_dataset_repository.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/encrypted_xray_store.dart';
 import 'package:myapp/data/local/settings_store.dart';
@@ -26,7 +27,6 @@ import 'package:myapp/data/offline/offline_validation_repository.dart';
 import 'package:myapp/data/onnx/hybrid_diagnosis_repository.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/data/secure/secure_token_storage.dart';
-import 'package:myapp/data/unavailable_repositories.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/repositories/repositories.dart';
 import 'package:myapp/state/auth_provider.dart';
@@ -175,8 +175,8 @@ class TBScreenApp extends StatelessWidget {
               : MockValidationRepository(),
         ),
         Provider<DatasetRepository>(
-          create: (_) => useHttp
-              ? UnavailableDatasetRepository()
+          create: (c) => useHttp
+              ? HttpDatasetRepository(c.read<ApiClient>())
               : MockDatasetRepository(),
         ),
         // === Section: State providers (depend on interfaces only) ===

@@ -58,6 +58,18 @@ String localize(BuildContext context, String text) {
 
 // Copy used by the refactored staging screening widgets.
 const _stagingEnglish = <String, String>{
+  'Dataset belum tersedia.': 'Datasets are not available.',
+  'Data mengikuti instansi akun yang sedang login.':
+      'Data belongs to the signed-in account institution.',
+  'Dataset ini belum memiliki hasil screening.':
+      'This dataset has no screenings yet.',
+  'Tidak ada dataset yang sesuai.': 'No matching datasets.',
+  'Akses dataset ditolak untuk akun ini.':
+      'Dataset access is denied for this account.',
+  'Dataset tidak ditemukan. Muat ulang daftar dataset.':
+      'Dataset not found. Refresh the dataset list.',
+  'Dataset tidak dapat dimuat. Periksa koneksi dan coba lagi.':
+      'Unable to load datasets. Check the connection and try again.',
   'Dashboard tidak dapat dimuat. Periksa koneksi dan coba lagi.':
       'Unable to load the dashboard. Check the connection and try again.',
   'Dashboard belum tersedia.': 'Dashboard is not available.',
@@ -114,6 +126,12 @@ const _stagingEnglish = <String, String>{
 };
 
 final _stagingIndonesian = <String, String>{
+  'Dataset Details': 'Detail Dataset',
+  'Screenings in this dataset': 'Hasil screening dalam dataset',
+  'AI Positive': 'AI Positif',
+  'AI Negative': 'AI Negatif',
+  'Previous': 'Sebelumnya',
+  'Next': 'Berikutnya',
   'Patients registered': 'Pasien terdaftar',
   'Patients screened': 'Pasien diskrining',
   'No validated screenings': 'Belum ada skrining tervalidasi',

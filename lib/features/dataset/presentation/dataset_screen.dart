@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/dataset.dart';
 import 'package:myapp/domain/repositories/dataset_repository.dart';
+import 'live_dataset_screen.dart';
 
 enum DatasetView { list, create, detail, edit }
 
@@ -36,6 +37,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
   @override
   void initState() {
     super.initState();
+    if (AppConfig.useHttp) return;
     // Mock repository resolves synchronously — no loading flash. The local
     // growable copy mirrors the old List.from(mockDatasets) behavior.
     context.read<DatasetRepository>().getDatasets().then((datasets) {
@@ -60,14 +62,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
   @override
   Widget build(BuildContext context) {
     if (!AppConfig.isDemo || AppConfig.useHttp) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: AppText(
-            'Dataset access and CRUD unavailable: backend contract and role permissions pending.',
-          ),
-        ),
-      );
+      return const LiveDatasetScreen();
     }
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
