@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show rootBundle;
+
 import 'package:myapp/data/models_ota/model_store.dart';
 import 'package:myapp/data/onnx/bundle_manifest.dart';
 import 'package:myapp/data/onnx/bundle_store.dart';
@@ -16,13 +18,22 @@ import 'package:myapp/data/onnx/ort_session_pool.dart';
 /// Trimmed from `inf_app`'s `InferenceRunner`: no memory probe, no overlay
 /// rendering — this app's `DiagnosisOutcome` has no slot for either.
 class OnnxInferenceEngine {
-  final OrtSessionPool _pool = OrtSessionPool();
+  OnnxInferenceEngine({OrtSessionPool? pool, ModelStore? modelStore})
+      : _pool = pool ?? OrtSessionPool(),
+        _modelStore = modelStore ?? ModelStore();
+
+  final OrtSessionPool _pool;
+  final ModelStore _modelStore;
 
   BundleStore? _store;
   OrtChainExecutor? _executor;
   Future<bool>? _readyFuture;
+  bool _isStandbyReady = false;
 
   bool get hasBundle => _executor != null && _store != null;
+
+  /// Whether model sessions are preloaded and standing by in memory.
+  bool get isStandbyReady => hasBundle && _isStandbyReady;
 
   /// Resolves once the initial [init] load (kicked off once, lazily) has
   /// finished. `hasBundle` reads `false` until this completes, so anything
@@ -44,20 +55,56 @@ class OnnxInferenceEngine {
   /// repeatedly — the update pipeline calls it after every activation /
   /// rollback. Returns `false` when no bundle is active.
   Future<bool> init() async {
+    _isStandbyReady = false;
     await _executor?.dispose();
     _executor = null;
     _store = null;
 
-    final dir = await ModelStore().activeBundleDir();
-    if (dir == null) return false;
+    final dir = await _modelStore.activeBundleDir();
+    if (dir == null) {
+      _readyFuture = Future.value(false);
+      return false;
+    }
 
     final store = await BundleStore.open(dir);
-    final executor = OrtChainExecutor(store: store, pool: _pool);
+    final executor = OrtChainExecutor(store: store, pool: _pool, keepSessionsStandby: true);
     await executor.setForceCpu(forceCpu);
 
     _store = store;
     _executor = executor;
+    _readyFuture = Future.value(true);
     return true;
+  }
+
+  /// Preloads all pipeline sessions into memory and warms up inference
+  /// so subsequent runs execute without cold-start delay.
+  Future<bool> initiateStandby({Uint8List? sampleBytes}) async {
+    if (isStandbyReady) return true;
+    final hasActive = await ready;
+    if (!hasActive || _executor == null || _store == null) {
+      _isStandbyReady = false;
+      return false;
+    }
+
+    try {
+      await _executor!.preloadSessions();
+      Uint8List? bytes = sampleBytes;
+      if (bytes == null) {
+        try {
+          final data = await rootBundle.load('assets/sample/xray.png');
+          bytes = data.buffer.asUint8List();
+        } catch (_) {}
+      }
+
+      if (bytes != null) {
+        await run(bytes);
+      }
+      _isStandbyReady = true;
+      return true;
+    } catch (_) {
+      _isStandbyReady = false;
+      return false;
+    }
   }
 
   /// Run the pipeline on [imageBytes].
@@ -122,6 +169,10 @@ class OnnxInferenceEngine {
   }
 
   Future<void> dispose() async {
+    _isStandbyReady = false;
     await _executor?.dispose();
+    _executor = null;
+    _store = null;
+    _readyFuture = null;
   }
 }

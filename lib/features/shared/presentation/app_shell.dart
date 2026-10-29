@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
+import 'package:myapp/data/onnx/onnx_inference_engine.dart';
+import 'package:myapp/features/shared/presentation/model_initiation_dialog.dart';
 
 /// Persistent navigation shell shared by all primary screens (ShellRoute).
 /// Collapsible tablet rail and modal navigation on compact Android windows.
@@ -53,6 +55,22 @@ class _AppShellState extends State<AppShell> {
           if (!mounted) return;
           setState(() => _pendingCount = count);
         }, onError: (Object _) {});
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkModelStandby();
+    });
+  }
+
+  void _checkModelStandby() {
+    if (!mounted) return;
+    try {
+      final engine = context.read<OnnxInferenceEngine>();
+      if (!engine.isStandbyReady) {
+        initiateModelStandbyWithDialog(context, engine);
+      }
+    } catch (_) {
+      return;
+    }
   }
 
   @override

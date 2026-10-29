@@ -8,6 +8,8 @@ import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
+import 'package:myapp/data/onnx/onnx_inference_engine.dart';
+import 'package:myapp/features/shared/presentation/model_initiation_dialog.dart';
 
 class SyncCenterScreen extends StatelessWidget {
   const SyncCenterScreen({super.key});
@@ -346,6 +348,18 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
               _progress = 1.0;
               _downloadSpeed = '';
             });
+
+            OnnxInferenceEngine? engine;
+            try {
+              engine = context.read<OnnxInferenceEngine>();
+            } catch (_) {}
+            if (engine != null && mounted) {
+              await initiateModelStandbyWithDialog(
+                context,
+                engine,
+                message: 'Model berhasil diunduh. Menyiapkan model agar siap digunakan...',
+              );
+            }
           },
         );
   }
@@ -372,6 +386,18 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       await _refreshInstalledState();
       if (!mounted) return;
       setState(() => _state = _ModelSyncState.done);
+
+      OnnxInferenceEngine? engine;
+      try {
+        engine = context.read<OnnxInferenceEngine>();
+      } catch (_) {}
+      if (engine != null && mounted) {
+        await initiateModelStandbyWithDialog(
+          context,
+          engine,
+          message: 'Model berhasil diaktifkan. Menyiapkan model agar siap digunakan...',
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {

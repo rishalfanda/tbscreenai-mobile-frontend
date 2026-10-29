@@ -18,6 +18,7 @@ class OrtChainExecutor {
     required this.store,
     required this.pool,
     this.concurrencyLimit = 2,
+    this.keepSessionsStandby = false,
   });
 
   final BundleStore store;
@@ -27,6 +28,17 @@ class OrtChainExecutor {
   final int concurrencyLimit;
 
   BundleManifest get _m => store.manifest;
+
+  /// Whether to keep model sessions resident in memory after execution for standby.
+  bool keepSessionsStandby;
+
+  /// Eagerly creates and caches all pipeline model sessions into memory for standby.
+  Future<void> preloadSessions() async {
+    for (final step in _m.pipeline) {
+      final modelFile = step.isRfActive ? _m.resolveRfFile(null) : step.model;
+      await _session(step, modelFile);
+    }
+  }
 
   /// When true, ignore each step's `ep_preference` and run every model on the
   /// CPU provider. NNAPI / XNNPACK mis-handle the transformer-based seg nets
@@ -191,12 +203,14 @@ class OrtChainExecutor {
 
       completer.complete(stepOut);
 
-      // 5. Immediately drop memory-heavy segmentation sessions once executed
-      final stem = _stem(modelFile);
-      if (stem == 'seg_lung' || stem == 'seg_lesion') {
-        _sessionFutures.remove(modelFile);
-        final s = _sessions.remove(modelFile);
-        if (s != null) await s.close();
+      // 5. Drop memory-heavy segmentation sessions only if standby mode is disabled
+      if (!keepSessionsStandby) {
+        final stem = _stem(modelFile);
+        if (stem == 'seg_lung' || stem == 'seg_lesion') {
+          _sessionFutures.remove(modelFile);
+          final s = _sessions.remove(modelFile);
+          if (s != null) await s.close();
+        }
       }
     } catch (error, stackTrace) {
       if (!completer.isCompleted) {
