@@ -1,6 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show DeviceOrientation;
 import 'package:go_router/go_router.dart';
@@ -90,12 +89,17 @@ class _CameraScreenState extends State<CameraScreen>
       }
       await controller.setFlashMode(FlashMode.off);
 
-      if (controller.value.deviceOrientation == DeviceOrientation.landscapeLeft ||
-          controller.value.deviceOrientation == DeviceOrientation.landscapeRight) {
-        _lastKnownLandscape = controller.value.deviceOrientation;
+      final targetOrientation = defaultCaptureOrientationForCamera(
+        description,
+        currentOrientation: controller.value.deviceOrientation,
+        fallbackLandscape: _lastKnownLandscape,
+      );
+      if (targetOrientation == DeviceOrientation.landscapeLeft ||
+          targetOrientation == DeviceOrientation.landscapeRight) {
+        _lastKnownLandscape = targetOrientation;
       }
       try {
-        await controller.lockCaptureOrientation(_lastKnownLandscape);
+        await controller.lockCaptureOrientation(targetOrientation);
       } catch (_) {
         // Platform might not support orientation locking.
       }
@@ -219,6 +223,11 @@ class _CameraScreenState extends State<CameraScreen>
   void _onCameraValueChanged() {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
+    if (isSensorLandscapeNative(controller.description)) {
+      // External / 0° sensor cameras are fixed upright relative to the display.
+      // Do not re-lock to landscapeLeft/Right based on device tilt.
+      return;
+    }
     final orientation = controller.value.deviceOrientation;
     if (orientation == DeviceOrientation.landscapeLeft ||
         orientation == DeviceOrientation.landscapeRight) {
@@ -336,34 +345,39 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  /// Keys the preview's rotation off the camera's live `deviceOrientation`
-  /// (true sensor/accelerometer data) rather than `MediaQuery`, which always
-  /// reports landscape here since the activity is orientation-locked and
-  /// never actually rotates — that mismatch is why the preview used to look
-  /// stretched whenever the tablet was physically held in portrait.
+  /// Directly renders the camera texture via [controller.buildPreview()] rather
+  /// than the [CameraPreview] widget.
+  ///
+  /// Flutter's [CameraPreview] widget couples its internal [AspectRatio] and
+  /// [RotatedBox] to `lockedCaptureOrientation`, causing it to invert aspect ratio
+  /// to 9:16 portrait when capture orientation is locked to `portraitUp` (as required
+  /// by external webcams and 0° sensors on Android).
+  ///
+  /// By rendering [controller.buildPreview()] directly inside a landscape-proportioned
+  /// [SizedBox] with a single [RotatedBox] computed via [cameraPreviewQuarterTurns],
+  /// the preview maintains the correct 16:9 aspect ratio without stretching and
+  /// renders upright across all devices.
   Widget _coverCameraPreview(CameraController controller) {
     final previewSize = controller.value.previewSize;
-    if (previewSize == null) return CameraPreview(controller);
+    if (previewSize == null) return controller.buildPreview();
 
     return ValueListenableBuilder<CameraValue>(
       valueListenable: controller,
       builder: (context, value, _) {
-        final quarterTurns = _previewQuarterTurns(
-          controller.description,
-          _effectiveOrientation(
-            value.deviceOrientation,
-            lockedOrientation: value.lockedCaptureOrientation,
-          ),
+        final orientation = _effectiveOrientation(value.deviceOrientation);
+        final quarterTurns = cameraPreviewQuarterTurns(
+          orientation: orientation,
+          platform: defaultTargetPlatform,
         );
         return ClipRect(
           child: FittedBox(
             fit: BoxFit.cover,
-            child: RotatedBox(
-              quarterTurns: quarterTurns,
-              child: SizedBox(
-                width: previewSize.width,
-                height: previewSize.height,
-                child: CameraPreview(controller),
+            child: SizedBox(
+              width: previewSize.width,
+              height: previewSize.height,
+              child: RotatedBox(
+                quarterTurns: quarterTurns,
+                child: controller.buildPreview(),
               ),
             ),
           ),
@@ -374,20 +388,15 @@ class _CameraScreenState extends State<CameraScreen>
 
   /// When the tablet is lying flat on a surface ("posisi tertidur"), the
   /// accelerometer has no horizontal tilt vector, causing the camera plugin's
-  /// deviceOrientation to default to portraitUp. In our landscape-locked app,
-  /// treating this as portrait erroneously triggers a 90° rotation compensation,
-  /// flipping the preview's aspect ratio and causing FittedBox to zoom and
-  /// mis-scale the camera feed.
+  /// deviceOrientation to default to portraitUp. Similarly, devices without
+  /// an accelerometer (such as Raspberry Pi) default to portraitUp.
   ///
-  /// This helper preserves the active landscape orientation when the device is
-  /// flat or vertical-tilted, ensuring the preview renders cleanly without distortion.
-  DeviceOrientation _effectiveOrientation(
-    DeviceOrientation raw, {
-    DeviceOrientation? lockedOrientation,
-  }) {
+  /// In our landscape-locked app, treating this as portrait would miscalculate
+  /// preview rotation. This helper preserves the active landscape orientation,
+  /// ensuring the preview renders upright without distortion.
+  DeviceOrientation _effectiveOrientation(DeviceOrientation raw) {
     final effective = effectiveCameraOrientation(
       raw,
-      lockedOrientation: lockedOrientation,
       fallbackLandscape: _lastKnownLandscape,
     );
     if (raw == DeviceOrientation.landscapeLeft ||
@@ -395,13 +404,6 @@ class _CameraScreenState extends State<CameraScreen>
       _lastKnownLandscape = raw;
     }
     return effective;
-  }
-
-  int _previewQuarterTurns(
-    CameraDescription description,
-    DeviceOrientation orientation,
-  ) {
-    return previewQuarterTurns(description, orientation);
   }
 
   Widget _captureControls() {
@@ -540,24 +542,91 @@ String _cameraMessage(CameraException error) {
   };
 }
 
-/// Resolves the effective orientation for the camera preview.
-/// When the device is flat on a surface ("posisi tertidur"), the accelerometer
-/// reports no horizontal tilt, so Flutter defaults raw orientation to portraitUp.
-/// In this landscape-locked app, falling back to the active landscape orientation
-/// prevents an unintended 90° rotation that swaps preview aspect ratio.
-DeviceOrientation effectiveCameraOrientation(
-  DeviceOrientation raw, {
-  DeviceOrientation? lockedOrientation,
+/// Checks whether the camera sensor is natively mounted for landscape displays,
+/// which is true for external USB webcams (UVC) and any sensor reporting 0° orientation.
+bool isSensorLandscapeNative(CameraDescription description) {
+  return description.sensorOrientation == 0 ||
+      description.lensDirection == CameraLensDirection.external;
+}
+
+/// Determines the target capture orientation to lock for a given camera.
+///
+/// For external webcams and 0° sensors (e.g. Raspberry Pi + LineageOS with OBSBOT MEET 2),
+/// the camera stream is naturally upright relative to Surface.ROTATION_0 (portraitUp).
+/// Locking capture orientation to landscapeLeft would artificially rotate the capture
+/// by 270° and preview by 90°.
+///
+/// For built-in tablet/phone sensors (typically 90° back / 270° front), locking to
+/// landscapeLeft (or active landscape) ensures the preview and capture stay upright
+/// even when the device is flat on a desk ("posisi tertidur") without horizontal tilt.
+DeviceOrientation defaultCaptureOrientationForCamera(
+  CameraDescription description, {
+  DeviceOrientation currentOrientation = DeviceOrientation.portraitUp,
   DeviceOrientation fallbackLandscape = DeviceOrientation.landscapeLeft,
 }) {
-  if (lockedOrientation != null) {
-    return lockedOrientation;
+  if (isSensorLandscapeNative(description)) {
+    if (currentOrientation == DeviceOrientation.landscapeRight) {
+      return DeviceOrientation.landscapeRight;
+    }
+    if (currentOrientation == DeviceOrientation.landscapeLeft) {
+      return DeviceOrientation.landscapeLeft;
+    }
+    return DeviceOrientation.portraitUp;
   }
+
+  if (currentOrientation == DeviceOrientation.landscapeRight) {
+    return DeviceOrientation.landscapeRight;
+  }
+  if (currentOrientation == DeviceOrientation.landscapeLeft) {
+    return DeviceOrientation.landscapeLeft;
+  }
+  return fallbackLandscape;
+}
+
+/// Resolves the effective orientation for the camera preview.
+/// In our landscape-locked app, the UI is always displayed in landscape.
+/// When the device is flat on a surface ("posisi tertidur") or lacks an accelerometer
+/// (such as Raspberry Pi on LineageOS with an external monitor), Android defaults raw
+/// orientation to portraitUp. Falling back to the active landscape orientation
+/// ensures the preview texture is rendered upright for the landscape display.
+DeviceOrientation effectiveCameraOrientation(
+  DeviceOrientation raw, {
+  DeviceOrientation fallbackLandscape = DeviceOrientation.landscapeLeft,
+  DeviceOrientation? lockedOrientation,
+  CameraDescription? description,
+}) {
   if (raw == DeviceOrientation.landscapeLeft ||
       raw == DeviceOrientation.landscapeRight) {
     return raw;
   }
   return fallbackLandscape;
+}
+
+/// Determines the number of quarter turns to rotate the camera preview texture
+/// so that it displays upright in our landscape-locked app.
+///
+/// On Android, the raw camera texture delivered to [Texture] is in sensor
+/// coordinates. In a landscape activity:
+/// - [DeviceOrientation.landscapeLeft] (Surface.ROTATION_90, 90° CCW display rotation)
+///   requires 3 quarter turns (270° CW / 90° CCW) to be upright.
+/// - [DeviceOrientation.landscapeRight] (Surface.ROTATION_270, 270° CCW display rotation)
+///   requires 1 quarter turn (90° CW) to be upright.
+///
+/// On other platforms (web, iOS, desktop), the native engine applies preview
+/// transformations automatically, so 0 turns are needed.
+int cameraPreviewQuarterTurns({
+  required DeviceOrientation orientation,
+  TargetPlatform platform = TargetPlatform.android,
+}) {
+  if (kIsWeb || platform != TargetPlatform.android) {
+    return 0;
+  }
+  return switch (orientation) {
+    DeviceOrientation.landscapeLeft => 3,
+    DeviceOrientation.landscapeRight => 1,
+    DeviceOrientation.portraitDown => 2,
+    DeviceOrientation.portraitUp => 0,
+  };
 }
 
 /// Standard sensor-orientation compensation formula (the one Google
