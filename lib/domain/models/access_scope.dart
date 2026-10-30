@@ -35,6 +35,7 @@ enum MobileRole {
         '/users',
         '/dashboard',
         '/dataset',
+        '/sync',
       }.contains(path),
       management || unsupported => false,
     };

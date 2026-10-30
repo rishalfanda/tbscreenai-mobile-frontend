@@ -5,7 +5,35 @@ import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/data/mock/mock_repositories.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
+import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/features/sync/presentation/sync_center_screen.dart';
+
+class _EmptyModelSyncRepository extends MockSyncRepository {
+  @override
+  Future<String?> getInstalledModelVersion() async => null;
+
+  @override
+  Future<ModelVersionInfo> checkForUpdate() async {
+    return const ModelVersionInfo(
+      currentVersion: '',
+      latestVersion: '',
+      fileSize: '-',
+      releaseDate: '-',
+      changelog: [],
+    );
+  }
+
+  @override
+  Future<List<AvailableModelBundle>> getAvailableModels({
+    String? channel,
+    bool? quantized,
+    bool localOnly = false,
+  }) async =>
+      const [];
+
+  @override
+  Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo() async => null;
+}
 
 Widget _wrap([SyncRepository? repo]) {
   return Provider<SyncRepository>(
@@ -76,6 +104,30 @@ void main() {
       expect(find.text('Versi Baru Tersedia'), findsOneWidget);
       expect(find.text('Perbarui Sekarang'), findsOneWidget);
       expect(find.text('v1.3.1'), findsOneWidget);
+    });
+
+    testWidgets(
+        'shows noModelAvailable message when server has no models and device has none',
+        (tester) async {
+      sizeTablet(tester);
+      await tester.pumpWidget(_wrap(_EmptyModelSyncRepository()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Belum Ada Model Aktif'), findsOneWidget);
+
+      await tester.tap(find.text('Periksa Pembaruan Model'));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Belum Ada Model AI di Server'), findsOneWidget);
+      expect(
+        find.text(
+          'Server belum memiliki berkas model AI yang dirilis untuk channel ini. '
+          'Hubungi administrator sistem untuk mengunggah bundle model AI ke server.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Periksa Lagi'), findsOneWidget);
     });
 
     testWidgets(

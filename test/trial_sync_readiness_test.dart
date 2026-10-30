@@ -12,8 +12,9 @@ import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 
 class _Adapter implements HttpClientAdapter {
-  _Adapter(this.answer);
+  _Adapter(this.answer, {this.statusCode = 200});
   final Future<Map<String, dynamic>> Function(RequestOptions) answer;
+  final int statusCode;
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -21,7 +22,7 @@ class _Adapter implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async => ResponseBody.fromString(
     jsonEncode(await answer(options)),
-    200,
+    statusCode,
     headers: {
       Headers.contentTypeHeader: [Headers.jsonContentType],
     },
@@ -180,4 +181,23 @@ void main() {
       },
     );
   }
+
+  test('checkForUpdate returns empty latestVersion on 404 without throwing', () async {
+    client.dio.httpClientAdapter = _Adapter(
+      (_) async => {'detail': {'code': 'channel_unknown', 'message': "No channel 'stable'"}},
+      statusCode: 404,
+    );
+    final service = ModelUpdateService(
+      client: client,
+      settings: settings,
+      db: db,
+      modelPipeline: ModelUpdatePipeline(
+        downloadDio: Dio(),
+        engine: OnnxInferenceEngine(),
+      ),
+    );
+    final info = await service.checkForUpdate();
+    expect(info.latestVersion, isEmpty);
+    expect(info.downloadUrl, isNull);
+  });
 }

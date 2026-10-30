@@ -137,6 +137,7 @@ class _ConnectionChipState extends State<_ConnectionChip> {
 enum _ModelSyncState {
   idle,
   checking,
+  noModelAvailable,
   upToDate,
   readyToActivate,
   updateAvailable,
@@ -214,12 +215,14 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
     String? currentVersion,
   ) {
     AvailableModelBundle? match;
-    for (final m in localModels) {
-      if (m.version.toLowerCase().trim() == info.latestVersion.toLowerCase().trim() ||
-          m.id.toLowerCase().trim() == info.latestVersion.toLowerCase().trim() ||
-          m.id.toLowerCase().trim().endsWith('_${info.latestVersion.toLowerCase().trim()}')) {
-        match = m;
-        break;
+    if (info.latestVersion.isNotEmpty) {
+      for (final m in localModels) {
+        if (m.version.toLowerCase().trim() == info.latestVersion.toLowerCase().trim() ||
+            m.id.toLowerCase().trim() == info.latestVersion.toLowerCase().trim() ||
+            m.id.toLowerCase().trim().endsWith('_${info.latestVersion.toLowerCase().trim()}')) {
+          match = m;
+          break;
+        }
       }
     }
 
@@ -240,9 +243,16 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         _state = _ModelSyncState.updateAvailable;
       }
     } else {
-      final hasNew = info.latestVersion.isNotEmpty &&
-          info.latestVersion != currentVersion;
-      _state = hasNew ? _ModelSyncState.updateAvailable : _ModelSyncState.upToDate;
+      if (info.latestVersion.isEmpty) {
+        if (currentVersion == null || currentVersion.isEmpty) {
+          _state = _ModelSyncState.noModelAvailable;
+        } else {
+          _state = _ModelSyncState.upToDate;
+        }
+      } else {
+        final hasNew = info.latestVersion != currentVersion;
+        _state = hasNew ? _ModelSyncState.updateAvailable : _ModelSyncState.upToDate;
+      }
     }
   }
 
@@ -284,9 +294,35 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       if (!mounted) return;
       setState(() {
         _state = _ModelSyncState.error;
-        _errorMessage = 'Gagal memeriksa pembaruan model: $e';
+        _errorMessage = _formatErrorMessage(e);
       });
     }
+  }
+
+  String _formatErrorMessage(dynamic error) {
+    try {
+      final dyn = error as dynamic;
+      final response = dyn?.response;
+      if (response != null && response.data != null) {
+        final data = response.data;
+        if (data is Map) {
+          final detail = data['detail'];
+          if (detail is Map && detail['message'] is String) {
+            return detail['message'] as String;
+          } else if (detail is String) {
+            return detail;
+          }
+          if (data['message'] is String) {
+            return data['message'] as String;
+          }
+        }
+      }
+      final statusCode = response?.statusCode;
+      if (statusCode != null) {
+        return 'Gagal menghubungi server (HTTP $statusCode).';
+      }
+    } catch (_) {}
+    return 'Gagal memeriksa pembaruan model: $error';
   }
 
   void _startDownload() {
@@ -517,6 +553,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
             switch (_state) {
               _ModelSyncState.idle => _buildIdle(context),
               _ModelSyncState.checking => _buildChecking(),
+              _ModelSyncState.noModelAvailable => _buildNoModelAvailable(context),
               _ModelSyncState.upToDate => _buildUpToDate(context),
               _ModelSyncState.readyToActivate => _buildReadyToActivate(context),
               _ModelSyncState.updateAvailable => _buildUpdateAvailable(context),
@@ -649,6 +686,49 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildNoModelAvailable(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.cloud_off_rounded, color: AppTheme.warning, size: 24),
+            const SizedBox(width: AppTheme.sp8),
+            const Expanded(
+              child: Text(
+                'Belum Ada Model AI di Server',
+                style: TextStyle(
+                  color: AppTheme.navy,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppTheme.sp8),
+        const Text(
+          'Server belum memiliki berkas model AI yang dirilis untuk channel ini. '
+          'Hubungi administrator sistem untuk mengunggah bundle model AI ke server.',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+        ),
+        if (_lastChecked != null) ...[
+          const SizedBox(height: AppTheme.sp8),
+          Text(
+            'Terakhir diperiksa: ${_formatDate(_lastChecked!)}',
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
+        ],
+        const SizedBox(height: AppTheme.sp16),
+        OutlinedButton.icon(
+          onPressed: _checkForUpdate,
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: const Text('Periksa Lagi'),
+        ),
+      ],
     );
   }
 

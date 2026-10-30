@@ -271,43 +271,101 @@ class ModelUpdateService {
   /// Check for updates from API.
   Future<ModelVersionInfo> checkForUpdate() async {
     final installed = await _settings.readInstalledModelVersion();
-    final response = await _client.dio.get<dynamic>(
-      '/models/check',
-      queryParameters: {
-        'channel': _channel,
-        if (installed != null && installed.isNotEmpty) 'current': installed,
-        'app': _appVersion,
-      },
-    );
-    final data = _asJsonMap(response.data);
-    final ModelVersionInfo info;
-    if (data == null) {
-      info = ModelVersionInfo(
-        currentVersion: installed ?? '',
-        latestVersion: installed ?? '',
-        fileSize: '-',
-        releaseDate: '-',
-        changelog: const [],
+    try {
+      final response = await _client.dio.get<dynamic>(
+        '/models/check',
+        queryParameters: {
+          'channel': _channel,
+          if (installed != null && installed.isNotEmpty) 'current': installed,
+          'app': _appVersion,
+        },
+        options: Options(
+          validateStatus: (status) =>
+              status != null &&
+              ((status >= 200 && status < 300) ||
+                  status == 304 ||
+                  status == 404),
+        ),
       );
-    } else {
-      final sizeBytes = (data['size_bytes'] as num?)?.toInt();
-      final latest = (data['latest_version'] as String?) ??
-          (data['latest'] as String?) ??
-          (installed ?? '');
-      info = ModelVersionInfo(
-        currentVersion: installed ?? '',
-        latestVersion: latest,
-        fileSize: sizeBytes != null
-            ? '${(sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB'
-            : '-',
-        releaseDate: (data['released_utc'] as String?) ?? '-',
-        changelog: List<String>.from(data['changelog'] as List? ?? const []),
-        downloadUrl: (data['bundle_zip'] as String?) ?? (data['download_url'] as String?),
-        sha256: (data['bundle_zip_sha256'] as String?) ?? (data['sha256'] as String?),
-      );
+
+      if (response.statusCode == 404) {
+        final info = ModelVersionInfo(
+          currentVersion: installed ?? '',
+          latestVersion: '',
+          fileSize: '-',
+          releaseDate: '-',
+          changelog: const [],
+        );
+        await _cacheCheck(info);
+        return info;
+      }
+
+      if (response.statusCode == 304) {
+        final info = ModelVersionInfo(
+          currentVersion: installed ?? '',
+          latestVersion: installed ?? '',
+          fileSize: '-',
+          releaseDate: '-',
+          changelog: const [],
+        );
+        await _cacheCheck(info);
+        return info;
+      }
+
+      final data = _asJsonMap(response.data);
+      final ModelVersionInfo info;
+      if (data == null) {
+        info = ModelVersionInfo(
+          currentVersion: installed ?? '',
+          latestVersion: installed ?? '',
+          fileSize: '-',
+          releaseDate: '-',
+          changelog: const [],
+        );
+      } else {
+        final sizeBytes = (data['size_bytes'] as num?)?.toInt();
+        final latest = (data['latest_version'] as String?) ??
+            (data['latest'] as String?) ??
+            (installed ?? '');
+        info = ModelVersionInfo(
+          currentVersion: installed ?? '',
+          latestVersion: latest,
+          fileSize: sizeBytes != null
+              ? '${(sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB'
+              : '-',
+          releaseDate: (data['released_utc'] as String?) ?? '-',
+          changelog: List<String>.from(data['changelog'] as List? ?? const []),
+          downloadUrl: (data['bundle_zip'] as String?) ?? (data['download_url'] as String?),
+          sha256: (data['bundle_zip_sha256'] as String?) ?? (data['sha256'] as String?),
+        );
+      }
+      await _cacheCheck(info);
+      return info;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        final info = ModelVersionInfo(
+          currentVersion: installed ?? '',
+          latestVersion: '',
+          fileSize: '-',
+          releaseDate: '-',
+          changelog: const [],
+        );
+        await _cacheCheck(info);
+        return info;
+      }
+      if (e.response?.statusCode == 304) {
+        final info = ModelVersionInfo(
+          currentVersion: installed ?? '',
+          latestVersion: installed ?? '',
+          fileSize: '-',
+          releaseDate: '-',
+          changelog: const [],
+        );
+        await _cacheCheck(info);
+        return info;
+      }
+      rethrow;
     }
-    await _cacheCheck(info);
-    return info;
   }
 
   Future<void> _cacheCheck(ModelVersionInfo info) =>

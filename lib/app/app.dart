@@ -250,11 +250,17 @@ class _RouterViewState extends State<_RouterView> {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       routerConfig: _router,
-      builder: (context, child) => Banner(
-        message: AppConfig.isDemo ? 'DEMO - SYNTHETIC' : 'STAGING',
-        location: BannerLocation.topEnd,
-        child: child!,
-      ),
+      builder: (context, child) {
+        if (!AppConfig.isDemo) {
+          return child!;
+        }
+
+        return Banner(
+          message: 'DEMO - SYNTHETIC',
+          location: BannerLocation.topEnd,
+          child: child!,
+        );
+      },
       scrollBehavior: AppScrollBehavior(),
     );
   }
