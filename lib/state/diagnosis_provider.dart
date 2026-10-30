@@ -12,6 +12,7 @@ import 'package:myapp/domain/repositories/diagnosis_repository.dart';
 import 'package:myapp/domain/repositories/screening_store.dart';
 
 String _inferenceError(Object error) {
+  if (error is LocalModelUnavailable) return error.toString();
   if (error is DiagnosisRequestValidationException) return error.message;
   if (error is DioException) {
     return switch (error.response?.statusCode) {
@@ -26,7 +27,7 @@ String _inferenceError(Object error) {
         'Analisis gagal. Periksa koneksi, alamat API staging, dan layanan backend, lalu coba lagi.',
     };
   }
-  return 'Respons analisis tidak valid. Minta admin memeriksa versi API backend, lalu coba lagi.';
+  return 'Analisis lokal gagal. Periksa citra dan model yang terpasang pada tablet, lalu coba lagi.';
 }
 
 class DiagnosisProvider extends ChangeNotifier {

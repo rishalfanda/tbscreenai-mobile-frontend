@@ -1,3 +1,4 @@
+import 'package:myapp/data/sync/validation_score_contract.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -76,10 +77,34 @@ class OperatorSyncService {
         );
         return operation != 0 ? operation : x.createdAt.compareTo(y.createdAt);
       });
-      var applied = 0, skipped = 0, conflict = 0, failed = 0, done = 0;
+      var applied = 0,
+          skipped = 0,
+          conflict = 0,
+          failed = 0,
+          blocked = 0,
+          done = 0;
+      bool? scoreSupported;
       for (final entry in entries) {
         current();
         final op = SyncQueueData.fromJson(entry['op'] as Map<String, dynamic>);
+        final payload = jsonDecode(op.payload);
+        if (op.operation == 'update' &&
+            payload is Map &&
+            payload.containsKey('validation_score')) {
+          scoreSupported ??= await supportsValidationScore(client);
+          current();
+          if (!scoreSupported) {
+            blocked++;
+            onProgress?.call(++done, entries.length);
+            continue;
+          }
+        }
+        if (op.status == syncBlockedContract ||
+            op.operation == 'validate_score') {
+          blocked++;
+          onProgress?.call(++done, entries.length);
+          continue;
+        }
         if (op.status == syncConflict) {
           conflict++;
           onProgress?.call(++done, entries.length);
@@ -204,6 +229,7 @@ class OperatorSyncService {
         skipped: skipped,
         conflicts: conflict,
         failed: failed,
+        blocked: blocked,
       );
     } finally {
       _running = false;

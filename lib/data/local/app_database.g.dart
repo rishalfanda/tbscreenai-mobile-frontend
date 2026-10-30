@@ -1021,6 +1021,39 @@ class $LocalDiagnosesTable extends LocalDiagnoses
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _validationScoreMeta = const VerificationMeta(
+    'validationScore',
+  );
+  @override
+  late final GeneratedColumn<int> validationScore = GeneratedColumn<int>(
+    'validation_score',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _validatedByMeta = const VerificationMeta(
+    'validatedBy',
+  );
+  @override
+  late final GeneratedColumn<String> validatedBy = GeneratedColumn<String>(
+    'validated_by',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _validatedAtMeta = const VerificationMeta(
+    'validatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> validatedAt = GeneratedColumn<DateTime>(
+    'validated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _diagnosedAtMeta = const VerificationMeta(
     'diagnosedAt',
   );
@@ -1209,6 +1242,9 @@ class $LocalDiagnosesTable extends LocalDiagnoses
     findings,
     status,
     doctorNote,
+    validationScore,
+    validatedBy,
+    validatedAt,
     diagnosedAt,
     updatedAt,
     hasConflict,
@@ -1302,6 +1338,33 @@ class $LocalDiagnosesTable extends LocalDiagnoses
       context.handle(
         _doctorNoteMeta,
         doctorNote.isAcceptableOrUnknown(data['doctor_note']!, _doctorNoteMeta),
+      );
+    }
+    if (data.containsKey('validation_score')) {
+      context.handle(
+        _validationScoreMeta,
+        validationScore.isAcceptableOrUnknown(
+          data['validation_score']!,
+          _validationScoreMeta,
+        ),
+      );
+    }
+    if (data.containsKey('validated_by')) {
+      context.handle(
+        _validatedByMeta,
+        validatedBy.isAcceptableOrUnknown(
+          data['validated_by']!,
+          _validatedByMeta,
+        ),
+      );
+    }
+    if (data.containsKey('validated_at')) {
+      context.handle(
+        _validatedAtMeta,
+        validatedAt.isAcceptableOrUnknown(
+          data['validated_at']!,
+          _validatedAtMeta,
+        ),
       );
     }
     if (data.containsKey('diagnosed_at')) {
@@ -1462,6 +1525,18 @@ class $LocalDiagnosesTable extends LocalDiagnoses
         DriftSqlType.string,
         data['${effectivePrefix}doctor_note'],
       ),
+      validationScore: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}validation_score'],
+      ),
+      validatedBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}validated_by'],
+      ),
+      validatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}validated_at'],
+      ),
       diagnosedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}diagnosed_at'],
@@ -1543,6 +1618,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
   final String findings;
   final String status;
   final String? doctorNote;
+  final int? validationScore;
+  final String? validatedBy;
+  final DateTime? validatedAt;
   final DateTime diagnosedAt;
   final DateTime? updatedAt;
   final bool hasConflict;
@@ -1573,6 +1651,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     required this.findings,
     required this.status,
     this.doctorNote,
+    this.validationScore,
+    this.validatedBy,
+    this.validatedAt,
     required this.diagnosedAt,
     this.updatedAt,
     required this.hasConflict,
@@ -1604,6 +1685,15 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     map['status'] = Variable<String>(status);
     if (!nullToAbsent || doctorNote != null) {
       map['doctor_note'] = Variable<String>(doctorNote);
+    }
+    if (!nullToAbsent || validationScore != null) {
+      map['validation_score'] = Variable<int>(validationScore);
+    }
+    if (!nullToAbsent || validatedBy != null) {
+      map['validated_by'] = Variable<String>(validatedBy);
+    }
+    if (!nullToAbsent || validatedAt != null) {
+      map['validated_at'] = Variable<DateTime>(validatedAt);
     }
     map['diagnosed_at'] = Variable<DateTime>(diagnosedAt);
     if (!nullToAbsent || updatedAt != null) {
@@ -1652,6 +1742,15 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       doctorNote: doctorNote == null && nullToAbsent
           ? const Value.absent()
           : Value(doctorNote),
+      validationScore: validationScore == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validationScore),
+      validatedBy: validatedBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validatedBy),
+      validatedAt: validatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validatedAt),
       diagnosedAt: Value(diagnosedAt),
       updatedAt: updatedAt == null && nullToAbsent
           ? const Value.absent()
@@ -1699,6 +1798,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       findings: serializer.fromJson<String>(json['findings']),
       status: serializer.fromJson<String>(json['status']),
       doctorNote: serializer.fromJson<String?>(json['doctorNote']),
+      validationScore: serializer.fromJson<int?>(json['validationScore']),
+      validatedBy: serializer.fromJson<String?>(json['validatedBy']),
+      validatedAt: serializer.fromJson<DateTime?>(json['validatedAt']),
       diagnosedAt: serializer.fromJson<DateTime>(json['diagnosedAt']),
       updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
       hasConflict: serializer.fromJson<bool>(json['hasConflict']),
@@ -1729,6 +1831,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       'findings': serializer.toJson<String>(findings),
       'status': serializer.toJson<String>(status),
       'doctorNote': serializer.toJson<String?>(doctorNote),
+      'validationScore': serializer.toJson<int?>(validationScore),
+      'validatedBy': serializer.toJson<String?>(validatedBy),
+      'validatedAt': serializer.toJson<DateTime?>(validatedAt),
       'diagnosedAt': serializer.toJson<DateTime>(diagnosedAt),
       'updatedAt': serializer.toJson<DateTime?>(updatedAt),
       'hasConflict': serializer.toJson<bool>(hasConflict),
@@ -1757,6 +1862,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     String? findings,
     String? status,
     Value<String?> doctorNote = const Value.absent(),
+    Value<int?> validationScore = const Value.absent(),
+    Value<String?> validatedBy = const Value.absent(),
+    Value<DateTime?> validatedAt = const Value.absent(),
     DateTime? diagnosedAt,
     Value<DateTime?> updatedAt = const Value.absent(),
     bool? hasConflict,
@@ -1784,6 +1892,11 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     findings: findings ?? this.findings,
     status: status ?? this.status,
     doctorNote: doctorNote.present ? doctorNote.value : this.doctorNote,
+    validationScore: validationScore.present
+        ? validationScore.value
+        : this.validationScore,
+    validatedBy: validatedBy.present ? validatedBy.value : this.validatedBy,
+    validatedAt: validatedAt.present ? validatedAt.value : this.validatedAt,
     diagnosedAt: diagnosedAt ?? this.diagnosedAt,
     updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
     hasConflict: hasConflict ?? this.hasConflict,
@@ -1827,6 +1940,15 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       doctorNote: data.doctorNote.present
           ? data.doctorNote.value
           : this.doctorNote,
+      validationScore: data.validationScore.present
+          ? data.validationScore.value
+          : this.validationScore,
+      validatedBy: data.validatedBy.present
+          ? data.validatedBy.value
+          : this.validatedBy,
+      validatedAt: data.validatedAt.present
+          ? data.validatedAt.value
+          : this.validatedAt,
       diagnosedAt: data.diagnosedAt.present
           ? data.diagnosedAt.value
           : this.diagnosedAt,
@@ -1875,6 +1997,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
           ..write('findings: $findings, ')
           ..write('status: $status, ')
           ..write('doctorNote: $doctorNote, ')
+          ..write('validationScore: $validationScore, ')
+          ..write('validatedBy: $validatedBy, ')
+          ..write('validatedAt: $validatedAt, ')
           ..write('diagnosedAt: $diagnosedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('hasConflict: $hasConflict, ')
@@ -1905,6 +2030,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     findings,
     status,
     doctorNote,
+    validationScore,
+    validatedBy,
+    validatedAt,
     diagnosedAt,
     updatedAt,
     hasConflict,
@@ -1934,6 +2062,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
           other.findings == this.findings &&
           other.status == this.status &&
           other.doctorNote == this.doctorNote &&
+          other.validationScore == this.validationScore &&
+          other.validatedBy == this.validatedBy &&
+          other.validatedAt == this.validatedAt &&
           other.diagnosedAt == this.diagnosedAt &&
           other.updatedAt == this.updatedAt &&
           other.hasConflict == this.hasConflict &&
@@ -1961,6 +2092,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
   final Value<String> findings;
   final Value<String> status;
   final Value<String?> doctorNote;
+  final Value<int?> validationScore;
+  final Value<String?> validatedBy;
+  final Value<DateTime?> validatedAt;
   final Value<DateTime> diagnosedAt;
   final Value<DateTime?> updatedAt;
   final Value<bool> hasConflict;
@@ -1987,6 +2121,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     this.findings = const Value.absent(),
     this.status = const Value.absent(),
     this.doctorNote = const Value.absent(),
+    this.validationScore = const Value.absent(),
+    this.validatedBy = const Value.absent(),
+    this.validatedAt = const Value.absent(),
     this.diagnosedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.hasConflict = const Value.absent(),
@@ -2014,6 +2151,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     this.findings = const Value.absent(),
     this.status = const Value.absent(),
     this.doctorNote = const Value.absent(),
+    this.validationScore = const Value.absent(),
+    this.validatedBy = const Value.absent(),
+    this.validatedAt = const Value.absent(),
     required DateTime diagnosedAt,
     this.updatedAt = const Value.absent(),
     this.hasConflict = const Value.absent(),
@@ -2046,6 +2186,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     Expression<String>? findings,
     Expression<String>? status,
     Expression<String>? doctorNote,
+    Expression<int>? validationScore,
+    Expression<String>? validatedBy,
+    Expression<DateTime>? validatedAt,
     Expression<DateTime>? diagnosedAt,
     Expression<DateTime>? updatedAt,
     Expression<bool>? hasConflict,
@@ -2073,6 +2216,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
       if (findings != null) 'findings': findings,
       if (status != null) 'status': status,
       if (doctorNote != null) 'doctor_note': doctorNote,
+      if (validationScore != null) 'validation_score': validationScore,
+      if (validatedBy != null) 'validated_by': validatedBy,
+      if (validatedAt != null) 'validated_at': validatedAt,
       if (diagnosedAt != null) 'diagnosed_at': diagnosedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (hasConflict != null) 'has_conflict': hasConflict,
@@ -2102,6 +2248,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     Value<String>? findings,
     Value<String>? status,
     Value<String?>? doctorNote,
+    Value<int?>? validationScore,
+    Value<String?>? validatedBy,
+    Value<DateTime?>? validatedAt,
     Value<DateTime>? diagnosedAt,
     Value<DateTime?>? updatedAt,
     Value<bool>? hasConflict,
@@ -2129,6 +2278,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
       findings: findings ?? this.findings,
       status: status ?? this.status,
       doctorNote: doctorNote ?? this.doctorNote,
+      validationScore: validationScore ?? this.validationScore,
+      validatedBy: validatedBy ?? this.validatedBy,
+      validatedAt: validatedAt ?? this.validatedAt,
       diagnosedAt: diagnosedAt ?? this.diagnosedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       hasConflict: hasConflict ?? this.hasConflict,
@@ -2177,6 +2329,15 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     }
     if (doctorNote.present) {
       map['doctor_note'] = Variable<String>(doctorNote.value);
+    }
+    if (validationScore.present) {
+      map['validation_score'] = Variable<int>(validationScore.value);
+    }
+    if (validatedBy.present) {
+      map['validated_by'] = Variable<String>(validatedBy.value);
+    }
+    if (validatedAt.present) {
+      map['validated_at'] = Variable<DateTime>(validatedAt.value);
     }
     if (diagnosedAt.present) {
       map['diagnosed_at'] = Variable<DateTime>(diagnosedAt.value);
@@ -2241,6 +2402,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
           ..write('findings: $findings, ')
           ..write('status: $status, ')
           ..write('doctorNote: $doctorNote, ')
+          ..write('validationScore: $validationScore, ')
+          ..write('validatedBy: $validatedBy, ')
+          ..write('validatedAt: $validatedAt, ')
           ..write('diagnosedAt: $diagnosedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('hasConflict: $hasConflict, ')
@@ -5246,6 +5410,9 @@ typedef $$LocalDiagnosesTableCreateCompanionBuilder =
       Value<String> findings,
       Value<String> status,
       Value<String?> doctorNote,
+      Value<int?> validationScore,
+      Value<String?> validatedBy,
+      Value<DateTime?> validatedAt,
       required DateTime diagnosedAt,
       Value<DateTime?> updatedAt,
       Value<bool> hasConflict,
@@ -5274,6 +5441,9 @@ typedef $$LocalDiagnosesTableUpdateCompanionBuilder =
       Value<String> findings,
       Value<String> status,
       Value<String?> doctorNote,
+      Value<int?> validationScore,
+      Value<String?> validatedBy,
+      Value<DateTime?> validatedAt,
       Value<DateTime> diagnosedAt,
       Value<DateTime?> updatedAt,
       Value<bool> hasConflict,
@@ -5343,6 +5513,21 @@ class $$LocalDiagnosesTableFilterComposer
 
   ColumnFilters<String> get doctorNote => $composableBuilder(
     column: $table.doctorNote,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get validationScore => $composableBuilder(
+    column: $table.validationScore,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get validatedBy => $composableBuilder(
+    column: $table.validatedBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get validatedAt => $composableBuilder(
+    column: $table.validatedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5476,6 +5661,21 @@ class $$LocalDiagnosesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get validationScore => $composableBuilder(
+    column: $table.validationScore,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get validatedBy => $composableBuilder(
+    column: $table.validatedBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get validatedAt => $composableBuilder(
+    column: $table.validatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get diagnosedAt => $composableBuilder(
     column: $table.diagnosedAt,
     builder: (column) => ColumnOrderings(column),
@@ -5598,6 +5798,21 @@ class $$LocalDiagnosesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get validationScore => $composableBuilder(
+    column: $table.validationScore,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get validatedBy => $composableBuilder(
+    column: $table.validatedBy,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get validatedAt => $composableBuilder(
+    column: $table.validatedAt,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get diagnosedAt => $composableBuilder(
     column: $table.diagnosedAt,
     builder: (column) => column,
@@ -5704,6 +5919,9 @@ class $$LocalDiagnosesTableTableManager
                 Value<String> findings = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> doctorNote = const Value.absent(),
+                Value<int?> validationScore = const Value.absent(),
+                Value<String?> validatedBy = const Value.absent(),
+                Value<DateTime?> validatedAt = const Value.absent(),
                 Value<DateTime> diagnosedAt = const Value.absent(),
                 Value<DateTime?> updatedAt = const Value.absent(),
                 Value<bool> hasConflict = const Value.absent(),
@@ -5730,6 +5948,9 @@ class $$LocalDiagnosesTableTableManager
                 findings: findings,
                 status: status,
                 doctorNote: doctorNote,
+                validationScore: validationScore,
+                validatedBy: validatedBy,
+                validatedAt: validatedAt,
                 diagnosedAt: diagnosedAt,
                 updatedAt: updatedAt,
                 hasConflict: hasConflict,
@@ -5758,6 +5979,9 @@ class $$LocalDiagnosesTableTableManager
                 Value<String> findings = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> doctorNote = const Value.absent(),
+                Value<int?> validationScore = const Value.absent(),
+                Value<String?> validatedBy = const Value.absent(),
+                Value<DateTime?> validatedAt = const Value.absent(),
                 required DateTime diagnosedAt,
                 Value<DateTime?> updatedAt = const Value.absent(),
                 Value<bool> hasConflict = const Value.absent(),
@@ -5784,6 +6008,9 @@ class $$LocalDiagnosesTableTableManager
                 findings: findings,
                 status: status,
                 doctorNote: doctorNote,
+                validationScore: validationScore,
+                validatedBy: validatedBy,
+                validatedAt: validatedAt,
                 diagnosedAt: diagnosedAt,
                 updatedAt: updatedAt,
                 hasConflict: hasConflict,

@@ -27,6 +27,7 @@ import 'package:myapp/data/offline/offline_screening_store.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/offline/offline_validation_repository.dart';
 import 'package:myapp/data/onnx/hybrid_diagnosis_repository.dart';
+import 'package:myapp/data/onnx/on_device_diagnosis_repository.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/data/secure/secure_token_storage.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
@@ -169,7 +170,7 @@ class TBScreenApp extends StatelessWidget {
         ),
         Provider<DiagnosisRepository>(
           create: (c) => useHttp
-              ? HttpDiagnosisRepository(c.read<ApiClient>())
+              ? OnDeviceDiagnosisRepository(c.read<OnnxInferenceEngine>())
               : HybridDiagnosisRepository(
                   engine: c.read<OnnxInferenceEngine>(),
                   fallback: MockDiagnosisRepository(),
@@ -181,6 +182,8 @@ class TBScreenApp extends StatelessWidget {
                   db: db,
                   client: c.read<ApiClient>(),
                   syncEngine: c.read<SyncEngine>(),
+                  xrayStore: c.read<EncryptedXrayStore>(),
+                  localOnly: true,
                 )
               : MockValidationRepository(),
         ),

@@ -47,6 +47,9 @@ class LocalDiagnoses extends Table {
   TextColumn get findings => text().withDefault(const Constant('{}'))();
   TextColumn get status => text().withDefault(const Constant('pending'))();
   TextColumn get doctorNote => text().nullable()();
+  IntColumn get validationScore => integer().nullable()();
+  TextColumn get validatedBy => text().nullable()();
+  DateTimeColumn get validatedAt => dateTime().nullable()();
   DateTimeColumn get diagnosedAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime().nullable()();
   BoolColumn get hasConflict => boolean().withDefault(const Constant(false))();

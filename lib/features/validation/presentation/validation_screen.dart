@@ -1,3 +1,5 @@
+import 'package:myapp/features/validation/presentation/offline_validation_screen.dart';
+import 'package:myapp/state/auth_provider.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/localization/app_text.dart';
 import 'dart:async';
@@ -10,14 +12,36 @@ import 'package:myapp/domain/models/validation_case.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
 import 'package:myapp/features/shared/presentation/widgets/widgets.dart';
 
-class ValidationScreen extends StatefulWidget {
-  const ValidationScreen({super.key});
-
+class ValidationScreen extends StatelessWidget {
+  const ValidationScreen({super.key, this.caseId});
+  final String? caseId;
   @override
-  State<ValidationScreen> createState() => _ValidationScreenState();
+  Widget build(BuildContext context) {
+    final repo = context.read<ValidationRepository>();
+    if (repo is NumericValidationRepository) {
+      final auth = context.watch<AuthProvider>();
+      if (!auth.isLoggedIn ||
+          auth.mustChangePassword ||
+          auth.role != 'doctor') {
+        return const Center(child: Text('Sesi dokter diperlukan.'));
+      }
+      return OfflineValidationScreen(
+        key: ValueKey(auth.profile),
+        caseId: caseId,
+      );
+    }
+    return const LegacyValidationScreen();
+  }
 }
 
-class _ValidationScreenState extends State<ValidationScreen> {
+class LegacyValidationScreen extends StatefulWidget {
+  const LegacyValidationScreen({super.key});
+
+  @override
+  State<LegacyValidationScreen> createState() => _LegacyValidationScreenState();
+}
+
+class _LegacyValidationScreenState extends State<LegacyValidationScreen> {
   List<ValidationCase> _cases = [];
   String? _selectedId;
   String _activeTab = "pending";

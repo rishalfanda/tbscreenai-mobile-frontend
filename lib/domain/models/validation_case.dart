@@ -26,6 +26,9 @@ class ValidationCase {
     required this.aiScore,
     required this.diagnosisDate,
     required this.status,
+    this.isPositive,
+    this.validationScore,
+    this.validationNote,
     this.patientId,
     this.serverVersion,
     this.hasConflict = false,
@@ -37,6 +40,9 @@ class ValidationCase {
     required this.findings,
   });
 
+  final bool? isPositive;
+  final int? validationScore;
+  final String? validationNote;
   final String id;
   final String name;
   final String initials;
@@ -73,6 +79,9 @@ class ValidationCase {
       aiScore: aiScore,
       diagnosisDate: diagnosisDate,
       status: status ?? this.status,
+      isPositive: isPositive,
+      validationScore: validationScore,
+      validationNote: validationNote,
       patientId: patientId,
       serverVersion: serverVersion ?? this.serverVersion,
       hasConflict: hasConflict ?? this.hasConflict,

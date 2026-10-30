@@ -4,7 +4,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/services.dart';
-import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/features/diagnosis/application/prepare_inference_image.dart';
@@ -145,16 +144,27 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
   @override
   void initState() {
     super.initState();
-    if (AppConfig.useHttp || widget.hasModelOverride != null) {
+    if (widget.hasModelOverride != null) {
       _checkingModel = false;
     } else {
-      context.read<OnnxInferenceEngine>().ready.then((_) {
-        if (!mounted) return;
-        setState(() {
-          _hasModelReady = context.read<OnnxInferenceEngine>().hasBundle;
-          _checkingModel = false;
-        });
-      });
+      context
+          .read<OnnxInferenceEngine>()
+          .ready
+          .then((_) {
+            if (!mounted) return;
+            setState(() {
+              _hasModelReady = context.read<OnnxInferenceEngine>().hasBundle;
+              _checkingModel = false;
+            });
+          })
+          .catchError((Object _) {
+            if (mounted) {
+              setState(() {
+                _hasModelReady = false;
+                _checkingModel = false;
+              });
+            }
+          });
     }
   }
 
@@ -358,10 +368,8 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
   @override
   Widget build(BuildContext context) {
     final diagnosis = context.watch<DiagnosisProvider>();
-    final hasModel =
-        AppConfig.useHttp || (widget.hasModelOverride ?? _hasModelReady);
-    final checkingModel =
-        !AppConfig.useHttp && widget.hasModelOverride == null && _checkingModel;
+    final hasModel = widget.hasModelOverride ?? _hasModelReady;
+    final checkingModel = widget.hasModelOverride == null && _checkingModel;
     final locked = diagnosis.lastOutcome != null;
 
     return ColoredBox(

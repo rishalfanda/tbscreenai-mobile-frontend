@@ -8,6 +8,7 @@ import 'package:myapp/data/local/tables.dart';
 part 'app_database.g.dart';
 
 // === Section: Sync queue state machine ===
+const String syncBlockedContract = 'blocked_contract';
 const String syncPending = 'pending';
 const String syncSending = 'sending';
 const String syncRetryable = 'retryable';
@@ -78,7 +79,7 @@ class AppDatabase extends _$AppDatabase {
       );
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   int _sessionGeneration = 0;
   DataOwner? _activeOwner;
@@ -94,6 +95,11 @@ class AppDatabase extends _$AppDatabase {
     onUpgrade: (m, from, to) async {
       if (from < 2) await _migrateV1ToV2(m);
       if (from < 3) await _migrateV2ToV3(m);
+      if (from < 4) {
+        await m.addColumn(localDiagnoses, localDiagnoses.validationScore);
+        await m.addColumn(localDiagnoses, localDiagnoses.validatedBy);
+        await m.addColumn(localDiagnoses, localDiagnoses.validatedAt);
+      }
     },
     beforeOpen: (details) async {
       // A process crash can leave an op in sending. The same client_op_id is

@@ -46,7 +46,7 @@ class OfflineScreeningStore implements ScreeningStore {
     final patientId = result.draft.patientId;
     if (patientId == null || patientId.trim().isEmpty) {
       throw const ClinicalPersistenceException(
-        'Select a synced patient before saving this screening.',
+        'Pilih pasien dari menu Patient sebelum menyimpan screening.',
       );
     }
     final image = result.draft.image;

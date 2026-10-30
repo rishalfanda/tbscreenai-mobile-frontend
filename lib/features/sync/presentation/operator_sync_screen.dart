@@ -156,7 +156,7 @@ class _OperatorSyncScreenState extends State<OperatorSyncScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: Text(
-              '${context.trRead('Diterapkan', 'Applied')}: ${report.applied} · ${context.trRead('Sudah terkirim', 'Already received')}: ${report.skipped}\n${context.trRead('Konflik', 'Conflicts')}: ${report.conflicts} · ${context.trRead('Belum selesai', 'Unfinished')}: ${report.failed}',
+              '${context.trRead('Diterapkan', 'Applied')}: ${report.applied} · ${context.trRead('Sudah terkirim', 'Already received')}: ${report.skipped}\n${context.trRead('Konflik', 'Conflicts')}: ${report.conflicts} · ${context.trRead('Belum selesai', 'Unfinished')}: ${report.failed}\n${context.trRead("Menunggu dukungan server", "Awaiting server support")}: ${report.blocked}',
             ),
           ),
         Text(

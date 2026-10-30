@@ -1,5 +1,6 @@
 import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
 import 'package:myapp/domain/models/screening_result.dart';
@@ -112,6 +113,36 @@ class RuntimeAndActionsCard extends StatelessWidget {
                     'Dinonaktifkan sampai kebijakan PHI untuk hasil tersimpan disetujui.',
               ),
             ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const Key('continue-validation-button'),
+              onPressed: result.isMock || diagnosis.isSaving
+                  ? null
+                  : () async {
+                      final saved = await diagnosis.saveCurrentResult();
+                      if (!context.mounted) return;
+                      final id = diagnosis.lastResult?.id;
+                      if (!saved || id == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: AppText(
+                              diagnosis.persistenceError ??
+                                  'Simpan hasil screening terlebih dahulu.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      context.go(
+                        '/validation?caseId=${Uri.encodeComponent(id)}',
+                      );
+                    },
+              icon: const Icon(Icons.fact_check_outlined),
+              label: const AppText('Lanjut ke Validation'),
+            ),
           ),
           const SizedBox(height: 10),
           SizedBox(

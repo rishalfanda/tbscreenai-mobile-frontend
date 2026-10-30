@@ -156,8 +156,8 @@ void main() {
     expect(find.byKey(const Key('diagnosis-result-content')), findsNothing);
     expect(find.byKey(const Key('diagnosis-input-content')), findsOneWidget);
     expect(provider.lastOutcome, isNull);
-    expect(provider.lastError, contains('Respons analisis tidak valid'));
-    expect(provider.lastError, contains('versi API backend'));
+    expect(provider.lastError, contains('Analisis lokal gagal'));
+    expect(provider.lastError, contains('model yang terpasang'));
   });
 
   testWidgets(
@@ -172,10 +172,7 @@ void main() {
       final completer = Completer<XrayImage?>();
 
       await tester.pumpWidget(
-        _app(
-          provider: provider,
-          picker: () => completer.future,
-        ),
+        _app(provider: provider, picker: () => completer.future),
       );
 
       // Initially, upload button is visible and loading state is not
@@ -189,10 +186,7 @@ void main() {
       // The loading indicator and processing message must be visible
       expect(find.byKey(const Key('upload-normalizing-state')), findsOneWidget);
       expect(find.byKey(const Key('upload-loading-indicator')), findsOneWidget);
-      expect(
-        find.text('Sedang memproses citra rontgen...'),
-        findsOneWidget,
-      );
+      expect(find.text('Sedang memproses citra rontgen...'), findsOneWidget);
       // Upload buttons are replaced while loading
       expect(find.byKey(const Key('upload-xray')), findsNothing);
 

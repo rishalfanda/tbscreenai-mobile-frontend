@@ -12,9 +12,7 @@ import 'package:myapp/domain/repositories/diagnosis_repository.dart';
 /// Runs inference on-device against the currently-installed, verified ONNX
 /// model bundle (installed via Sync Center — see `ModelUpdatePipeline`).
 ///
-/// Only used directly when a bundle is active; `HybridDiagnosisRepository` is
-/// what the app actually wires into `DiagnosisRepository`, falling back to
-/// the mock/http repository when no bundle is installed.
+/// Live screening requires a locally installed bundle; no network fallback.
 class OnDeviceDiagnosisRepository implements DiagnosisRepository {
   OnDeviceDiagnosisRepository(this._engine);
 
@@ -27,6 +25,12 @@ class OnDeviceDiagnosisRepository implements DiagnosisRepository {
 
   @override
   Future<DiagnosisOutcome> runInference({required XrayImage image}) async {
+    try {
+      await _engine.ready;
+    } catch (_) {
+      throw const LocalModelUnavailable();
+    }
+    if (!_engine.hasBundle) throw const LocalModelUnavailable();
     final stopwatch = Stopwatch()..start();
     final result = await _engine.run(image.bytes);
     stopwatch.stop();

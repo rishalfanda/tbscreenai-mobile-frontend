@@ -113,6 +113,7 @@ class DeviceOperatorOutbox {
         syncPending,
         syncSending,
         syncRetryable,
+        syncBlockedContract,
         syncConflict,
         syncPermanentFailure,
         syncSynced,

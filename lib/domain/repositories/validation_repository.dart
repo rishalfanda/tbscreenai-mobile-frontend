@@ -1,3 +1,4 @@
+import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/domain/models/clinical_conflict.dart';
 import 'package:myapp/domain/models/validation_case.dart';
 
@@ -32,4 +33,15 @@ abstract class ValidationRepository {
   }) {
     throw UnsupportedError('Conflict resolution is unavailable.');
   }
+}
+
+/// Local numeric review, deliberately separate from the legacy server verdict.
+abstract interface class NumericValidationRepository {
+  Future<void> submitScore({
+    required String id,
+    required int score,
+    String? status,
+    String? note,
+  });
+  Future<XrayImage?> loadCaseImage(String id);
 }

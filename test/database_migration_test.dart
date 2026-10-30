@@ -85,6 +85,48 @@ void _createV1(File file, {String? owner, bool complete = true}) {
 }
 
 void main() {
+  test('v3 to v4 keeps clinical rows and pending operations', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'tbscreen-score-migrate-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}${Platform.pathSeparator}v3.sqlite');
+    final first = AppDatabase(NativeDatabase(file));
+    await first.upsertDiagnosis(
+      LocalDiagnosesCompanion.insert(
+        id: 'synthetic-diagnosis',
+        patientId: 'synthetic-patient',
+        isPositive: false,
+        confidence: 80,
+        modelVersion: 'synthetic-model',
+        diagnosedAt: DateTime.utc(2026),
+      ),
+    );
+    await first.enqueue(
+      SyncQueueCompanion.insert(
+        clientOpId: 'synthetic-op',
+        entityType: 'diagnosis',
+        entityId: 'synthetic-diagnosis',
+        operation: 'create',
+        payload: '{}',
+        createdAt: DateTime.utc(2026),
+      ),
+    );
+    await first.close();
+    final raw = sqlite3.open(file.path);
+    for (final column in ['validation_score', 'validated_by', 'validated_at']) {
+      raw.execute('ALTER TABLE local_diagnoses DROP COLUMN $column');
+    }
+    raw.execute('PRAGMA user_version = 3');
+    raw.close();
+    final reopened = AppDatabase(NativeDatabase(file));
+    addTearDown(reopened.close);
+    final row = await reopened.findDiagnosis('synthetic-diagnosis');
+    expect(row!.confidence, 80);
+    expect(row.validationScore, isNull);
+    expect((await reopened.pendingOps()).single.clientOpId, 'synthetic-op');
+  });
+
   test('reopening v2 reclaims an interrupted sending operation', () async {
     final directory = await Directory.systemTemp.createTemp('tbscreen-reopen-');
     addTearDown(() => directory.delete(recursive: true));

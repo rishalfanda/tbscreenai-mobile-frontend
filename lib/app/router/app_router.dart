@@ -94,7 +94,8 @@ class AppRouter {
             GoRoute(path: '/result', redirect: (_, _) => '/diagnosis'),
             GoRoute(
               path: '/validation',
-              builder: (context, state) => const ValidationScreen(),
+              builder: (context, state) =>
+                  ValidationScreen(caseId: state.uri.queryParameters['caseId']),
             ),
             GoRoute(
               path: '/dataset',

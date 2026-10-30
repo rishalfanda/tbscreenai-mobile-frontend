@@ -1,3 +1,6 @@
+import 'package:myapp/data/local/mappers.dart';
+import 'package:myapp/data/offline/offline_validation_repository.dart';
+import 'package:myapp/data/sync/sync_engine.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -215,6 +218,346 @@ void main() {
     await client.close();
     await db.close();
   });
+  test(
+    'PR38 read-back preserves score endpoints and encrypted local X-ray',
+    () async {
+      await seed(image: true);
+      final before = await db.findDiagnosis(diagnosis);
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        xrayStore: xray,
+        localOnly: true,
+      );
+      for (final score in [0, 10]) {
+        await db.upsertDiagnosis(
+          diagnosisRowFromJson({
+            'id': diagnosis,
+            'patient_id': patient,
+            'is_positive': false,
+            'confidence': 80,
+            'model_version': 'synthetic-model',
+            'status': 'agreed',
+            'doctor_note': 'Synthetic server note',
+            'validation_score': score,
+            'validated_by': doctor,
+            'validated_at': '2026-10-30T02:15:00Z',
+            'version': 2,
+          }),
+        );
+        final row = await db.findDiagnosis(diagnosis);
+        expect(row!.validationScore, score);
+        expect(row.validatedBy, doctor);
+        expect(row.validatedAt!.toUtc(), DateTime.utc(2026, 10, 30, 2, 15));
+        expect((await repo.getCases()).single.validationScore, score);
+        expect(
+          (await repo.getCases()).single.validationNote,
+          'Synthetic server note',
+        );
+        expect(
+          (await repo.loadCaseImage(diagnosis))!.checksumSha256,
+          before!.imageChecksum,
+        );
+      }
+    },
+  );
+
+  for (final supported in [false, true]) {
+    test(
+      'PR38 normal sync holds score until deployed contract: $supported',
+      () async {
+        await seed(image: true);
+        final sync = SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        );
+        final repo = OfflineValidationRepository(
+          db: db,
+          client: client,
+          syncEngine: sync,
+          localOnly: true,
+        );
+        await repo.submitScore(id: diagnosis, score: 10, status: 'agreed');
+        for (final op in await db.pendingOps()) {
+          if (op.operation != 'update') {
+            await db.markOp(op.clientOpId, syncSynced);
+          }
+        }
+        var posts = 0;
+        client.dio.httpClientAdapter = _Adapter((o) {
+          if (o.uri.path == '/openapi.json') {
+            return (
+              200,
+              {
+                'paths': {
+                  '/api/v1/diagnoses/{diagnosis_id}/status': {
+                    'patch': {
+                      'requestBody': {
+                        'content': {
+                          'application/json': {
+                            'schema': {
+                              r'$ref':
+                                  '#/components/schemas/DiagnosisValidationPatch',
+                            },
+                          },
+                        },
+                      },
+                      'responses': {
+                        '200': {
+                          'content': {
+                            'application/json': {
+                              'schema': {
+                                r'$ref': '#/components/schemas/DiagnosisOut',
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+                'components': {
+                  'schemas': supported
+                      ? {
+                          'DiagnosisValidationPatch': {
+                            'properties': {
+                              'validation_score': {},
+                              'validated_at': {},
+                              'status': {},
+                              'base_version': {},
+                            },
+                          },
+                          'DiagnosisOut': {
+                            'properties': {
+                              'validation_score': {},
+                              'validated_at': {},
+                              'status': {},
+                              'base_version': {},
+                              'validated_by': {},
+                            },
+                          },
+                        }
+                      : {},
+                },
+              },
+            );
+          }
+          posts++;
+          expect(o.path, '/sync/push');
+          final item = ((o.data as Map)['items'] as List).single as Map;
+          expect((item['payload'] as Map)['validation_score'], 10);
+          return (200, receipt(o));
+        });
+        final report = await sync.push();
+        expect(posts, supported ? 1 : 0);
+        expect(report.applied, supported ? 1 : 0);
+        expect(report.blocked, supported ? 0 : 1);
+        expect((await db.pendingOps()).length, supported ? 0 : 1);
+      },
+    );
+  }
+
+  for (final supported in [false, true]) {
+    test(
+      'PR38 score operator sync requires deployed contract: $supported',
+      () async {
+        await seed(image: true);
+        final repo = OfflineValidationRepository(
+          db: db,
+          client: client,
+          syncEngine: SyncEngine(
+            db: db,
+            client: client,
+            settings: SettingsStore(db),
+          ),
+          xrayStore: xray,
+          localOnly: true,
+        );
+        await repo.submitScore(
+          id: diagnosis,
+          score: 0,
+          status: 'disagreed',
+          note: 'Synthetic reason',
+        );
+        final queued = (await db.pendingOps())
+            .where((op) => op.operation == 'update')
+            .single;
+        final body = jsonDecode(queued.payload) as Map;
+        expect(body['validation_score'], 0);
+        expect(body['status'], 'disagreed');
+        expect(body['validated_at'], isNotNull);
+        expect(body.containsKey('validated_by'), isFalse);
+        expect(queued.baseVersion, 1);
+        expect((await repo.getCases()).single.validationScore, 0);
+        await expectLater(
+          repo.submitScore(id: diagnosis, score: 10, status: 'agreed'),
+          throwsA(isA<ValidationContractException>()),
+        );
+        await handoff();
+        await activate();
+        for (final entry in await service().queued()) {
+          if ((entry['op'] as Map)['operation'] != 'update') {
+            await outbox.remove((entry['op'] as Map)['clientOpId'] as String);
+          }
+        }
+        var posts = 0;
+        client.dio.httpClientAdapter = _Adapter((o) {
+          if (o.uri.path == '/openapi.json') {
+            return (
+              200,
+              {
+                'paths': {
+                  '/api/v1/diagnoses/{diagnosis_id}/status': {
+                    'patch': {
+                      'requestBody': {
+                        'content': {
+                          'application/json': {
+                            'schema': {
+                              r'$ref':
+                                  '#/components/schemas/DiagnosisValidationPatch',
+                            },
+                          },
+                        },
+                      },
+                      'responses': {
+                        '200': {
+                          'content': {
+                            'application/json': {
+                              'schema': {
+                                r'$ref': '#/components/schemas/DiagnosisOut',
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+                'components': {
+                  'schemas': supported
+                      ? {
+                          'DiagnosisValidationPatch': {
+                            'properties': {
+                              'validation_score': {},
+                              'validated_at': {},
+                              'status': {},
+                              'base_version': {},
+                            },
+                          },
+                          'DiagnosisOut': {
+                            'properties': {
+                              'validation_score': {},
+                              'validated_at': {},
+                              'status': {},
+                              'base_version': {},
+                              'validated_by': {},
+                            },
+                          },
+                        }
+                      : {},
+                },
+              },
+            );
+          }
+          posts++;
+          final item = ((o.data as Map)['items'] as List).single as Map;
+          expect(item['owner_user_id'], doctor);
+          expect(item['base_version'], 1);
+          expect((item['payload'] as Map)['validation_score'], 0);
+          expect(
+            (item['payload'] as Map)['validated_at'],
+            body['validated_at'],
+          );
+          return (200, receipt(o));
+        });
+        final report = await service().push();
+        expect(posts, supported ? 1 : 0);
+        expect(report.blocked, supported ? 0 : 1);
+        expect(report.applied, supported ? 1 : 0);
+        expect((await service().queued()).length, supported ? 0 : 1);
+      },
+    );
+  }
+
+  test(
+    'offline score 0 and 10 survive encrypted handoff and never reach legacy API',
+    () async {
+      await seed(image: true);
+      var requests = 0;
+      client.dio.httpClientAdapter = _Adapter((o) {
+        requests++;
+        return (200, receipt(o));
+      });
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        xrayStore: xray,
+        localOnly: true,
+      );
+      expect((await repo.getCases()).single.serverVersion, isNull);
+      final image = await repo.loadCaseImage(diagnosis);
+      expect(image, isNotNull);
+      for (final score in [0, 10]) {
+        await repo.submitScore(
+          id: diagnosis,
+          score: score,
+          note: 'Synthetic review',
+        );
+        expect((await repo.getCases()).single.validationScore, score);
+      }
+      expect((await db.opsWithStatus(syncBlockedContract)).length, 1);
+      expect(
+        (await db.pendingOps()).any((op) => op.operation == 'validate_score'),
+        isFalse,
+      );
+      expect(requests, 0);
+      await handoff();
+      await activate();
+      final entries = await service().queued();
+      final held = entries
+          .where(
+            (entry) => (entry['op'] as Map)['operation'] == 'validate_score',
+          )
+          .single;
+      expect(jsonDecode((held['op'] as Map)['payload'] as String)['score'], 10);
+      // Only retain the score to isolate the operator's blocked-operation path.
+      for (final entry in entries) {
+        if (!identical(entry, held) &&
+            (entry['op'] as Map)['operation'] != 'validate_score') {
+          await outbox.remove((entry['op'] as Map)['clientOpId'] as String);
+        }
+      }
+      final report = await service().push();
+      expect(report.blocked, 1);
+      expect(requests, 0);
+      expect((await service().queued()).length, 1);
+      await db.clearSessionData();
+      await owner(doctor);
+      await outbox.restoreDoctorQueue();
+      expect((await repo.getCases()).single.validationScore, 10);
+      expect(
+        (await repo.loadCaseImage(diagnosis))!.checksumSha256,
+        image!.checksumSha256,
+      );
+      await owner(technician, role: 'technician');
+      await expectLater(
+        repo.submitScore(id: diagnosis, score: 5),
+        throwsA(isA<ValidationContractException>()),
+      );
+    },
+  );
+
   testWidgets(
     'operator UI sends the retained queue and refreshes remaining count',
     (tester) async {
