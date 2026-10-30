@@ -17,10 +17,11 @@ class BundleDownloadException implements Exception {
 /// Ed25519/SHA256SUMS verification (`bundle_verifier.dart`), which remains the
 /// authoritative gate.
 ///
-/// Uses a bare [dio] instance rather than the app's shared `ApiClient`, since
-/// `downloadUrl` may point at a different host/CDN than the API base URL and
-/// must not carry the `Authorization` header the API client injects on every
-/// request.
+/// Downloads a bundle zip to [dest], reporting progress and transfer speed via
+/// [onProgress]. If [sha256Hex] is given, the downloaded file's digest is
+/// checked against it — a defense-in-depth pre-check ahead of the bundle's own
+/// Ed25519/SHA256SUMS verification (`bundle_verifier.dart`), which remains the
+/// authoritative gate.
 Future<void> downloadBundleZip({
   required Dio dio,
   required String url,
@@ -38,6 +39,9 @@ Future<void> downloadBundleZip({
       url,
       dest.path,
       cancelToken: cancelToken,
+      options: Options(
+        receiveTimeout: const Duration(minutes: 15),
+      ),
       onReceiveProgress: (received, total) {
         final now = DateTime.now().millisecondsSinceEpoch;
         final timeDeltaMs = now - lastTimestamp;

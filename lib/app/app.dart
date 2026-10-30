@@ -2,7 +2,6 @@ import 'package:myapp/core/localization/app_language.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:async';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -112,7 +111,7 @@ class TBScreenApp extends StatelessWidget {
         ),
         Provider<ModelUpdatePipeline>(
           create: (c) => ModelUpdatePipeline(
-            downloadDio: Dio(),
+            downloadDio: c.read<ApiClient>().dio,
             engine: c.read<OnnxInferenceEngine>(),
           ),
         ),

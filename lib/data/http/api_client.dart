@@ -250,7 +250,14 @@ class ApiClient {
     }
     final token = tokens.accessToken;
     if (token != null && token.isNotEmpty && !_isAuthPath(options.path)) {
-      options.headers['Authorization'] = 'Bearer $token';
+      final isExternal = options.uri.hasAuthority &&
+          baseUrl.isNotEmpty &&
+          Uri.tryParse(baseUrl)?.host.isNotEmpty == true &&
+          options.uri.host.toLowerCase() !=
+              Uri.tryParse(baseUrl)!.host.toLowerCase();
+      if (!isExternal) {
+        options.headers['Authorization'] = 'Bearer $token';
+      }
     }
     handler.next(options);
   }

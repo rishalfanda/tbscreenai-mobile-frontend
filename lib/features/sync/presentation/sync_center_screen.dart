@@ -343,11 +343,12 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
     });
 
     _downloadSub?.cancel();
+    bool hasError = false;
     _downloadSub = repository
         .downloadModelWithProgress()
         .listen(
           (progress) {
-            if (!mounted) return;
+            if (!mounted || hasError) return;
             setState(() {
               _progress = progress.fraction;
               _downloadSpeed = progress.speedText;
@@ -359,6 +360,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
             });
           },
           onError: (Object error) {
+            hasError = true;
             if (!mounted) return;
             if (error is ModelInstallCancelledException) {
               setState(() {
@@ -373,16 +375,28 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
             }
             setState(() {
               _state = _ModelSyncState.error;
-              _errorMessage = 'Gagal mengunduh atau memverifikasi model: $error';
+              _errorMessage = _formatErrorMessage(error);
             });
           },
+          cancelOnError: true,
           onDone: () async {
-            if (!mounted) return;
+            if (!mounted || hasError) return;
             final newVersion = await repository.getInstalledModelVersion();
             final localModels = await repository.getAvailableModels(localOnly: true);
-            if (!mounted) return;
+            if (!mounted || hasError) return;
+            if (newVersion == null || newVersion.isEmpty) {
+              setState(() {
+                _state = _ModelSyncState.error;
+                _errorMessage =
+                    'Instalasi model gagal: berkas model tidak terpasang di perangkat.';
+                _progress = 0.0;
+                _downloadSpeed = '';
+              });
+              return;
+            }
+
             setState(() {
-              _currentVersion = newVersion ?? (_updateInfo?.latestVersion ?? '');
+              _currentVersion = newVersion;
               _storedModels = localModels;
               _state = _ModelSyncState.done;
               _progress = 1.0;

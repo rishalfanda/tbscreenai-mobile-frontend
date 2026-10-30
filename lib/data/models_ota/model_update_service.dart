@@ -203,7 +203,7 @@ class ModelUpdateService {
       final bundleKey = target.id;
       final version = target.version;
 
-      if (url == null || url.trim().isEmpty) {
+      if (version.isEmpty || url == null || url.trim().isEmpty) {
         throw ModelInstallException(
           ModelInstallPhase.downloading,
           'Bundle model belum tersedia. Minta admin menyediakan URL download.',

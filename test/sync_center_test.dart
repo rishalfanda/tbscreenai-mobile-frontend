@@ -35,6 +35,15 @@ class _EmptyModelSyncRepository extends MockSyncRepository {
   Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo() async => null;
 }
 
+class _FailingDownloadSyncRepository extends MockSyncRepository {
+  @override
+  Stream<ModelDownloadProgress> downloadModelWithProgress({
+    AvailableModelBundle? model,
+  }) async* {
+    throw Exception('401 Unauthorized');
+  }
+}
+
 Widget _wrap([SyncRepository? repo]) {
   return Provider<SyncRepository>(
     create: (_) => repo ?? MockSyncRepository(),
@@ -159,6 +168,29 @@ void main() {
       // Download is cancelled and UI returns to updateAvailable with snackbar
       expect(find.text('Unduhan model dibatalkan.'), findsOneWidget);
       expect(find.text('Perbarui Sekarang'), findsOneWidget);
+    });
+
+    testWidgets(
+        'download failure keeps error state and never marks as done',
+        (tester) async {
+      sizeTablet(tester);
+      await tester.pumpWidget(_wrap(_FailingDownloadSyncRepository()));
+      await tester.pumpAndSettle();
+
+      // Check update
+      await tester.tap(find.text('Periksa Pembaruan Model'));
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+
+      // Start download
+      await tester.tap(find.text('Perbarui Sekarang'));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Should be in error state and NOT done
+      expect(find.text('Pembaruan Selesai'), findsNothing);
+      expect(find.byIcon(Icons.error_rounded), findsOneWidget);
+      expect(find.text('Coba Lagi'), findsOneWidget);
     });
 
     testWidgets('full download completes and activates new model',
