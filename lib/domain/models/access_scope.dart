@@ -33,6 +33,8 @@ enum MobileRole {
       technician => const {
         '/technician',
         '/users',
+        '/models',
+        '/sync',
         '/dashboard',
         '/dataset',
       }.contains(path),

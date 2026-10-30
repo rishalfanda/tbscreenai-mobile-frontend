@@ -34,11 +34,29 @@ class ModelInstallException implements Exception {
 /// `OfflineSyncRepository.checkForUpdate()` already owns talking to
 /// `/sync/model-version`.
 class ModelUpdatePipeline {
-  ModelUpdatePipeline({required Dio downloadDio, required OnnxInferenceEngine engine})
-      : _dio = downloadDio,
-        _engine = engine;
+  ModelUpdatePipeline({
+    required Dio downloadDio,
+    required OnnxInferenceEngine engine,
+    Dio? authenticatedDio,
+    Uri? apiBase,
+  }) : _dio = downloadDio,
+       _engine = engine,
+       _authenticatedDio = authenticatedDio,
+       _apiBase = apiBase;
 
   final Dio _dio;
+  final Dio? _authenticatedDio;
+  final Uri? _apiBase;
+  static bool isApiBundle(String url, Uri base) {
+    final uri = Uri.tryParse(url);
+    return uri != null &&
+        (uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.hasAuthority &&
+        uri.userInfo.isEmpty &&
+        uri.origin == base.origin &&
+        uri.path.startsWith('${base.path}/models/');
+  }
+
   final OnnxInferenceEngine _engine;
   final ModelStore _store = ModelStore();
 
@@ -59,6 +77,10 @@ class ModelUpdatePipeline {
     }
 
     final incomingName = '_download_${DateTime.now().millisecondsSinceEpoch}';
+    final authenticated =
+        _authenticatedDio != null &&
+        _apiBase != null &&
+        isApiBundle(url, _apiBase);
     final tempDir = await getTemporaryDirectory();
     final zipFile = File(
       '${tempDir.path}${Platform.pathSeparator}model_$incomingName.zip',
@@ -68,21 +90,20 @@ class ModelUpdatePipeline {
       final progressController = StreamController<double>();
       unawaited(
         downloadBundleZip(
-              dio: _dio,
-              url: url,
-              dest: zipFile,
-              sha256Hex: info.sha256,
-              onProgress: (received, total) {
-                if (!progressController.isClosed) {
-                  progressController.add(total > 0 ? received / total : 0.0);
-                }
-              },
-            )
-            .then((_) => progressController.close())
-            .catchError((Object e) {
-              progressController.addError(e);
-              progressController.close();
-            }),
+          dio: authenticated ? _authenticatedDio : _dio,
+          followRedirects: !authenticated,
+          url: url,
+          dest: zipFile,
+          sha256Hex: info.sha256,
+          onProgress: (received, total) {
+            if (!progressController.isClosed) {
+              progressController.add(total > 0 ? received / total : 0.0);
+            }
+          },
+        ).then((_) => progressController.close()).catchError((Object e) {
+          progressController.addError(e);
+          progressController.close();
+        }),
       );
 
       await for (final progress in progressController.stream) {

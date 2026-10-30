@@ -13,7 +13,8 @@ import 'package:myapp/domain/models/sync_summary.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 
 class SyncCenterScreen extends StatelessWidget {
-  const SyncCenterScreen({super.key});
+  const SyncCenterScreen({super.key, this.modelsOnly = false});
+  final bool modelsOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +32,7 @@ class SyncCenterScreen extends StatelessWidget {
             runSpacing: 8,
             children: [
               AppText(
-                'Sync Center',
+                modelsOnly ? 'Models' : 'Sync Center',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
                   color: AppTheme.navy,
@@ -41,29 +42,32 @@ class SyncCenterScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppTheme.sp24),
-          // === Section: Cards ===
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final stacked = constraints.maxWidth < 880;
-              if (stacked) {
-                return const Column(
+          if (modelsOnly)
+            const _ModelUpdateCard()
+          else
+            // === Section: Cards ===
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final stacked = constraints.maxWidth < 880;
+                if (stacked) {
+                  return const Column(
+                    children: [
+                      _ModelUpdateCard(),
+                      SizedBox(height: AppTheme.sp24),
+                      _DataBackupCard(),
+                    ],
+                  );
+                }
+                return const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _ModelUpdateCard(),
-                    SizedBox(height: AppTheme.sp24),
-                    _DataBackupCard(),
+                    Expanded(child: _ModelUpdateCard()),
+                    SizedBox(width: AppTheme.sp24),
+                    Expanded(child: _DataBackupCard()),
                   ],
                 );
-              }
-              return const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: _ModelUpdateCard()),
-                  SizedBox(width: AppTheme.sp24),
-                  Expanded(child: _DataBackupCard()),
-                ],
-              );
-            },
-          ),
+              },
+            ),
         ],
       ),
     );
@@ -223,7 +227,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       setState(() {
         _state = _ModelSyncState.error;
         _errorMessage =
-            'Gagal memeriksa pembaruan model — periksa koneksi internet Anda. (${err.toString()})';
+            'Gagal memeriksa pembaruan model. Periksa koneksi dan ketersediaan model untuk versi aplikasi ini.';
       });
     }
   }
@@ -245,12 +249,29 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       },
       onDone: _onDownloadDone,
       onError: _onDownloadError,
+      cancelOnError: true,
     );
   }
 
-  void _onDownloadDone() {
+  void _onDownloadDone() async {
     if (!mounted) return;
     final newVersion = _updateInfo?.latestVersion ?? _currentVersion;
+    final String? installed;
+    try {
+      installed = await context
+          .read<SyncRepository>()
+          .getInstalledModelVersion();
+    } catch (_) {
+      if (mounted) {
+        _onDownloadError(StateError('Installed model could not be confirmed'));
+      }
+      return;
+    }
+    if (!mounted) return;
+    if (installed != newVersion || newVersion.isEmpty) {
+      _onDownloadError(StateError('Model activation was not confirmed'));
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: AppText('Model berhasil diperbarui ke $newVersion')),
     );

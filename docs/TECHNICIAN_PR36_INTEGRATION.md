@@ -1,5 +1,7 @@
 # Integrasi teknisi backend PR #36
 
+**Pembaruan:** batas akses Models/Sync di bawah adalah snapshot integrasi PR #36. Alur teknisi terbaru mengikuti [integrasi PR #37](TECHNICIAN_PR37_INTEGRATION.md).
+
 Kontrak yang digunakan: backend PR #36 (merged), head `a605a92fda583a63d1032b55a91835d12772aaf9`, merge `1c5226026c7fe21de3bc33864eb1805cb9a3a763`.
 
 ## Perilaku APK

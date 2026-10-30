@@ -83,15 +83,21 @@ class ModelUpdateService {
     );
     final data = _asJsonMap(response.data);
     final ModelVersionInfo info;
-    if (data == null) {
-      info = ModelVersionInfo(
-        currentVersion: installed ?? '',
-        latestVersion: installed ?? '',
-        fileSize: '-',
-        releaseDate: '-',
-        changelog: const [],
+    if (data == null ||
+        data['latest'] is! String ||
+        (data['latest'] as String).trim().isEmpty ||
+        (data.containsKey('update_available') &&
+            data['update_available'] is! bool) ||
+        (data.containsKey('app_supported') && data['app_supported'] is! bool)) {
+      throw const FormatException('No approved model response is available');
+    }
+    if (data['app_supported'] == false) {
+      throw ModelInstallException(
+        ModelInstallPhase.activating,
+        'Versi aplikasi ini belum didukung oleh model server.',
       );
-    } else {
+    }
+    {
       final sizeBytes = (data['size_bytes'] as num?)?.toInt();
       info = ModelVersionInfo(
         currentVersion: installed ?? '',
@@ -107,6 +113,7 @@ class ModelUpdateService {
         changelog: List<String>.from(data['changelog'] as List? ?? const []),
         downloadUrl: data['bundle_zip'] as String?,
         sha256: data['bundle_zip_sha256'] as String?,
+        updateAvailable: data['update_available'] as bool?,
       );
     }
     await _cacheCheck(info);
@@ -122,6 +129,7 @@ class ModelUpdateService {
           'changelog': info.changelog,
           'downloadUrl': info.downloadUrl,
           'sha256': info.sha256,
+          'updateAvailable': info.updateAvailable,
           'checkedAtIso': DateTime.now().toIso8601String(),
         }),
       );
@@ -149,6 +157,7 @@ class ModelUpdateService {
         changelog: List<String>.from(data['changelog'] as List? ?? const []),
         downloadUrl: data['downloadUrl'] as String?,
         sha256: data['sha256'] as String?,
+        updateAvailable: data['updateAvailable'] as bool?,
       );
       return (info, checkedAt);
     } catch (_) {
@@ -163,6 +172,12 @@ class ModelUpdateService {
   Stream<double> downloadModel() async* {
     final session = _db.sessionGeneration;
     final info = await checkForUpdate();
+    if (!info.hasUpdate) {
+      throw ModelInstallException(
+        ModelInstallPhase.downloading,
+        'Tidak ada pembaruan yang diizinkan server.',
+      );
+    }
     final url = info.downloadUrl ?? AppConfig.modelBundleUrl;
 
     if (url == null || url.trim().isEmpty) {

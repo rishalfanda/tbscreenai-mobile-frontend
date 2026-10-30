@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -54,6 +56,41 @@ class _Adapter implements HttpClientAdapter {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  late Directory modelSupport;
+  setUp(() {
+    modelSupport = Directory.systemTemp.createTempSync(
+      'tbscreen_model_widget_',
+    );
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (_) async => modelSupport.path,
+    );
+    messenger.setMockMethodCallHandler(
+      const MethodChannel('dev.fluttercommunity.plus/connectivity_status'),
+      (_) async => null,
+    );
+    messenger.setMockMethodCallHandler(
+      const MethodChannel('dev.fluttercommunity.plus/connectivity'),
+      (_) async => ['wifi'],
+    );
+  });
+  tearDown(() async {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    for (final channel in [
+      'plugins.flutter.io/path_provider',
+      'dev.fluttercommunity.plus/connectivity_status',
+      'dev.fluttercommunity.plus/connectivity',
+    ]) {
+      messenger.setMockMethodCallHandler(MethodChannel(channel), null);
+    }
+    final models = Directory('${modelSupport.path}/models');
+    if (await models.exists()) await models.delete();
+    await modelSupport.delete();
+  });
   testWidgets(
     'full staging technician login forces password change before users and dataset',
     (tester) async {
@@ -105,19 +142,25 @@ void main() {
       await tester.tap(find.byTooltip('Dataset'));
       await app_fixture.pumpApp(tester);
       expect(find.text('Create dataset'), findsOneWidget);
-      for (final route in [
-        '/sync',
-        '/models',
-        '/diagnosis',
-        '/validation',
-        '/camera',
-      ]) {
+      router.go('/models');
+      await app_fixture.pumpApp(tester);
+      expect(router.routeInformationProvider.value.uri.path, '/models');
+      expect(find.text('Pilih Data & Unggah'), findsNothing);
+      router.go('/sync');
+      await app_fixture.pumpApp(tester);
+      expect(router.routeInformationProvider.value.uri.path, '/sync');
+      expect(find.text('Sync user data'), findsOneWidget);
+      expect(
+        find.textContaining('This tablet is not activated'),
+        findsOneWidget,
+      );
+      for (final route in ['/diagnosis', '/validation', '/camera']) {
         router.go(route);
         await app_fixture.pumpApp(tester);
         expect(router.routeInformationProvider.value.uri.path, '/technician');
       }
       expect(find.byTooltip('Screening'), findsNothing);
-      expect(find.byTooltip('Sync'), findsNothing);
+      expect(find.byTooltip('Sync'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await app_fixture.pumpApp(tester);

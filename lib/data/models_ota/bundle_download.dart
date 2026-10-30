@@ -25,12 +25,14 @@ Future<void> downloadBundleZip({
   required String url,
   required File dest,
   String? sha256Hex,
+  bool followRedirects = true,
   required void Function(int received, int total) onProgress,
 }) async {
   try {
     await dio.download(
       url,
       dest.path,
+      options: Options(followRedirects: followRedirects),
       onReceiveProgress: (received, total) =>
           onProgress(received, total > 0 ? total : received),
     );

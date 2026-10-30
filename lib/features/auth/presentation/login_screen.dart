@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:dio/dio.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/state/auth_provider.dart';
+import 'package:myapp/core/config/app_config.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -305,6 +306,18 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                             ),
                           ),
+                          if (AppConfig.useHttp)
+                            TextButton(
+                              onPressed: _isSubmitting
+                                  ? null
+                                  : () => context.go('/activate-tablet'),
+                              child: Text(
+                                context.tr(
+                                  'Aktivasi tablet',
+                                  'Activate tablet',
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),

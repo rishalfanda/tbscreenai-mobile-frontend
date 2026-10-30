@@ -21,6 +21,8 @@ import 'package:myapp/data/models_ota/hybrid_sync_repository.dart';
 import 'package:myapp/data/models_ota/model_update_pipeline.dart';
 import 'package:myapp/data/models_ota/model_update_service.dart';
 import 'package:myapp/data/offline/offline_patient_repository.dart';
+import 'package:myapp/data/offline/device_operator_outbox.dart';
+import 'package:myapp/data/offline/operator_sync_service.dart';
 import 'package:myapp/data/offline/offline_screening_store.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/offline/offline_validation_repository.dart';
@@ -70,6 +72,11 @@ class TBScreenApp extends StatelessWidget {
         Provider<AppDatabase>.value(value: db),
         Provider<SecureTokenStorage>.value(value: secureStorage),
         Provider<SettingsStore>(create: (_) => SettingsStore(db)),
+        if (useHttp)
+          Provider<DeviceOperatorOutbox>(
+            create: (c) =>
+                DeviceOperatorOutbox(db, c.read<SecureTokenStorage>()),
+          ),
         Provider<ApiClient>(
           create: (c) => ApiClient(
             baseUrl: AppConfig.apiBaseUrl,
@@ -113,6 +120,8 @@ class TBScreenApp extends StatelessWidget {
         Provider<ModelUpdatePipeline>(
           create: (c) => ModelUpdatePipeline(
             downloadDio: Dio(),
+            authenticatedDio: c.read<ApiClient>().dio,
+            apiBase: useHttp ? Uri.parse(AppConfig.apiBaseUrl) : null,
             engine: c.read<OnnxInferenceEngine>(),
           ),
         ),
@@ -131,6 +140,7 @@ class TBScreenApp extends StatelessWidget {
                   c.read<ApiClient>(),
                   settings: c.read<SettingsStore>(),
                   db: db,
+                  outbox: c.read<DeviceOperatorOutbox>(),
                 )
               : MockAuthRepository(),
         ),
@@ -183,6 +193,16 @@ class TBScreenApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (context) => AuthProvider(context.read<AuthRepository>()),
         ),
+        if (useHttp)
+          Provider<OperatorSyncService>(
+            create: (c) => OperatorSyncService(
+              db: db,
+              client: c.read<ApiClient>(),
+              outbox: c.read<DeviceOperatorOutbox>(),
+              xray: c.read<EncryptedXrayStore>(),
+              auth: c.read<AuthProvider>(),
+            ),
+          ),
         ChangeNotifierProvider(
           create: (context) {
             final auth = context.read<AuthProvider>();
@@ -191,7 +211,8 @@ class TBScreenApp extends StatelessWidget {
               screeningStore: useHttp ? context.read<ScreeningStore>() : null,
               deviceId: context.read<SettingsStore>().readOrCreateDeviceId,
               session: auth,
-              hasActiveSession: () => auth.isLoggedIn,
+              hasActiveSession: () =>
+                  auth.isLoggedIn && !auth.mustChangePassword,
             );
           },
         ),

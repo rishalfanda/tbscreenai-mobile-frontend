@@ -8,6 +8,7 @@ class ModelVersionInfo {
     required this.changelog,
     this.downloadUrl,
     this.sha256,
+    this.updateAvailable,
   });
 
   final String currentVersion;
@@ -26,6 +27,7 @@ class ModelVersionInfo {
   /// Expected sha256 of the bundle zip, for an early defense-in-depth check
   /// ahead of the bundle's own Ed25519/SHA256SUMS verification.
   final String? sha256;
+  final bool? updateAvailable;
 
-  bool get hasUpdate => currentVersion != latestVersion;
+  bool get hasUpdate => updateAvailable ?? currentVersion != latestVersion;
 }

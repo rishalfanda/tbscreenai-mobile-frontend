@@ -41,12 +41,25 @@ class InstitutionScreen extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             context.tr(
-              'Kelola akun dokter dan dataset dalam instansi akun. Screening, validasi dan sinkronisasi bukan akses teknisi.',
-              'Manage doctor accounts and datasets in your institution. Screening, validation and sync are not technician permissions.',
+              'Pasang model dan sync antrean dokter dari tablet ini. Kelola akun serta dataset instansi; screening dan validasi tetap dilakukan dokter.',
+              'Install models and sync doctors\' queued work from this tablet. Manage institution accounts and datasets; screening and validation remain doctor actions.',
             ),
           ),
           const SizedBox(height: 24),
           for (final task in [
+            (
+              '/models',
+              context.tr(
+                'Download dan pasang model',
+                'Download and install model',
+              ),
+              Icons.system_update,
+            ),
+            (
+              '/sync',
+              context.tr('Sync data pengguna', 'Sync user data'),
+              Icons.cloud_upload_outlined,
+            ),
             (
               '/users',
               context.tr('Kelola akun dokter', 'Manage doctor accounts'),
