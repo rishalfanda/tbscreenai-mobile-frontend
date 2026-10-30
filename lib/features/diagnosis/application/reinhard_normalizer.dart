@@ -56,7 +56,8 @@ Uint8List _isolateNormalizeWorker(_NormalizeParams params) {
   }
   if (decoded == null) return params.bytes;
 
-  final normalized = ReinhardNormalizer.normalizeImage(decoded, params.stats);
+  final oriented = img.bakeOrientation(decoded);
+  final normalized = ReinhardNormalizer.normalizeImage(oriented, params.stats);
 
   // Preserve format: if source begins with JPEG SOI (0xFF, 0xD8, 0xFF), encode as JPEG;
   // otherwise encode as PNG.

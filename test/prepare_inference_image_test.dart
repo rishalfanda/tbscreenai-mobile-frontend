@@ -11,7 +11,7 @@ void main() {
 
   for (final source in [XrayImageSource.camera, XrayImageSource.gallery]) {
     test(
-      '$source preserves bytes for HTTP and normalizes for local inference',
+      '$source executes Reinhard normalization for inference',
       () async {
         final pixels = img.Image(width: 8, height: 8);
         for (var y = 0; y < 8; y++) {
@@ -24,15 +24,17 @@ void main() {
           filename: 'synthetic.png',
           source: source,
         );
-        final remote = await prepareInferenceImage(image, useHttp: true);
-        expect(remote, same(image));
-        expect(remote.checksumSha256, image.checksumSha256);
-
-        final local = await prepareInferenceImage(image, useHttp: false);
+        final normalized = await prepareInferenceImage(image);
         final expected = await ReinhardNormalizer.normalizeXrayImage(image);
-        expect(local.bytes, expected.bytes);
-        expect(local.checksumSha256, isNot(image.checksumSha256));
-        expect(local.source, source);
+        expect(normalized.bytes, expected.bytes);
+        expect(normalized.checksumSha256, isNot(image.checksumSha256));
+        expect(normalized.source, source);
+        expect(normalized.filename, image.filename);
+
+        // Even if legacy useHttp is passed, normalization is still executed
+        final remote = await prepareInferenceImage(image, useHttp: true);
+        expect(remote.bytes, expected.bytes);
+        expect(remote.checksumSha256, isNot(image.checksumSha256));
       },
     );
   }
