@@ -11,6 +11,7 @@ import 'package:myapp/data/models_ota/bundle_verifier.dart';
 import 'package:myapp/data/models_ota/model_store.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/domain/models/models.dart';
+export 'package:myapp/domain/models/model_download_progress.dart' show ModelDownloadProgress, ModelInstallPhase;
 
 /// Which stage of the install pipeline failed, for the UI to pick the right
 /// Bahasa Indonesia error copy.
@@ -29,10 +30,26 @@ class ModelUpdatePipeline {
   ModelUpdatePipeline({
     required Dio downloadDio,
     required OnnxInferenceEngine engine,
-  }) : _dio = downloadDio,
-       _engine = engine;
+      Dio? authenticatedDio,
+      Uri? apiBase,
+    }) : _dio = downloadDio,
+         _engine = engine,
+         _authenticatedDio = authenticatedDio,
+         _apiBase = apiBase;
 
   final Dio _dio;
+  final Dio? _authenticatedDio;
+  final Uri? _apiBase;
+  static bool isApiBundle(String url, Uri base) {
+    final uri = Uri.tryParse(url);
+    return uri != null &&
+        (uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.hasAuthority &&
+        uri.userInfo.isEmpty &&
+        uri.origin == base.origin &&
+        uri.path.startsWith('${base.path}/models/');
+  }
+
   final OnnxInferenceEngine _engine;
   final ModelStore _store = ModelStore();
 
@@ -54,6 +71,10 @@ class ModelUpdatePipeline {
     }
 
     final incomingName = '_download_${DateTime.now().millisecondsSinceEpoch}';
+    final authenticated =
+        _authenticatedDio != null &&
+        _apiBase != null &&
+        isApiBundle(downloadUrl, _apiBase);
     final tempDir = await getTemporaryDirectory();
     final zipFile = File(
       '${tempDir.path}${Platform.pathSeparator}model_$incomingName.zip',
@@ -66,36 +87,37 @@ class ModelUpdatePipeline {
       final progressController = StreamController<ModelDownloadProgress>();
       unawaited(
         downloadBundleZip(
-              dio: _dio,
-              url: downloadUrl,
-              dest: zipFile,
-              sha256Hex: sha256,
-              cancelToken: cancelToken,
-              onProgress: (received, total, speed) {
-                lastReceived = received;
-                lastTotal = total;
+                dio: authenticated ? _authenticatedDio : _dio,
+                followRedirects: !authenticated,
+                url: downloadUrl,
+                dest: zipFile,
+                sha256Hex: sha256,
+                cancelToken: cancelToken,
+                onProgress: (received, total, speed) {
+                  lastReceived = received;
+                  lastTotal = total;
+                  if (!progressController.isClosed) {
+                    final fraction = total > 0 ? received / total : 0.0;
+                    progressController.add(
+                      ModelDownloadProgress(
+                        fraction: fraction.clamp(0.0, 1.0),
+                        receivedBytes: received,
+                        totalBytes: total,
+                        bytesPerSecond: speed,
+                        speedText: ModelDownloadProgress.formatSpeed(speed),
+                        phase: ModelInstallPhase.downloading,
+                      ),
+                    );
+                  }
+                },
+              )
+              .then((_) => progressController.close())
+              .catchError((Object e) {
                 if (!progressController.isClosed) {
-                  final fraction = total > 0 ? received / total : 0.0;
-                  progressController.add(
-                    ModelDownloadProgress(
-                      fraction: fraction.clamp(0.0, 1.0),
-                      receivedBytes: received,
-                      totalBytes: total,
-                      bytesPerSecond: speed,
-                      speedText: ModelDownloadProgress.formatSpeed(speed),
-                      phase: ModelInstallPhase.downloading,
-                    ),
-                  );
+                  progressController.addError(e);
+                  progressController.close();
                 }
-              },
-            )
-            .then((_) => progressController.close())
-            .catchError((Object e) {
-              if (!progressController.isClosed) {
-                progressController.addError(e);
-                progressController.close();
-              }
-            }),
+              }),
       );
 
       await for (final progress in progressController.stream) {

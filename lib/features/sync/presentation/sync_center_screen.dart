@@ -1,3 +1,4 @@
+import 'package:myapp/data/models_ota/model_update_pipeline.dart';
 import 'package:myapp/core/localization/app_text.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -13,7 +14,8 @@ import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/features/shared/presentation/model_initiation_dialog.dart';
 
 class SyncCenterScreen extends StatelessWidget {
-  const SyncCenterScreen({super.key});
+  const SyncCenterScreen({super.key, this.modelsOnly = false});
+  final bool modelsOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +33,7 @@ class SyncCenterScreen extends StatelessWidget {
             runSpacing: 8,
             children: [
               AppText(
-                'Sync Center',
+                modelsOnly ? 'Models' : 'Sync Center',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
                   color: AppTheme.navy,
@@ -41,29 +43,32 @@ class SyncCenterScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppTheme.sp24),
-          // === Section: Cards (Side by side on wide, stacked on narrow) ===
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final stacked = constraints.maxWidth < 880;
-              if (stacked) {
-                return const Column(
-                  children: [
-                    _ModelUpdateCard(),
-                    SizedBox(height: AppTheme.sp24),
-                    _DataBackupCard(),
-                  ],
-                );
-              }
-              return const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: _ModelUpdateCard()),
-                  SizedBox(width: AppTheme.sp24),
-                  Expanded(child: _DataBackupCard()),
-                ],
-              );
-            },
-          ),
+            if (modelsOnly)
+              const _ModelUpdateCard()
+            else
+              // === Section: Cards (Side by side on wide, stacked on narrow) ===
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final stacked = constraints.maxWidth < 880;
+                  if (stacked) {
+                    return const Column(
+                      children: [
+                        _ModelUpdateCard(),
+                        SizedBox(height: AppTheme.sp24),
+                        _DataBackupCard(),
+                      ],
+                    );
+                  }
+                  return const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _ModelUpdateCard()),
+                      SizedBox(width: AppTheme.sp24),
+                      Expanded(child: _DataBackupCard()),
+                    ],
+                  );
+                },
+              ),
         ],
       ),
     );
@@ -165,7 +170,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
   AvailableModelBundle? _matchedLocalBundle;
   DateTime? _lastChecked;
   String? _errorMessage;
-  StreamSubscription<ModelDownloadProgress>? _downloadSub;
+  StreamSubscription<dynamic>? _downloadSub;
 
   List<AvailableModelBundle> _storedModels = [];
   bool _showStoredModels = false;
@@ -294,7 +299,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       if (!mounted) return;
       setState(() {
         _state = _ModelSyncState.error;
-        _errorMessage = _formatErrorMessage(e);
+          _errorMessage = _formatErrorMessage(e);
       });
     }
   }
@@ -329,7 +334,8 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
     if (!_isOnline) {
       setState(() {
         _state = _ModelSyncState.error;
-        _errorMessage = 'Tidak ada koneksi internet. Hubungkan perangkat dan coba lagi.';
+        _errorMessage =
+            'Tidak ada koneksi internet. Hubungkan perangkat dan coba lagi.';
       });
       return;
     }
@@ -373,55 +379,92 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
               );
               return;
             }
-            setState(() {
-              _state = _ModelSyncState.error;
-              _errorMessage = _formatErrorMessage(error);
-            });
+            _onDownloadError(error);
           },
           cancelOnError: true,
-          onDone: () async {
-            if (!mounted || hasError) return;
-            final newVersion = await repository.getInstalledModelVersion();
-            final localModels = await repository.getAvailableModels(localOnly: true);
-            if (!mounted || hasError) return;
-            if (newVersion == null || newVersion.isEmpty) {
-              setState(() {
-                _state = _ModelSyncState.error;
-                _errorMessage =
-                    'Instalasi model gagal: berkas model tidak terpasang di perangkat.';
-                _progress = 0.0;
-                _downloadSpeed = '';
-              });
-              return;
-            }
-
-            setState(() {
-              _currentVersion = newVersion;
-              _storedModels = localModels;
-              _state = _ModelSyncState.done;
-              _progress = 1.0;
-              _downloadSpeed = '';
-            });
-
-            OnnxInferenceEngine? engine;
-            try {
-              engine = context.read<OnnxInferenceEngine>();
-            } catch (_) {}
-            if (engine != null && mounted) {
-              await initiateModelStandbyWithDialog(
-                context,
-                engine,
-                message: 'Model berhasil diunduh. Menyiapkan model agar siap digunakan...',
-              );
-            }
-          },
+          onDone: _onDownloadDone,
         );
   }
 
-  void _cancelDownload() {
-    final repository = context.read<SyncRepository>();
-    repository.cancelModelDownload();
-    _downloadSub?.cancel();
+    void _onDownloadDone() async {
+      if (!mounted) return;
+      final newVersion = _updateInfo?.latestVersion ?? _currentVersion;
+      final String? installed;
+      try {
+        installed = await context
+            .read<SyncRepository>()
+            .getInstalledModelVersion();
+      } catch (_) {
+        if (mounted) {
+          _onDownloadError(StateError('Installed model could not be confirmed'));
+        }
+        return;
+      }
+      if (!mounted) return;
+      final isMatch = installed != null &&
+          newVersion.isNotEmpty &&
+          (installed == newVersion ||
+              installed.endsWith('_$newVersion') ||
+              newVersion.endsWith('_$installed'));
+      if (!isMatch) {
+        _onDownloadError(StateError('Model activation was not confirmed'));
+        return;
+      }
+      final localModels = await context.read<SyncRepository>().getAvailableModels(localOnly: true);
+      if (!mounted) return;
+      setState(() {
+        _currentVersion = newVersion;
+        _storedModels = localModels;
+        _state = _ModelSyncState.done;
+        _progress = 1.0;
+        _downloadSpeed = '';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: AppText('Model berhasil diperbarui ke $newVersion')),
+      );
+
+      OnnxInferenceEngine? engine;
+      try {
+        engine = context.read<OnnxInferenceEngine>();
+      } catch (_) {}
+      if (engine != null && mounted) {
+        await initiateModelStandbyWithDialog(
+          context,
+          engine,
+          message: 'Model berhasil diperbarui. Menyiapkan model agar siap digunakan...',
+        );
+      }
+    }
+
+    void _onDownloadError(Object error) {
+      if (!mounted) return;
+      final message = switch (error) {
+        ModelInstallException(:final phase) => switch (phase) {
+          ModelInstallPhase.downloading =>
+            'Gagal mengunduh model — periksa koneksi internet Anda.',
+          ModelInstallPhase.verifying =>
+            'Verifikasi model gagal — berkas model rusak atau tidak sah.',
+          ModelInstallPhase.activating =>
+            'Model tidak kompatibel dengan aplikasi ini.',
+          ModelInstallPhase.smokeTesting =>
+            'Model baru gagal diuji — sistem kembali ke versi sebelumnya secara otomatis.',
+          ModelInstallPhase.completed =>
+            'Instalasi model gagal.',
+        },
+        _ => 'Gagal menghubungi server',
+      };
+      setState(() {
+        _state = _ModelSyncState.error;
+        _errorMessage = message;
+        _progress = 0.0;
+        _downloadSpeed = '';
+      });
+    }
+
+    void _cancelDownload() {
+      final repository = context.read<SyncRepository>();
+      repository.cancelModelDownload();
+      _downloadSub?.cancel();
     setState(() {
       _state = _ModelSyncState.updateAvailable;
       _progress = 0.0;

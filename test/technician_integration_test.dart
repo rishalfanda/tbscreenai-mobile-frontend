@@ -107,13 +107,15 @@ Map<String, Object?> tokenPair({
 };
 
 void main() {
-  test('technician permissions match PR36; doctor baseline is retained', () {
+  test('technician permissions match PR37; doctor baseline is retained', () {
     for (final path in [
       '/users',
       '/technician',
       '/dashboard',
       '/dataset',
       '/account',
+      '/models',
+      '/sync',
     ]) {
       expect(MobileRole.technician.allows(path), isTrue);
     }
@@ -121,8 +123,6 @@ void main() {
       '/diagnosis',
       '/result',
       '/validation',
-      '/sync',
-      '/models',
       '/camera',
       '/patients',
     ]) {
@@ -348,6 +348,8 @@ void main() {
     for (final path in [
       '/users',
       '/dataset',
+      '/sync',
+      '/models',
       '/account',
       '/sync',
       '/diagnosis',

@@ -58,6 +58,11 @@ class EncryptedXrayStore {
     if (row == null) {
       throw StateError('Encrypted X-ray artifact is missing.');
     }
+    return decodeArtifact(row);
+  }
+
+  /// Only the encrypted device handoff service passes archived artifacts here.
+  Future<XrayImage> decodeArtifact(EncryptedXrayArtifact row) async {
     final clearBytes = await _algorithm.decrypt(
       SecretBox(row.cipherText, nonce: row.nonce, mac: Mac(row.mac)),
       secretKey: await _readExistingKey(),

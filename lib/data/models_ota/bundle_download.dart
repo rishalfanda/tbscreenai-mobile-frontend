@@ -27,8 +27,9 @@ Future<void> downloadBundleZip({
   required String url,
   required File dest,
   String? sha256Hex,
-  CancelToken? cancelToken,
-  required void Function(int received, int total, double bytesPerSecond) onProgress,
+    bool followRedirects = true,
+    CancelToken? cancelToken,
+    required void Function(int received, int total, double bytesPerSecond) onProgress,
 }) async {
   int lastBytes = 0;
   int lastTimestamp = DateTime.now().millisecondsSinceEpoch;
@@ -38,23 +39,24 @@ Future<void> downloadBundleZip({
     await dio.download(
       url,
       dest.path,
-      cancelToken: cancelToken,
-      options: Options(
-        receiveTimeout: const Duration(minutes: 15),
-      ),
-      onReceiveProgress: (received, total) {
-        final now = DateTime.now().millisecondsSinceEpoch;
-        final timeDeltaMs = now - lastTimestamp;
-        if (timeDeltaMs >= 400 || (total > 0 && received >= total)) {
-          final bytesDelta = received - lastBytes;
-          if (timeDeltaMs > 0 && bytesDelta >= 0) {
-            currentSpeed = (bytesDelta / (timeDeltaMs / 1000.0));
+        cancelToken: cancelToken,
+        options: Options(
+          followRedirects: followRedirects,
+          receiveTimeout: const Duration(minutes: 15),
+        ),
+        onReceiveProgress: (received, total) {
+          final now = DateTime.now().millisecondsSinceEpoch;
+          final timeDeltaMs = now - lastTimestamp;
+          if (timeDeltaMs >= 400 || (total > 0 && received >= total)) {
+            final bytesDelta = received - lastBytes;
+            if (timeDeltaMs > 0 && bytesDelta >= 0) {
+              currentSpeed = (bytesDelta / (timeDeltaMs / 1000.0));
+            }
+            lastBytes = received;
+            lastTimestamp = now;
           }
-          lastBytes = received;
-          lastTimestamp = now;
-        }
-        onProgress(received, total > 0 ? total : received, currentSpeed);
-      },
+          onProgress(received, total > 0 ? total : received, currentSpeed);
+        },
     );
   } on DioException catch (e) {
     if (CancelToken.isCancel(e) || e.type == DioExceptionType.cancel) {

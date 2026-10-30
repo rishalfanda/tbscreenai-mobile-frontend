@@ -167,8 +167,6 @@ void main() {
         '/diagnosis',
         '/patients',
         '/validation',
-        '/sync',
-        '/models',
         '/result',
         '/camera',
       ]) {
@@ -180,7 +178,7 @@ void main() {
       expect(validation.subscriptions, 0);
       router.go('/models');
       await tester.pumpAndSettle();
-      expect(router.routeInformationProvider.value.uri.path, '/technician');
+      expect(router.routeInformationProvider.value.uri.path, '/models');
       expect(
         tester.takeException(),
         isNull,
@@ -189,7 +187,7 @@ void main() {
       expect(find.text('TBScreen demo v1'), findsNothing);
       router.go('/sync');
       await tester.pumpAndSettle();
-      expect(router.routeInformationProvider.value.uri.path, '/technician');
+      expect(router.routeInformationProvider.value.uri.path, '/sync');
       expect(tester.takeException(), isNull, reason: 'technician sync center');
       expect(auth.role, 'technician');
       expect(tester.takeException(), isNull);

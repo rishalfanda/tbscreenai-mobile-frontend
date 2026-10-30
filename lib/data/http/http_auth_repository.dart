@@ -3,16 +3,23 @@ import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/domain/repositories/auth_repository.dart';
+import 'package:myapp/data/offline/device_operator_outbox.dart';
 
 /// Live auth against POST /auth/login + /auth/refresh.
 class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
-  HttpAuthRepository(this._client, {SettingsStore? settings, AppDatabase? db})
-    : _settings = settings,
-      _db = db;
+  HttpAuthRepository(
+    this._client, {
+    SettingsStore? settings,
+    AppDatabase? db,
+    DeviceOperatorOutbox? outbox,
+  }) : _settings = settings,
+       _db = db,
+       _outbox = outbox;
 
   final ApiClient _client;
   final SettingsStore? _settings;
   final AppDatabase? _db;
+  final DeviceOperatorOutbox? _outbox;
   int _operation = 0;
   Future<void>? _cleanup;
   UserProfile? _identity;
@@ -31,6 +38,7 @@ class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
     final cleanup = _cleanup;
     if (cleanup != null) await cleanup;
     await clearingTokens;
+    await _outbox?.captureDoctorQueue();
     _ensureCurrent(operation);
 
     final tokenGeneration = _client.tokens.generation;
@@ -96,6 +104,7 @@ class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
           displayName: displayName,
           email: userEmail,
         );
+        if (!profile.mustChangePassword) await _outbox?.restoreDoctorQueue();
       }
 
       _ensureCurrent(operation, tokenGeneration: tokenGeneration);
@@ -165,6 +174,8 @@ class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
     }
     await _client.tokens.replaceSession(access: access, refresh: refresh);
     _ensureCurrent(operation);
+    await _outbox?.restoreDoctorQueue();
+    _ensureCurrent(operation);
     return UserProfile(
       userId: user['id'] as String,
       tenantId: user['tenant_id'] as String,
@@ -178,6 +189,7 @@ class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
   Future<void> logout() {
     _operation++;
     _identity = null;
+    _db?.invalidateSession();
     return _clearSession();
   }
 
@@ -185,11 +197,9 @@ class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
     final clearedTokens = _client.tokens.clear();
 
     Future<void> clean() async {
-      try {
-        await clearedTokens;
-      } finally {
-        await _db?.clearSessionData();
-      }
+      await _outbox?.captureDoctorQueue();
+      await clearedTokens;
+      await _db?.clearSessionData();
     }
 
     // Serialize cleanup even if expiry and user logout arrive together.

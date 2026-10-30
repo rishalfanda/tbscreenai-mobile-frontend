@@ -40,6 +40,20 @@ class MockSyncRepository implements SyncRepository {
   }
 
   @override
+  @override
+  Stream<double> downloadModel() async* {
+    _downloadCancelled = false;
+    var fraction = 0.0;
+    while (fraction < 1.0) {
+      if (_downloadCancelled) return;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      if (_downloadCancelled) return;
+      fraction = (fraction + 0.1).clamp(0.0, 1.0);
+      yield fraction;
+    }
+  }
+
+  @override
   Stream<ModelDownloadProgress> downloadModelWithProgress({
     AvailableModelBundle? model,
   }) async* {
@@ -47,12 +61,8 @@ class MockSyncRepository implements SyncRepository {
     final total = model?.sizeBytes != null && model!.sizeBytes > 0
         ? model.sizeBytes
         : 528571936; // ~504 MB
-    var fraction = 0.0;
-    while (fraction < 1.0) {
+    await for (final fraction in downloadModel()) {
       if (_downloadCancelled) return;
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-      if (_downloadCancelled) return;
-      fraction = (fraction + 0.1).clamp(0.0, 1.0);
       final received = (fraction * total).round();
       yield ModelDownloadProgress(
         fraction: fraction,
@@ -68,9 +78,13 @@ class MockSyncRepository implements SyncRepository {
 
     if (_downloadCancelled) return;
 
-    final key = model?.id ?? 'stable_${MockSeedData.modelVersionInfo.latestVersion}';
+    final ver = MockSeedData.modelVersionInfo.latestVersion;
+    final key = model?.id ?? 'stable_$ver';
     _installedKeys.add(key);
+    _installedKeys.add(ver);
     _modelStatuses[key] = ModelBundleStatus.verified;
+    _modelStatuses[ver] = ModelBundleStatus.verified;
+    _activeModelKey = model != null ? key : ver;
 
     yield ModelDownloadProgress(
       fraction: 1.0,
@@ -80,10 +94,6 @@ class MockSyncRepository implements SyncRepository {
       phase: ModelInstallPhase.completed,
     );
   }
-
-  @override
-  Stream<double> downloadModel() =>
-      downloadModelWithProgress().map((p) => p.fraction);
 
   @override
   Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo() =>

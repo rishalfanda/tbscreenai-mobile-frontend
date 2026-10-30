@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 
 import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/secure/secure_token_storage.dart';
+import 'package:myapp/data/secure/device_identity_store.dart';
 
 const String kSecureAccessToken = 'tbscreen_access_token';
 const String kSecureRefreshToken = 'tbscreen_refresh_token';
@@ -205,7 +206,10 @@ class ApiClient {
     SecureTokenStorage? secureStorage,
     String? initialAccessToken,
     String? initialRefreshToken,
-  }) : tokens = TokenStore(settings: settings, secureStorage: secureStorage),
+  }) : deviceIdentity = DeviceIdentityStore(
+         secureStorage ?? MemorySecureTokenStorage(),
+       ),
+       tokens = TokenStore(settings: settings, secureStorage: secureStorage),
        dio = Dio(_options(baseUrl)),
        _refreshDio = Dio(_options(baseUrl)) {
     tokens
@@ -234,6 +238,7 @@ class ApiClient {
   final Dio dio;
   final Dio _refreshDio;
   final TokenStore tokens;
+  final DeviceIdentityStore deviceIdentity;
   final StreamController<SessionExpiredEvent> _sessionEvents =
       StreamController<SessionExpiredEvent>.broadcast(sync: true);
 
@@ -242,14 +247,37 @@ class ApiClient {
 
   Stream<SessionExpiredEvent> get sessionExpired => _sessionEvents.stream;
 
-  void _onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+  void _onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
     options.extra.putIfAbsent(_sessionGenerationKey, () => tokens.generation);
     options.extra.putIfAbsent(_authRetryCountKey, () => 0);
     if (options.extra[_sessionGenerationKey] != tokens.generation) {
       return handler.reject(_sessionChanged(options));
     }
+    try {
+      final device = await deviceIdentity.read();
+      if (options.extra[_sessionGenerationKey] != tokens.generation) {
+        return handler.reject(_sessionChanged(options));
+      }
+      if (device != null && options.path != '/devices/activation') {
+        options.headers.addAll(device.headers);
+      }
+    } catch (_) {
+      return handler.reject(
+        DioException(
+          requestOptions: options,
+          error: 'Device identity unavailable',
+        ),
+      );
+    }
     final token = tokens.accessToken;
-    if (token != null && token.isNotEmpty && !_isAuthPath(options.path)) {
+    if (token != null &&
+        token.isNotEmpty &&
+        options.path != '/auth/login' &&
+        options.path != '/auth/refresh' &&
+        options.path != '/devices/activation') {
       final isExternal = options.uri.hasAuthority &&
           baseUrl.isNotEmpty &&
           Uri.tryParse(baseUrl)?.host.isNotEmpty == true &&
@@ -281,7 +309,9 @@ class ApiClient {
     final generation = options.extra[_sessionGenerationKey];
     if (generation != tokens.generation ||
         error.response?.statusCode != 401 ||
-        _isAuthPath(options.path)) {
+        options.path == '/auth/login' ||
+        options.path == '/auth/refresh' ||
+        options.path == '/devices/activation') {
       return handler.next(error);
     }
 
@@ -333,9 +363,11 @@ class ApiClient {
   }
 
   Future<void> _performRefresh(String refresh, int generation) async {
+    final device = await deviceIdentity.read();
     final response = await _refreshDio.post<Map<String, dynamic>>(
       '/auth/refresh',
       data: {'refresh_token': refresh},
+      options: Options(headers: device?.headers),
     );
     if (generation != tokens.generation) {
       throw StateError('Session changed during refresh');
@@ -383,7 +415,6 @@ class ApiClient {
     });
   }
 
-  bool _isAuthPath(String path) => path.startsWith('/auth/');
 
   DioException _sessionChanged(RequestOptions options) => DioException(
     requestOptions: options,

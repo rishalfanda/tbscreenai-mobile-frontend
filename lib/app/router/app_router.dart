@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myapp/features/account/presentation/account_screen.dart';
 import 'package:myapp/features/auth/presentation/login_screen.dart';
+import 'package:myapp/features/auth/presentation/tablet_activation_screen.dart';
+import 'package:myapp/features/sync/presentation/operator_sync_screen.dart';
 import 'package:myapp/features/auth/presentation/change_password_screen.dart';
 import 'package:myapp/features/camera/presentation/camera_screen.dart';
 import 'package:myapp/features/dashboard/presentation/dashboard_screen.dart';
@@ -22,6 +24,9 @@ class AppRouter {
       redirect: (BuildContext context, GoRouterState state) {
         final isLoggedIn = authProvider.isLoggedIn;
         final isLoggingIn = state.matchedLocation == '/login';
+        if (state.uri.path == '/activate-tablet') {
+          return isLoggedIn ? authProvider.mobileRole.home : null;
+        }
 
         if (!isLoggedIn && !isLoggingIn) {
           return '/login';
@@ -46,6 +51,10 @@ class AppRouter {
       },
       routes: [
         GoRoute(
+          path: '/activate-tablet',
+          builder: (_, _) => const TabletActivationScreen(),
+        ),
+        GoRoute(
           path: '/change-password',
           builder: (_, _) => const ChangePasswordScreen(),
         ),
@@ -68,7 +77,7 @@ class AppRouter {
             ),
             GoRoute(
               path: '/models',
-              builder: (_, _) => const InstitutionScreen(section: 'models'),
+              builder: (_, _) => const SyncCenterScreen(modelsOnly: true),
             ),
             GoRoute(
               path: '/dashboard',
@@ -93,7 +102,7 @@ class AppRouter {
             ),
             GoRoute(
               path: '/sync',
-              builder: (context, state) => const SyncCenterScreen(),
+              builder: (context, state) => const OperatorSyncScreen(),
             ),
             GoRoute(
               path: '/account',

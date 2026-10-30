@@ -314,19 +314,25 @@ class ModelUpdateService {
 
       final data = _asJsonMap(response.data);
       final ModelVersionInfo info;
-      if (data == null) {
-        info = ModelVersionInfo(
-          currentVersion: installed ?? '',
-          latestVersion: installed ?? '',
-          fileSize: '-',
-          releaseDate: '-',
-          changelog: const [],
+      if (data == null ||
+          ((data['latest'] is! String || (data['latest'] as String).trim().isEmpty) &&
+           (data['latest_version'] is! String || (data['latest_version'] as String).trim().isEmpty)) ||
+          (data.containsKey('update_available') && data['update_available'] is! bool) ||
+          (data.containsKey('app_supported') && data['app_supported'] is! bool)) {
+        throw const FormatException('No approved model response is available');
+      }
+      if (data['app_supported'] == false) {
+        throw ModelInstallException(
+          ModelInstallPhase.activating,
+          'Versi aplikasi ini belum didukung oleh model server.',
         );
-      } else {
+      }
+      {
         final sizeBytes = (data['size_bytes'] as num?)?.toInt();
         final latest = (data['latest_version'] as String?) ??
             (data['latest'] as String?) ??
             (installed ?? '');
+        final updateAvailable = data['update_available'] as bool?;
         info = ModelVersionInfo(
           currentVersion: installed ?? '',
           latestVersion: latest,
@@ -337,6 +343,7 @@ class ModelUpdateService {
           changelog: List<String>.from(data['changelog'] as List? ?? const []),
           downloadUrl: (data['bundle_zip'] as String?) ?? (data['download_url'] as String?),
           sha256: (data['bundle_zip_sha256'] as String?) ?? (data['sha256'] as String?),
+          updateAvailable: updateAvailable,
         );
       }
       await _cacheCheck(info);
@@ -377,6 +384,7 @@ class ModelUpdateService {
           'changelog': info.changelog,
           'downloadUrl': info.downloadUrl,
           'sha256': info.sha256,
+          'updateAvailable': info.updateAvailable,
           'checkedAtIso': DateTime.now().toIso8601String(),
         }),
       );
@@ -399,6 +407,7 @@ class ModelUpdateService {
         changelog: List<String>.from(data['changelog'] as List? ?? const []),
         downloadUrl: data['downloadUrl'] as String?,
         sha256: data['sha256'] as String?,
+        updateAvailable: data['updateAvailable'] as bool?,
       );
       return (info, checkedAt);
     } catch (_) {
@@ -410,6 +419,45 @@ class ModelUpdateService {
   /// `ModelUpdatePipeline`), then records the new version on this device.
   ///
   /// Missing bundles fail without changing the installed version.
-  Stream<double> downloadModel() =>
-      downloadModelWithProgress().map((p) => p.fraction);
+    Stream<double> downloadModel() async* {
+      final session = _db.sessionGeneration;
+      final info = await checkForUpdate();
+      if (!info.hasUpdate) {
+        throw ModelInstallException(
+          ModelInstallPhase.downloading,
+          'Tidak ada pembaruan yang diizinkan server.',
+        );
+      }
+      final url = info.downloadUrl ?? AppConfig.modelBundleUrl;
+
+      if (url == null || url.trim().isEmpty) {
+        throw ModelInstallException(
+          ModelInstallPhase.downloading,
+          'Bundle model belum tersedia. Minta admin menyediakan URL download.',
+        );
+      }
+
+      final sample = await rootBundle.load('assets/sample/xray.png');
+      await for (final progress in _modelPipeline.install(
+        info: ModelVersionInfo(
+          currentVersion: info.currentVersion,
+          latestVersion: info.latestVersion,
+          fileSize: info.fileSize,
+          releaseDate: info.releaseDate,
+          changelog: info.changelog,
+          downloadUrl: url,
+          sha256: info.sha256,
+          updateAvailable: info.updateAvailable,
+        ),
+        smokeTestSampleBytes: sample.buffer.asUint8List(),
+      )) {
+        if (session != _db.sessionGeneration) return;
+        yield progress;
+      }
+      if (session != _db.sessionGeneration) return;
+      await _db.writeForSession(
+        session,
+        () => _settings.saveInstalledModelVersion(info.latestVersion),
+      );
+    }
 }
