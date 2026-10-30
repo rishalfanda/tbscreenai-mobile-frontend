@@ -145,22 +145,36 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
   @override
   void initState() {
     super.initState();
-    if (AppConfig.useHttp || widget.hasModelOverride != null) {
+    if (widget.hasModelOverride != null) {
+      _hasModelReady = widget.hasModelOverride!;
       _checkingModel = false;
     } else {
-      context.read<OnnxInferenceEngine>().ready.then((_) {
-        if (!mounted) return;
-        setState(() {
-          _hasModelReady = context.read<OnnxInferenceEngine>().hasBundle;
-          _checkingModel = false;
+      try {
+        final engine = context.read<OnnxInferenceEngine>();
+        engine.ready.then((_) {
+          if (!mounted) return;
+          setState(() {
+            _hasModelReady = engine.hasBundle;
+            _checkingModel = false;
+          });
         });
-      });
+      } catch (_) {
+        _checkingModel = false;
+      }
     }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (widget.hasModelOverride == null) {
+      try {
+        final engine = context.read<OnnxInferenceEngine>();
+        if (engine.hasBundle != _hasModelReady && !_checkingModel) {
+          setState(() => _hasModelReady = engine.hasBundle);
+        }
+      } catch (_) {}
+    }
     if (_initialized) return;
     final draft = context.read<DiagnosisProvider>().draft;
     _nameController.text = draft.patientName;
@@ -424,9 +438,9 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
   Widget build(BuildContext context) {
     final diagnosis = context.watch<DiagnosisProvider>();
     final hasModel =
-        AppConfig.useHttp || (widget.hasModelOverride ?? _hasModelReady);
+        widget.hasModelOverride ?? (AppConfig.isDemo ? true : _hasModelReady);
     final checkingModel =
-        !AppConfig.useHttp && widget.hasModelOverride == null && _checkingModel;
+        widget.hasModelOverride == null && !AppConfig.isDemo && _checkingModel;
     final locked = diagnosis.lastOutcome != null;
 
     return ColoredBox(

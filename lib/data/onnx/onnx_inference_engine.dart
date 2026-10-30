@@ -109,6 +109,9 @@ class OnnxInferenceEngine {
 
   /// Run the pipeline on [imageBytes].
   Future<InferenceResult> run(Uint8List imageBytes) async {
+    if (_executor == null || _store == null) {
+      await ready;
+    }
     final executor = _executor;
     final store = _store;
     if (executor == null || store == null) {

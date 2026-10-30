@@ -41,9 +41,7 @@ void main() {
       );
       expect(
         context.read<DiagnosisRepository>(),
-        live
-            ? isA<HttpDiagnosisRepository>()
-            : isA<HybridDiagnosisRepository>(),
+        isA<HybridDiagnosisRepository>(),
       );
       expect(
         context.read<PatientRepository>(),

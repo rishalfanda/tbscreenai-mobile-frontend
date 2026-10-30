@@ -157,12 +157,12 @@ class TBScreenApp extends StatelessWidget {
               : MockDashboardRepository(),
         ),
         Provider<DiagnosisRepository>(
-          create: (c) => useHttp
-              ? HttpDiagnosisRepository(c.read<ApiClient>())
-              : HybridDiagnosisRepository(
-                  engine: c.read<OnnxInferenceEngine>(),
-                  fallback: MockDiagnosisRepository(),
-                ),
+          create: (c) => HybridDiagnosisRepository(
+            engine: c.read<OnnxInferenceEngine>(),
+            fallback: useHttp
+                ? HttpDiagnosisRepository(c.read<ApiClient>())
+                : MockDiagnosisRepository(),
+          ),
         ),
         Provider<ValidationRepository>(
           create: (c) => useHttp

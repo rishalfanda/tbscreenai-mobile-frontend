@@ -68,7 +68,14 @@ class ModelStore {
 
   /// Directory of the active bundle, or `null` if none / its files are missing.
   Future<Directory?> activeBundleDir() async {
-    final v = await activeVersion();
+    var v = await activeVersion();
+    if (v == null) {
+      final installed = await listInstalledBundleKeys();
+      if (installed.isNotEmpty) {
+        v = installed.first;
+        await _writePointer('ACTIVE', v);
+      }
+    }
     if (v == null) return null;
     final d = await versionDir(v);
     final manifest = File('${d.path}${Platform.pathSeparator}manifest.json');
