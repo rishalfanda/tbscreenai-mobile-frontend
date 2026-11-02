@@ -1,10 +1,12 @@
+import 'auth_frame.dart';
+import 'package:myapp/state/auth_provider.dart';
+import 'package:myapp/features/shared/presentation/widgets/secret_form_field.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/core/localization/app_language.dart';
-import 'package:myapp/core/localization/language_toggle.dart';
 
 class TabletActivationScreen extends StatefulWidget {
   const TabletActivationScreen({super.key});
@@ -40,7 +42,10 @@ class _TabletActivationScreenState extends State<TabletActivationScreen> {
       );
       await client.deviceIdentity.saveActivation(response.data);
       _code.clear();
-      if (mounted) context.go('/login');
+      if (mounted) {
+        context.read<AuthProvider>().setDeviceActivated(true);
+        context.go('/login');
+      }
     } catch (error) {
       if (!mounted) return;
       final status = error is DioException ? error.response?.statusCode : null;
@@ -58,58 +63,49 @@ class _TabletActivationScreenState extends State<TabletActivationScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    context.watch<AppLanguage?>();
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.trRead('Aktivasi tablet', 'Activate tablet')),
-        actions: const [LanguageToggle()],
-      ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: ListView(
-            shrinkWrap: true,
-            padding: const EdgeInsets.all(24),
-            children: [
-              Text(
-                context.trRead(
-                  'Masukkan kode aktivasi dari administrator untuk tablet ini. Setelah aktivasi, login teknisi dari tablet yang sama.',
-                  'Enter the administrator-issued activation code for this tablet. After activation, sign in as technician on this same tablet.',
-                ),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: _code,
-                obscureText: true,
-                enableSuggestions: false,
-                autocorrect: false,
-                maxLength: 64,
-                decoration: InputDecoration(
-                  labelText: context.trRead('Kode aktivasi', 'Activation code'),
-                ),
-              ),
-              if (_message != null) Text(_message!),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: _busy ? null : _activate,
-                child: Text(
-                  context.trRead(
-                    _busy ? 'Memproses…' : 'Aktifkan tablet',
-                    _busy ? 'Activating…' : 'Activate tablet',
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: _busy ? null : () => context.go('/login'),
-                child: Text(
-                  context.trRead('Kembali ke login', 'Back to login'),
-                ),
-              ),
-            ],
+  Widget build(BuildContext context) => AuthFrame(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          context.trRead('Aktivasi tablet', 'Activate tablet'),
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 24),
+        SecretFormField(
+          controller: _code,
+          label: context.trRead('Kode aktivasi', 'Activation code'),
+          maxLength: 64,
+          enabled: !_busy,
+          onSubmitted: (_) => _activate(),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          context.trRead(
+            'Masukkan kode aktivasi dari admin. Aktivasi memerlukan koneksi internet.',
+            'Enter the activation code from your administrator. Internet is required.',
           ),
         ),
-      ),
-    );
-  }
+        if (_message != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              _message!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        const SizedBox(height: 24),
+        FilledButton(
+          onPressed: _busy ? null : _activate,
+          child: Text(
+            context.trRead(
+              _busy ? 'Memproses...' : 'Aktifkan tablet',
+              _busy ? 'Activating...' : 'Activate tablet',
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }

@@ -1,3 +1,4 @@
+import 'package:myapp/data/onnx/on_device_diagnosis_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -42,7 +43,7 @@ void main() {
       expect(
         context.read<DiagnosisRepository>(),
         live
-            ? isA<HttpDiagnosisRepository>()
+            ? isA<OnDeviceDiagnosisRepository>()
             : isA<HybridDiagnosisRepository>(),
       );
       expect(

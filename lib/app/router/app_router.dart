@@ -17,11 +17,26 @@ import 'package:myapp/features/institution/presentation/institution_screen.dart'
 import 'package:myapp/state/auth_provider.dart';
 
 class AppRouter {
-  static GoRouter create(AuthProvider authProvider) {
+  static GoRouter create(
+    AuthProvider authProvider, {
+    bool requireActivation = false,
+  }) {
     return GoRouter(
       initialLocation: '/login',
       refreshListenable: authProvider,
       redirect: (BuildContext context, GoRouterState state) {
+        if (requireActivation && !authProvider.deviceActivated) {
+          return state.uri.path == '/activate-tablet'
+              ? null
+              : '/activate-tablet';
+        }
+        if (requireActivation &&
+            authProvider.deviceActivated &&
+            state.uri.path == '/activate-tablet') {
+          return authProvider.isLoggedIn
+              ? authProvider.mobileRole.home
+              : '/login';
+        }
         final isLoggedIn = authProvider.isLoggedIn;
         final isLoggingIn = state.matchedLocation == '/login';
         if (state.uri.path == '/activate-tablet') {

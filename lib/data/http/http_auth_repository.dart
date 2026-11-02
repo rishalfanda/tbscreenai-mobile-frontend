@@ -1,3 +1,4 @@
+import 'package:myapp/data/secure/doctor_session_store.dart';
 import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/settings_store.dart';
@@ -6,16 +7,23 @@ import 'package:myapp/domain/repositories/auth_repository.dart';
 import 'package:myapp/data/offline/device_operator_outbox.dart';
 
 /// Live auth against POST /auth/login + /auth/refresh.
-class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
+class HttpAuthRepository
+    implements
+        AuthRepository,
+        PasswordChangeRepository,
+        PersistentDoctorAuthRepository {
   HttpAuthRepository(
     this._client, {
     SettingsStore? settings,
     AppDatabase? db,
     DeviceOperatorOutbox? outbox,
+    DoctorSessionStore? doctorSession,
   }) : _settings = settings,
        _db = db,
-       _outbox = outbox;
+       _outbox = outbox,
+       _doctorSession = doctorSession;
 
+  final DoctorSessionStore? _doctorSession;
   final ApiClient _client;
   final SettingsStore? _settings;
   final AppDatabase? _db;
@@ -33,6 +41,8 @@ class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
     // cache until the replacement account has authenticated successfully.
     final operation = ++_operation;
     _identity = null;
+    await _doctorSession?.clear();
+    _ensureCurrent(operation);
     _db?.invalidateSession();
     final clearingTokens = _client.tokens.clear();
     final cleanup = _cleanup;
@@ -119,8 +129,65 @@ class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
       }
       rethrow;
     }
+    final device = await _client.deviceIdentity.read();
+    _ensureCurrent(operation);
+    if (device != null && device.tenantId == profile.tenantId) {
+      await _doctorSession?.save(profile, device.id, _client.baseUrl);
+    }
+    _ensureCurrent(operation);
     _identity = profile;
     return profile;
+  }
+
+  @override
+  Future<UserProfile?> restoreDoctorSession() async {
+    final operation = ++_operation;
+    final db = _db;
+    final settings = _settings;
+    final device = await _client.deviceIdentity.read();
+    _ensureCurrent(operation);
+    if (_doctorSession == null ||
+        db == null ||
+        settings == null ||
+        device == null) {
+      await _client.tokens.clear();
+      return null;
+    }
+    try {
+      final profile = await _doctorSession.read(device.id, _client.baseUrl);
+      if (profile == null ||
+          profile.tenantId != device.tenantId ||
+          await settings.readSessionOwner() !=
+              '${profile.tenantId}:${profile.userId}' ||
+          await settings.readRole() != 'doctor' ||
+          !await _client.tokens.restore(
+            localAuthenticationGranted: true,
+            allowExpiredAccess: true,
+          )) {
+        await _doctorSession.clear();
+        await _client.tokens.clear();
+        return null;
+      }
+      _ensureCurrent(operation);
+      final localDevice = await settings.readOrCreateDeviceId();
+      await db.activateOwner(
+        db.sessionGeneration,
+        DataOwner(
+          tenantId: profile.tenantId,
+          userId: profile.userId,
+          deviceId: localDevice,
+        ),
+      );
+      _ensureCurrent(operation);
+      _identity = profile;
+      return profile;
+    } catch (_) {
+      if (operation == _operation) {
+        await _doctorSession.clear();
+        await _client.tokens.clear();
+      }
+      return null;
+    }
   }
 
   void _ensureCurrent(int operation, {int? tokenGeneration}) {
@@ -176,13 +243,19 @@ class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
     _ensureCurrent(operation);
     await _outbox?.restoreDoctorQueue();
     _ensureCurrent(operation);
-    return UserProfile(
+    final updated = UserProfile(
       userId: user['id'] as String,
       tenantId: user['tenant_id'] as String,
       displayName: user['full_name'] as String,
       email: user['email'] as String,
       role: user['role'] as String,
     );
+    final device = await _client.deviceIdentity.read();
+    if (device != null && device.tenantId == updated.tenantId) {
+      await _doctorSession?.save(updated, device.id, _client.baseUrl);
+    }
+    _identity = updated;
+    return updated;
   }
 
   @override
@@ -195,10 +268,12 @@ class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
 
   Future<void> _clearSession() {
     final clearedTokens = _client.tokens.clear();
+    final clearedDoctorSession = _doctorSession?.clear();
 
     Future<void> clean() async {
       await _outbox?.captureDoctorQueue();
       await clearedTokens;
+      await clearedDoctorSession;
       await _db?.clearSessionData();
     }
 

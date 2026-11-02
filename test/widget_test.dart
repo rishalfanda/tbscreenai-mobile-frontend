@@ -11,7 +11,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Not logged in — router must redirect to the login screen.
-    expect(find.text('Welcome Back'), findsOneWidget);
-    expect(find.text('Sign In'), findsOneWidget);
+    expect(find.text('TBScreen.AI'), findsOneWidget);
+    expect(find.text('Sign In'), findsNWidgets(2));
   });
 }

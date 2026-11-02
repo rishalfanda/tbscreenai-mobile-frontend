@@ -1,3 +1,5 @@
+import 'package:myapp/data/secure/secure_token_storage.dart';
+import 'package:myapp/data/secure/device_identity_store.dart';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:drift/native.dart';
@@ -49,6 +51,18 @@ class _Adapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+Future<MemorySecureTokenStorage> activatedStorage() async {
+  final storage = MemorySecureTokenStorage();
+  await DeviceIdentityStore(storage).saveActivation({
+    'device_id': 'synthetic-device',
+    'tenant_id': 'synthetic-hospital',
+    'credential': 'synthetic-credential',
+    'label': 'Synthetic tablet',
+    'status': 'active',
+  });
+  return storage;
+}
+
 Future<void> pumpApp(WidgetTester tester) async {
   for (var i = 0; i < 8; i++) {
     await tester.pump(const Duration(milliseconds: 100));
@@ -60,14 +74,19 @@ Future<void> pumpApp(WidgetTester tester) async {
 
 void main() {
   testWidgets(
-    'staging doctor can navigate Dashboard, Screening, and Dataset',
+    'staging doctor can navigate Dashboard, Screening, and Validation',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 1000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       final database = AppDatabase(NativeDatabase.memory());
       await tester.runAsync(() => database.customSelect('SELECT 1').get());
-      await tester.pumpWidget(TBScreenApp(database: database));
+      await tester.pumpWidget(
+        TBScreenApp(
+          database: database,
+          secureTokenStorage: await activatedStorage(),
+        ),
+      );
       await pumpApp(tester);
       final context = tester.element(find.byType(MaterialApp));
       context.read<ApiClient>().dio.httpClientAdapter = _Adapter();
@@ -92,11 +111,12 @@ void main() {
       );
       expect(find.byKey(const Key('patient-name')), findsOneWidget);
       expect(tester.takeException(), isNull);
-      await tester.tap(find.byTooltip('Dataset'));
+      expect(find.byTooltip('Patients'), findsNothing);
+      expect(find.byTooltip('Dataset'), findsNothing);
+      await tester.tap(find.byTooltip('Validation'));
       await pumpApp(tester);
-      expect(router.routeInformationProvider.value.uri.path, '/dataset');
-      expect(find.byKey(const Key('live-dataset-content')), findsOneWidget);
-      expect(find.text('No matching datasets.'), findsOneWidget);
+      expect(router.routeInformationProvider.value.uri.path, '/validation');
+      expect(find.byKey(const Key('live-dataset-content')), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await pumpApp(tester);

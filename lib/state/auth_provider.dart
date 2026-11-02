@@ -37,6 +37,25 @@ class AuthProvider extends ChangeNotifier {
   String get displayName => _profile?.displayName ?? '';
   bool get mustChangePassword => _profile?.mustChangePassword ?? false;
 
+  bool _deviceActivated = true;
+  bool get deviceActivated => _deviceActivated;
+  void setDeviceActivated(bool value) {
+    _deviceActivated = value;
+    _notifyIfAlive();
+  }
+
+  Future<void> restoreSession() async {
+    final repo = _authRepository;
+    if (repo is! PersistentDoctorAuthRepository) return;
+    final generation = ++_generation;
+    final profile = await (repo as PersistentDoctorAuthRepository)
+        .restoreDoctorSession();
+    _ensureCurrent(generation);
+    _profile = profile;
+    _status = profile == null ? AuthStatus.loggedOut : AuthStatus.authenticated;
+    _notifyIfAlive();
+  }
+
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
@@ -66,6 +85,7 @@ class AuthProvider extends ChangeNotifier {
 
   /// A new login waits for cleanup; a logout invalidates any pending login.
   Future<void> login({required String email, String password = ''}) async {
+    if (!_deviceActivated) throw StateError('Tablet activation required');
     final generation = ++_generation;
     _profile = null;
     _status = AuthStatus.authenticating;

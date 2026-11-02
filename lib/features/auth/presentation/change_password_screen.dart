@@ -70,6 +70,24 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     }
   }
 
+  final _visible = <TextEditingController>{};
+  Widget _visibility(TextEditingController controller) => IconButton(
+    tooltip: context.trRead(
+      _visible.contains(controller) ? 'Sembunyikan teks' : 'Tampilkan teks',
+      _visible.contains(controller) ? 'Hide text' : 'Show text',
+    ),
+    onPressed: () => setState(() {
+      _visible.contains(controller)
+          ? _visible.remove(controller)
+          : _visible.add(controller);
+    }),
+    icon: Icon(
+      _visible.contains(controller)
+          ? Icons.visibility_off_outlined
+          : Icons.visibility_outlined,
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     context.watch<AppLanguage?>();
@@ -104,10 +122,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   children: [
                     TextFormField(
                       controller: _current,
-                      obscureText: true,
+                      obscureText: !_visible.contains(_current),
                       enableSuggestions: false,
                       autocorrect: false,
                       decoration: InputDecoration(
+                        suffixIcon: _visibility(_current),
                         labelText: context.trRead(
                           'Password saat ini',
                           'Current password',
@@ -120,10 +139,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _next,
-                      obscureText: true,
+                      obscureText: !_visible.contains(_next),
                       enableSuggestions: false,
                       autocorrect: false,
                       decoration: InputDecoration(
+                        suffixIcon: _visibility(_next),
                         labelText: context.trRead(
                           'Password baru',
                           'New password',
@@ -147,10 +167,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _confirm,
-                      obscureText: true,
+                      obscureText: !_visible.contains(_confirm),
                       enableSuggestions: false,
                       autocorrect: false,
                       decoration: InputDecoration(
+                        suffixIcon: _visibility(_confirm),
                         labelText: context.trRead(
                           'Konfirmasi password',
                           'Confirm password',

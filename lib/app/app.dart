@@ -1,3 +1,4 @@
+import 'package:myapp/data/secure/doctor_session_store.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:async';
@@ -142,6 +143,9 @@ class TBScreenApp extends StatelessWidget {
                   settings: c.read<SettingsStore>(),
                   db: db,
                   outbox: c.read<DeviceOperatorOutbox>(),
+                  doctorSession: DoctorSessionStore(
+                    c.read<SecureTokenStorage>(),
+                  ),
                 )
               : MockAuthRepository(),
         ),
@@ -238,6 +242,9 @@ class _RouterView extends StatefulWidget {
 }
 
 class _RouterViewState extends State<_RouterView> {
+  bool _ready = !AppConfig.useHttp;
+  bool _starting = false;
+  String? _startupError;
   GoRouter? _router;
   ApiClient? _client;
   StreamSubscription<SessionExpiredEvent>? _sessionSubscription;
@@ -245,7 +252,11 @@ class _RouterViewState extends State<_RouterView> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final auth = context.read<AuthProvider>();
-    _router ??= AppRouter.create(auth);
+    _router ??= AppRouter.create(auth, requireActivation: AppConfig.useHttp);
+    if (!_starting && !_ready) {
+      _starting = true;
+      unawaited(_initialize(auth));
+    }
     final client = context.read<ApiClient>();
     if (!identical(_client, client)) {
       unawaited(_sessionSubscription?.cancel());
@@ -253,6 +264,27 @@ class _RouterViewState extends State<_RouterView> {
       _sessionSubscription = client.sessionExpired.listen((_) {
         unawaited(auth.expireSession().catchError((_) {}));
       });
+    }
+  }
+
+  Future<void> _initialize(AuthProvider auth) async {
+    try {
+      final client = context.read<ApiClient>();
+      auth.setDeviceActivated(await client.deviceIdentity.read() != null);
+      if (auth.deviceActivated) await auth.restoreSession();
+      if (mounted) {
+        setState(() {
+          _ready = true;
+          _startupError = null;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _startupError =
+              'Penyimpanan perangkat belum dapat dibaca. Tutup dan buka kembali aplikasi.',
+        );
+      }
     }
   }
 
@@ -266,6 +298,18 @@ class _RouterViewState extends State<_RouterView> {
   @override
   Widget build(BuildContext context) {
     AppConfig.validate();
+    if (!_ready) {
+      return MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: Scaffold(
+          body: Center(
+            child: _startupError == null
+                ? const CircularProgressIndicator()
+                : Text(_startupError!),
+          ),
+        ),
+      );
+    }
     return MaterialApp.router(
       title: 'TBScreen',
       locale: context.watch<AppLanguage>().locale,

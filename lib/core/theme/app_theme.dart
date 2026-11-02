@@ -62,37 +62,37 @@ class AppTheme {
 
   // === Section: Elevation / Shadow scale ===
   static List<BoxShadow> get shadowSm => [
-        BoxShadow(
-          color: navy.withValues(alpha: 0.04),
-          blurRadius: 6,
-          offset: const Offset(0, 2),
-        ),
-      ];
+    BoxShadow(
+      color: navy.withValues(alpha: 0.04),
+      blurRadius: 6,
+      offset: const Offset(0, 2),
+    ),
+  ];
 
   static List<BoxShadow> get shadowMd => [
-        BoxShadow(
-          color: navy.withValues(alpha: 0.06),
-          blurRadius: 14,
-          offset: const Offset(0, 6),
-        ),
-      ];
+    BoxShadow(
+      color: navy.withValues(alpha: 0.06),
+      blurRadius: 14,
+      offset: const Offset(0, 6),
+    ),
+  ];
 
   static List<BoxShadow> get shadowLg => [
-        BoxShadow(
-          color: navy.withValues(alpha: 0.10),
-          blurRadius: 28,
-          offset: const Offset(0, 12),
-        ),
-      ];
+    BoxShadow(
+      color: navy.withValues(alpha: 0.10),
+      blurRadius: 28,
+      offset: const Offset(0, 12),
+    ),
+  ];
 
   /// Soft brand glow used for active/primary surfaces.
   static List<BoxShadow> primaryGlow({double alpha = 0.28}) => [
-        BoxShadow(
-          color: primary.withValues(alpha: alpha),
-          blurRadius: 20,
-          offset: const Offset(0, 10),
-        ),
-      ];
+    BoxShadow(
+      color: primary.withValues(alpha: alpha),
+      blurRadius: 20,
+      offset: const Offset(0, 10),
+    ),
+  ];
 
   // === Section: Typography ===
   static TextTheme _buildTextTheme(TextTheme base) {
@@ -126,10 +126,7 @@ class AppTheme {
             fontWeight: FontWeight.w600,
             color: navy,
           ),
-          bodyLarge: base.bodyLarge?.copyWith(
-            color: textPrimary,
-            height: 1.5,
-          ),
+          bodyLarge: base.bodyLarge?.copyWith(color: textPrimary, height: 1.5),
           bodyMedium: base.bodyMedium?.copyWith(
             color: textPrimary,
             height: 1.5,
@@ -143,29 +140,27 @@ class AppTheme {
             letterSpacing: 0.2,
           ),
         )
-        .apply(
-          bodyColor: textPrimary,
-          displayColor: navy,
-        );
+        .apply(bodyColor: textPrimary, displayColor: navy);
   }
 
   static ThemeData get lightTheme {
     final base = ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: primary,
-        brightness: Brightness.light,
-        primary: primary,
-        onPrimary: Colors.white,
-        secondary: secondary,
-        surface: surface,
-        onSurface: textPrimary,
-        error: error,
-      ).copyWith(
-        outline: borderLight,
-        outlineVariant: borderLight,
-        surfaceContainerHighest: background,
-      ),
+      colorScheme:
+          ColorScheme.fromSeed(
+            seedColor: primary,
+            brightness: Brightness.light,
+            primary: primary,
+            onPrimary: Colors.white,
+            secondary: secondary,
+            surface: surface,
+            onSurface: textPrimary,
+            error: error,
+          ).copyWith(
+            outline: borderLight,
+            outlineVariant: borderLight,
+            surfaceContainerHighest: background,
+          ),
       scaffoldBackgroundColor: background,
       splashFactory: InkSparkle.splashFactory,
     );
@@ -190,10 +185,13 @@ class AppTheme {
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
+        floatingLabelBehavior: FloatingLabelBehavior.always,
         filled: true,
         fillColor: surface,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 15,
+        ),
         hintStyle: const TextStyle(color: textSecondary, fontSize: 14),
         labelStyle: const TextStyle(color: textSecondary),
         border: OutlineInputBorder(
@@ -218,34 +216,35 @@ class AppTheme {
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          // Finite minWidth (0) so buttons stay valid inside unbounded contexts
-          // (Stack/Positioned, Row without Expanded). Opt into full width via
-          // SizedBox(width: infinity)/Expanded at the call site.
-          minimumSize: const Size(0, 52),
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-          textStyle: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.2,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(inputRadius),
-          ),
-          backgroundColor: primary,
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ).copyWith(
-          overlayColor: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.pressed)) {
-              return Colors.white.withValues(alpha: 0.18);
-            }
-            if (states.contains(WidgetState.hovered)) {
-              return Colors.white.withValues(alpha: 0.10);
-            }
-            return null;
-          }),
-        ),
+        style:
+            ElevatedButton.styleFrom(
+              // Finite minWidth (0) so buttons stay valid inside unbounded contexts
+              // (Stack/Positioned, Row without Expanded). Opt into full width via
+              // SizedBox(width: infinity)/Expanded at the call site.
+              minimumSize: const Size(0, 52),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+              textStyle: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(inputRadius),
+              ),
+              backgroundColor: primary,
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ).copyWith(
+              overlayColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.pressed)) {
+                  return Colors.white.withValues(alpha: 0.18);
+                }
+                if (states.contains(WidgetState.hovered)) {
+                  return Colors.white.withValues(alpha: 0.10);
+                }
+                return null;
+              }),
+            ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
@@ -264,27 +263,28 @@ class AppTheme {
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size(0, 52),
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-          textStyle: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.2,
-          ),
-          side: const BorderSide(color: borderLight, width: 1.5),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(inputRadius),
-          ),
-          foregroundColor: navy,
-        ).copyWith(
-          overlayColor: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.hovered)) {
-              return primary.withValues(alpha: 0.06);
-            }
-            return null;
-          }),
-        ),
+        style:
+            OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 52),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+              textStyle: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+              ),
+              side: const BorderSide(color: borderLight, width: 1.5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(inputRadius),
+              ),
+              foregroundColor: navy,
+            ).copyWith(
+              overlayColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.hovered)) {
+                  return primary.withValues(alpha: 0.06);
+                }
+                return null;
+              }),
+            ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
@@ -293,28 +293,19 @@ class AppTheme {
         ),
       ),
       iconButtonTheme: IconButtonThemeData(
-        style: IconButton.styleFrom(
-          minimumSize: const Size(44, 44),
-        ),
+        style: IconButton.styleFrom(minimumSize: const Size(44, 44)),
       ),
       chipTheme: base.chipTheme.copyWith(
-        labelStyle: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
+        labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(999),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
         side: BorderSide.none,
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
         elevation: 8,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,

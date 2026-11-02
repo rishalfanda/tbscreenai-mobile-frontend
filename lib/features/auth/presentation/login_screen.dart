@@ -1,5 +1,7 @@
+import 'auth_frame.dart';
+import 'tablet_activation_screen.dart';
+import 'package:myapp/features/shared/presentation/widgets/secret_form_field.dart';
 import 'package:myapp/core/localization/app_language.dart';
-import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -75,271 +77,72 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.navy,
-      body: Stack(
-        children: [
-          Center(
-            child: SingleChildScrollView(
-              physics: const ClampingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 500),
-                child: Card(
-                  color: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      AppTheme.loginCardRadius,
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 48,
-                      vertical: 56,
-                    ),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Logo
-                          SizedBox(
-                            height: 60,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Image.asset(
-                                  'assets/images/favicon.png',
-                                  width: 44,
-                                  height: 44,
-                                  fit: BoxFit.contain,
-                                  excludeFromSemantics: true,
-                                ),
-                                const SizedBox(width: 12),
-                                AppText(
-                                  'TBScreen.AI',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .headlineMedium
-                                      ?.copyWith(
-                                        color: AppTheme.navy,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          AppText(
-                            'Welcome Back',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(
-                                  color: AppTheme.navy,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                          ),
-                          const SizedBox(height: 8),
-                          const AppText(
-                            'AI-Powered TB Screening',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AppTheme.subtitleGrey,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 40),
-
-                          // Email field
-                          const AppText(
-                            'Email',
-                            style: TextStyle(
-                              color: AppTheme.navy,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextFormField(
-                            controller: _emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            decoration: InputDecoration(
-                              hintText: localize(context, 'Enter your email'),
-                              hintStyle: const TextStyle(
-                                color: AppTheme.textSecondary,
-                              ),
-                              prefixIcon: const Icon(
-                                Icons.mail_outline_rounded,
-                                color: AppTheme.textSecondary,
-                              ),
-                              fillColor: Colors.white,
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(
-                                  AppTheme.inputRadius,
-                                ),
-                                borderSide: const BorderSide(
-                                  color: AppTheme.borderLight,
-                                  width: 1.5,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(
-                                  AppTheme.inputRadius,
-                                ),
-                                borderSide: const BorderSide(
-                                  color: AppTheme.cyan,
-                                  width: 1.5,
-                                ),
-                              ),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Email wajib diisi';
-                              }
-                              if (!value.contains('@')) {
-                                return 'Format email belum valid';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Password field
-                          const AppText(
-                            'Password',
-                            style: TextStyle(
-                              color: AppTheme.navy,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextFormField(
-                            controller: _passwordController,
-                            obscureText: true,
-                            decoration: InputDecoration(
-                              hintText: localize(
-                                context,
-                                'Enter your password',
-                              ),
-                              hintStyle: const TextStyle(
-                                color: AppTheme.textSecondary,
-                              ),
-                              prefixIcon: const Icon(
-                                Icons.lock_outline_rounded,
-                                color: AppTheme.textSecondary,
-                              ),
-                              fillColor: Colors.white,
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(
-                                  AppTheme.inputRadius,
-                                ),
-                                borderSide: const BorderSide(
-                                  color: AppTheme.borderLight,
-                                  width: 1.5,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(
-                                  AppTheme.inputRadius,
-                                ),
-                                borderSide: const BorderSide(
-                                  color: AppTheme.cyan,
-                                  width: 1.5,
-                                ),
-                              ),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Password wajib diisi';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 48),
-
-                          // Sign In button
-                          Container(
-                            height: 56,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(
-                                AppTheme.inputRadius,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppTheme.cyan.withValues(alpha: 0.3),
-                                  blurRadius: 15,
-                                  offset: const Offset(0, 8),
-                                ),
-                              ],
-                            ),
-                            child: ElevatedButton(
-                              onPressed: _isSubmitting ? null : _submit,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.cyan,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    AppTheme.inputRadius,
-                                  ),
-                                ),
-                              ),
-                              child: _isSubmitting
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2.5,
-                                      ),
-                                    )
-                                  : const AppText(
-                                      'Sign In',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                          if (AppConfig.useHttp)
-                            TextButton(
-                              onPressed: _isSubmitting
-                                  ? null
-                                  : () => context.go('/activate-tablet'),
-                              child: Text(
-                                context.tr(
-                                  'Aktivasi tablet',
-                                  'Activate tablet',
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
+    if (!context.watch<AuthProvider>().deviceActivated) {
+      return const TabletActivationScreen();
+    }
+    return AuthFrame(
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              context.trRead('Masuk', 'Sign In'),
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 24),
+            TextFormField(
+              controller: _emailController,
+              enabled: !_isSubmitting,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                labelText: context.trRead('Email', 'Email'),
+                prefixIcon: const Icon(Icons.mail_outline),
+              ),
+              validator: (v) => v == null || !v.contains('@')
+                  ? context.trRead(
+                      'Masukkan email yang valid',
+                      'Enter a valid email',
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 20),
+            SecretFormField(
+              controller: _passwordController,
+              label: context.trRead('Password', 'Password'),
+              enabled: !_isSubmitting,
+              validator: (v) => v == null || v.isEmpty
+                  ? context.trRead(
+                      'Password wajib diisi',
+                      'Password is required',
+                    )
+                  : null,
+              onSubmitted: (_) => _isSubmitting ? null : _submit(),
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: _isSubmitting ? null : _submit,
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(context.trRead('Masuk', 'Sign In')),
+            ),
+            if (AppConfig.isDemo)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Text(
+                  context.trRead(
+                    'Mode demo - data simulasi',
+                    'Demo mode - simulated data',
                   ),
                 ),
               ),
-            ),
-          ),
-          Positioned(
-            bottom: 24,
-            left: 0,
-            right: 0,
-            child: AppText(
-              '© 2026 TBScreen. All rights reserved.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
-                fontSize: 13,
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

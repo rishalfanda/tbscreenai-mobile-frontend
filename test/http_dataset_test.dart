@@ -85,14 +85,14 @@ class _Auth extends AuthRepository {
   Future<void> logout() => SynchronousFuture(null);
 }
 
-AuthProvider doctor() => AuthProvider(
+AuthProvider technician() => AuthProvider(
   _Auth(),
   initialProfile: const UserProfile(
     userId: 'doctor',
     tenantId: 'hospital',
     displayName: 'Synthetic doctor',
     email: 'doctor@example.invalid',
-    role: 'doctor',
+    role: 'technician',
   ),
 );
 
@@ -145,7 +145,7 @@ void main() {
   test(
     'logout discards delayed data and foreign institution is never shown',
     () async {
-      final auth = doctor();
+      final auth = technician();
       final delayed = Completer<Object?>();
       client.dio.httpClientAdapter = _Adapter((_) => delayed.future);
       final state = LiveDatasetProvider(repository, auth);
@@ -156,7 +156,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(state.page, isNull);
       expect(state.busy, isFalse);
-      final otherAuth = doctor();
+      final otherAuth = technician();
       client.dio.httpClientAdapter = _Adapter(
         (_) async => page([entry('dataset', tenant: 'other-hospital')]),
       );
@@ -170,7 +170,7 @@ void main() {
   );
 
   test('late search response cannot overwrite newer search', () async {
-    final auth = doctor();
+    final auth = technician();
     final old = Completer<Object?>();
     client.dio.httpClientAdapter = _Adapter(
       (request) async => request.queryParameters['q'] == 'new'
@@ -207,7 +207,7 @@ void main() {
             ? page([])
             : page([entry('dataset')]);
       });
-      final auth = doctor();
+      final auth = technician();
       await tester.pumpWidget(
         MultiProvider(
           providers: [

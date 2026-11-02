@@ -14,28 +14,24 @@ enum MobileRole {
 
   String get home => switch (this) {
     clinician => '/dashboard',
-    technician => '/technician',
+    technician => '/users',
     management || unsupported => '/account',
   };
 
   bool allows(String path) {
-    if (path == '/account') return true;
+    if (path == '/account') return this != technician;
     return switch (this) {
       clinician => const {
         '/dashboard',
-        '/patients',
         '/diagnosis',
         '/validation',
-        '/dataset',
         '/result',
         '/camera',
       }.contains(path),
       technician => const {
-        '/technician',
         '/users',
         '/models',
         '/sync',
-        '/dashboard',
         '/dataset',
       }.contains(path),
       management || unsupported => false,

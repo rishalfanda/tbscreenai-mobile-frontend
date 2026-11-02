@@ -13,3 +13,7 @@ abstract interface class PasswordChangeRepository {
     required String newPassword,
   });
 }
+
+abstract interface class PersistentDoctorAuthRepository {
+  Future<UserProfile?> restoreDoctorSession();
+}

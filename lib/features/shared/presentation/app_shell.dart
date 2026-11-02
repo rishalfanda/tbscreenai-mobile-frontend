@@ -1,3 +1,4 @@
+import 'package:myapp/features/shared/presentation/widgets/connection_status_badge.dart';
 import 'package:myapp/core/localization/app_text.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/localization/language_toggle.dart';
@@ -21,7 +22,6 @@ class AppShell extends StatefulWidget {
   final Widget child;
 
   static const _items = <({String route, IconData icon, String label})>[
-    (route: '/technician', icon: Icons.build_outlined, label: 'Technician'),
     (route: '/users', icon: Icons.manage_accounts_outlined, label: 'Users'),
     (route: '/models', icon: Icons.memory_rounded, label: 'Models'),
     (
@@ -29,15 +29,14 @@ class AppShell extends StatefulWidget {
       icon: Icons.space_dashboard_rounded,
       label: 'Dashboard',
     ),
-    (route: '/patients', icon: Icons.people_alt_rounded, label: 'Patients'),
     (route: '/diagnosis', icon: Icons.biotech_rounded, label: 'Screening'),
     (
       route: '/validation',
       icon: Icons.verified_user_rounded,
       label: 'Validation',
     ),
-    (route: '/dataset', icon: Icons.table_chart_rounded, label: 'Dataset'),
     (route: '/sync', icon: Icons.cloud_sync_rounded, label: 'Sync'),
+    (route: '/dataset', icon: Icons.table_chart_rounded, label: 'Dataset'),
     (route: '/account', icon: Icons.person_rounded, label: 'Account'),
   ];
 
@@ -194,6 +193,7 @@ class _AppShellState extends State<AppShell> {
                               ),
                             ),
                           ),
+                          const ConnectionStatusBadge(),
                           const Padding(
                             padding: EdgeInsets.symmetric(horizontal: 8),
                             child: LanguageToggle(),
@@ -279,6 +279,12 @@ class _NavRail extends StatelessWidget {
                 );
               },
             ),
+          ),
+          IconButton(
+            tooltip: context.trRead('Keluar', 'Sign out'),
+            color: Colors.white,
+            onPressed: () => context.read<AuthProvider>().logout(),
+            icon: const Icon(Icons.logout),
           ),
         ],
       ),

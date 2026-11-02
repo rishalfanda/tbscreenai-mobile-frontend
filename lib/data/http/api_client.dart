@@ -45,9 +45,13 @@ class TokenStore {
       refreshToken != null &&
       refreshToken!.isNotEmpty;
 
-  /// Restoring offline access is fail-closed until product selects a local
-  /// PIN/biometric policy. Callers must prove local authentication explicitly.
-  Future<bool> restore({required bool localAuthenticationGranted}) {
+  /// Restores tokens only after the caller verifies the secure local identity.
+  /// Expired access tokens may be retained for an approved offline doctor
+  /// session; the server still controls refresh and authorization.
+  Future<bool> restore({
+    required bool localAuthenticationGranted,
+    bool allowExpiredAccess = false,
+  }) {
     if (!localAuthenticationGranted) return Future<bool>.value(false);
     final expectedGeneration = generation;
     return _serializeSecure(() async {
@@ -55,7 +59,11 @@ class TokenStore {
       final refresh = await _secureStorage.read(kSecureRefreshToken);
       final owner = await _settings?.readSessionOwner();
       if (generation != expectedGeneration) return false;
-      if (!_matchesOwnerAndExpiry(access, owner) ||
+      if (!_matchesOwnerAndExpiry(
+            access,
+            owner,
+            allowExpired: allowExpiredAccess,
+          ) ||
           refresh == null ||
           refresh.isEmpty) {
         generation++;
@@ -166,7 +174,11 @@ class TokenStore {
     if (firstError != null) Error.throwWithStackTrace(firstError, firstStack!);
   }
 
-  bool _matchesOwnerAndExpiry(String? token, String? owner) {
+  bool _matchesOwnerAndExpiry(
+    String? token,
+    String? owner, {
+    bool allowExpired = false,
+  }) {
     if (token == null || token.isEmpty || owner == null || owner.isEmpty) {
       return false;
     }
@@ -183,7 +195,8 @@ class TokenStore {
       if (subject is! String || expiresAt is! num) return false;
       final tokenOwner = '${claims['tenant_id'] ?? ''}:$subject';
       return tokenOwner == owner &&
-          expiresAt > DateTime.now().millisecondsSinceEpoch / 1000;
+          (allowExpired ||
+              expiresAt > DateTime.now().millisecondsSinceEpoch / 1000);
     } catch (_) {
       return false;
     }
@@ -330,7 +343,10 @@ class ApiClient {
       final response = await dio.fetch<dynamic>(retryOptions);
       return handler.resolve(response);
     } on DioException catch (refreshError) {
-      if (generation == tokens.generation) {
+      final status = refreshError.response?.statusCode;
+      final rejected =
+          status != null && status >= 400 && status < 500 && status != 429;
+      if (generation == tokens.generation && rejected) {
         await _expire(SessionEndReason.refreshRejected);
       }
       return handler.next(refreshError);
