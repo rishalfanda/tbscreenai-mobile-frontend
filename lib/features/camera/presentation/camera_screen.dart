@@ -273,8 +273,17 @@ class _CameraScreenState extends State<CameraScreen>
                 child: _ErrorBanner(message: _error!),
               ),
             Positioned(
-              left: 20,
+              left:
+                  MediaQuery.sizeOf(context).width >
+                      MediaQuery.sizeOf(context).height
+                  ? null
+                  : 20,
               right: 20,
+              top:
+                  MediaQuery.sizeOf(context).width >
+                      MediaQuery.sizeOf(context).height
+                  ? 20
+                  : null,
               bottom: 20,
               child: _capturedBytes == null
                   ? _captureControls()
@@ -408,7 +417,10 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Widget _captureControls() {
-    return Row(
+    final landscape =
+        MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height;
+    return Flex(
+      direction: landscape ? Axis.vertical : Axis.horizontal,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         _roundButton(
@@ -416,7 +428,7 @@ class _CameraScreenState extends State<CameraScreen>
           icon: _flashOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
           onPressed: _toggleFlash,
         ),
-        const SizedBox(width: 36),
+        SizedBox(width: landscape ? 0 : 24, height: landscape ? 24 : 0),
         Semantics(
           button: true,
           label: 'Capture X-ray image',
@@ -440,7 +452,7 @@ class _CameraScreenState extends State<CameraScreen>
             ),
           ),
         ),
-        const SizedBox(width: 36),
+        SizedBox(width: landscape ? 0 : 24, height: landscape ? 24 : 0),
         _roundButton(
           tooltip: 'Switch camera',
           icon: Icons.cameraswitch_rounded,
@@ -451,7 +463,10 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Widget _confirmationControls() {
-    return Row(
+    final landscape =
+        MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height;
+    return Flex(
+      direction: landscape ? Axis.vertical : Axis.horizontal,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         OutlinedButton.icon(
@@ -464,7 +479,7 @@ class _CameraScreenState extends State<CameraScreen>
             backgroundColor: Colors.black45,
           ),
         ),
-        const SizedBox(width: 16),
+        SizedBox(width: landscape ? 0 : 16, height: landscape ? 16 : 0),
         FilledButton.icon(
           onPressed: _confirming ? null : _confirm,
           icon: _confirming

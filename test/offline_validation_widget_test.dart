@@ -127,11 +127,7 @@ void main() {
       await tester.tap(find.byKey(const Key('confirm-validation-score')));
       await tester.pumpAndSettle();
       expect(repo.score, 0);
-      tester
-          .widget<DropdownButtonFormField<String>>(
-            find.byType(DropdownButtonFormField<String>),
-          )
-          .onChanged!('two');
+      await tester.tap(find.byKey(const ValueKey('validation-case-two')));
       await tester.pump();
       expect(find.byType(Image), findsNothing);
       repo.images['two']!.complete(null);

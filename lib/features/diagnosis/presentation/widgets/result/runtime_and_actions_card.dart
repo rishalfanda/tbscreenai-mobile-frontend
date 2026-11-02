@@ -179,6 +179,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
       label: AppText(label),
       style: OutlinedButton.styleFrom(
         foregroundColor: kResultTextHiColor,
+        disabledForegroundColor: const Color(0xFF94A3B8),
         side: const BorderSide(color: kResultBorderColor),
         backgroundColor: kResultSurfaceColor,
       ),

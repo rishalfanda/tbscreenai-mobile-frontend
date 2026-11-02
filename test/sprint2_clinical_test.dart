@@ -1,3 +1,4 @@
+import 'package:myapp/domain/models/segmentation_overlays.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -168,6 +169,85 @@ void main() {
     await client.close();
     await db.close();
   });
+
+  test(
+    'inline screening creates patient and diagnosis atomically without Patient menu',
+    () async {
+      final saved = await store().persist(
+        ScreeningResult(
+          draft: _draft().copyWith(patientId: null, patientCode: null),
+          outcome: _outcome(),
+        ),
+      );
+      final patient = await db.findPatient(saved.draft.patientId!);
+      expect(patient!.name, _draft().patientName);
+      expect(patient.code.length, lessThanOrEqualTo(20));
+      final ops = await db.pendingOps();
+      expect(ops.length, 2);
+      expect(
+        ops.where((op) => op.entityType == 'patient').single.entityId,
+        saved.draft.patientId,
+      );
+      expect(
+        jsonDecode(
+          ops.where((op) => op.entityType == 'diagnosis').single.payload,
+        )['patient_id'],
+        saved.draft.patientId,
+      );
+      expect(
+        saved.requiresLeaveConfirmation,
+        isFalse,
+        reason: 'Durable offline data must not block repeated screenings',
+      );
+      expect(
+        (await store().restoreLatest())!.draft.patientId,
+        saved.draft.patientId,
+      );
+    },
+  );
+
+  test(
+    'stored segmentation remains available after reopening the result',
+    () async {
+      final png = _draft().image!.bytes;
+      final outcome = DiagnosisOutcome(
+        isPositive: true,
+        confidence: 87,
+        processingTime: '1s',
+        modelVersion: 'synthetic-model',
+        createdAt: DateTime.utc(2026),
+        isMock: false,
+        segmentation: SegmentationOverlays(
+          xrayPng: png,
+          lungPng: png,
+          lesionPng: png,
+          lungAreaPx: 4,
+          legend: const [
+            LesionLegendEntry(
+              name: 'cavity',
+              red: 255,
+              green: 0,
+              blue: 0,
+              pixelCount: 1,
+            ),
+          ],
+        ),
+      );
+      final saved = await store().persist(
+        ScreeningResult(
+          draft: _draft().copyWith(patientId: null),
+          outcome: outcome,
+        ),
+      );
+      expect(
+        (await db.findEncryptedArtifact('${saved.id}:lesion'))!.cipherText,
+        isNot(equals(png)),
+      );
+      final restored = await store().restoreLatest();
+      expect(restored!.outcome.segmentation!.lesionPng, png);
+      expect(restored.outcome.segmentation!.legend.single.name, 'cavity');
+    },
+  );
 
   test(
     'FE-106 typed inference persists encrypted image and restores after database reopen',

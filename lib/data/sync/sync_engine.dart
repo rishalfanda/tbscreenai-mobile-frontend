@@ -71,8 +71,11 @@ class SyncEngine {
 
   Future<SyncReport>? _pushInFlight;
 
-  Future<String> enqueuePatientCreate(Map<String, dynamic> payload) async {
-    final entityId = uuidV4();
+  Future<String> enqueuePatientCreate(
+    Map<String, dynamic> payload, {
+    String? id,
+  }) async {
+    final entityId = id ?? uuidV4();
     await _db.enqueue(
       SyncQueueCompanion.insert(
         clientOpId: uuidV4(),

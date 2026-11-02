@@ -45,10 +45,10 @@ class _OperatorSyncScreenState extends State<OperatorSyncScreen> {
     setState(() => _busy = true);
     try {
       final device = await context.read<ApiClient>().deviceIdentity.read();
-      final entries = await service.queued();
+      final count = await service.queuedCount();
       if (!_current || !identical(actor, _actor)) return;
       setState(() {
-        _count = entries.length;
+        _count = count;
         _activated = device != null && device.tenantId == actor?.tenantId;
       });
     } catch (_) {
@@ -87,11 +87,11 @@ class _OperatorSyncScreenState extends State<OperatorSyncScreen> {
         },
       );
       if (_current && identical(actor, _actor)) {
-        final remaining = await service.queued();
+        final remaining = await service.queuedCount();
         if (_current && identical(actor, _actor)) {
           setState(() {
             _report = report;
-            _count = remaining.length;
+            _count = remaining;
             _done = 0;
           });
         }

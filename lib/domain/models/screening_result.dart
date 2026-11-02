@@ -32,17 +32,16 @@ class ScreeningResult {
   bool get requiresLeaveConfirmation =>
       saveStatus == ScreeningSaveStatus.unsaved ||
       saveStatus == ScreeningSaveStatus.saving ||
-      saveStatus == ScreeningSaveStatus.pendingSync ||
-      saveStatus == ScreeningSaveStatus.failed ||
-      saveStatus == ScreeningSaveStatus.conflict;
+      saveStatus == ScreeningSaveStatus.failed;
 
   ScreeningResult copyWith({
+    DiagnosisDraft? draft,
     String? id,
     String? imageReference,
     ScreeningSaveStatus? saveStatus,
     Object? persistenceError = _unset,
   }) => ScreeningResult(
-    draft: draft,
+    draft: draft ?? this.draft,
     outcome: outcome,
     id: id ?? this.id,
     imageReference: imageReference ?? this.imageReference,

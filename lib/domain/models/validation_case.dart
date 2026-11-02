@@ -26,6 +26,10 @@ class ValidationCase {
     required this.aiScore,
     required this.diagnosisDate,
     required this.status,
+    this.patientCode,
+    this.heightCm,
+    this.weightKg,
+    this.symptoms = const [],
     this.isPositive,
     this.validationScore,
     this.validationNote,
@@ -40,6 +44,9 @@ class ValidationCase {
     required this.findings,
   });
 
+  final String? patientCode;
+  final double? heightCm, weightKg;
+  final List<String> symptoms;
   final bool? isPositive;
   final int? validationScore;
   final String? validationNote;
@@ -79,6 +86,10 @@ class ValidationCase {
       aiScore: aiScore,
       diagnosisDate: diagnosisDate,
       status: status ?? this.status,
+      patientCode: patientCode,
+      heightCm: heightCm,
+      weightKg: weightKg,
+      symptoms: symptoms,
       isPositive: isPositive,
       validationScore: validationScore,
       validationNote: validationNote,

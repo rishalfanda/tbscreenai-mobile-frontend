@@ -4,6 +4,9 @@ import 'package:myapp/features/diagnosis/presentation/diagnosis_palette.dart';
 /// Standard dark input decoration used across diagnosis form fields.
 InputDecoration darkInputDecoration() {
   return InputDecoration(
+    floatingLabelBehavior: FloatingLabelBehavior.always,
+    labelStyle: const TextStyle(color: diagnosisMuted),
+    suffixStyle: const TextStyle(color: diagnosisMuted),
     filled: true,
     fillColor: diagnosisInput,
     isDense: true,
@@ -25,4 +28,3 @@ OutlineInputBorder darkOutlineBorder(Color color, {double width = 1}) {
     borderSide: BorderSide(color: color, width: width),
   );
 }
-

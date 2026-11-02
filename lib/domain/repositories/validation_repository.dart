@@ -1,3 +1,4 @@
+import 'package:myapp/domain/models/segmentation_overlays.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/domain/models/clinical_conflict.dart';
 import 'package:myapp/domain/models/validation_case.dart';
@@ -44,4 +45,8 @@ abstract interface class NumericValidationRepository {
     String? note,
   });
   Future<XrayImage?> loadCaseImage(String id);
+}
+
+abstract interface class SegmentationValidationRepository {
+  Future<SegmentationOverlays?> loadCaseSegmentation(String id);
 }

@@ -43,6 +43,22 @@ class OperatorSyncService {
     return entries;
   }
 
+  Future<int> queuedCount() async {
+    if (!auth.isLoggedIn ||
+        auth.mustChangePassword ||
+        auth.mobileRole != MobileRole.technician) {
+      throw StateError('Technician session required');
+    }
+    final actor = auth.profile;
+    final generation = db.sessionGeneration;
+    final device = await SettingsStore(db).readOrCreateDeviceId();
+    final count = await outbox.count(auth.tenantId, device);
+    if (!identical(auth.profile, actor) || generation != db.sessionGeneration) {
+      throw StateError('Session changed');
+    }
+    return count;
+  }
+
   Future<SyncReport> push({void Function(int, int)? onProgress}) async {
     if (_running) throw StateError('Sync is already running');
     _running = true;
@@ -211,6 +227,8 @@ class OperatorSyncService {
               current,
             );
           }
+          current();
+          await outbox.retainReceived(entry);
           current();
           await outbox.remove(op.clientOpId);
           if (resultStatus == 'applied') {

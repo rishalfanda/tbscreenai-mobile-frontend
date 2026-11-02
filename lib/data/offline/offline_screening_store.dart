@@ -1,3 +1,5 @@
+import 'package:myapp/domain/models/xray_image.dart';
+import 'package:myapp/domain/models/segmentation_overlays.dart';
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
@@ -43,10 +45,18 @@ class OfflineScreeningStore implements ScreeningStore {
         'Demo inference cannot be saved as a clinical diagnosis.',
       );
     }
-    final patientId = result.draft.patientId;
-    if (patientId == null || patientId.trim().isEmpty) {
+    final newPatient = result.draft.patientId?.trim().isNotEmpty != true;
+    final patientId = newPatient ? uuidV4() : result.draft.patientId!;
+    final patientCode = newPatient
+        ? 'TB-${patientId.replaceAll('-', '').substring(0, 12).toUpperCase()}'
+        : result.draft.patientCode;
+    final draft = result.draft.copyWith(
+      patientId: patientId,
+      patientCode: patientCode,
+    );
+    if (!draft.hasRequiredDemographics) {
       throw const ClinicalPersistenceException(
-        'Pilih pasien dari menu Patient sebelum menyimpan screening.',
+        'Lengkapi data pasien sebelum menyimpan screening.',
       );
     }
     final image = result.draft.image;
@@ -58,15 +68,62 @@ class OfflineScreeningStore implements ScreeningStore {
 
     final diagnosisId = result.id ?? uuidV4();
     final deviceId = await _deviceId();
-    final patientSnapshot = result.draft.toPatientSnapshot();
-    final clinicalSnapshot = result.draft.toClinicalSnapshot(
-      deviceId: deviceId,
-    );
+    final patientSnapshot = draft.toPatientSnapshot();
+    final clinicalSnapshot = draft.toClinicalSnapshot(deviceId: deviceId);
     if (result.outcome.imageId != null) {
       clinicalSnapshot['inference_image_id'] = result.outcome.imageId;
     }
     late final String imageReference;
     await _db.transaction(() async {
+      if (newPatient) {
+        await _db.upsertPatient(
+          LocalPatientsCompanion.insert(
+            id: patientId,
+            code: patientCode!,
+            name: draft.patientName.trim(),
+            age: draft.age!,
+            gender: draft.gender!,
+          ),
+        );
+        await _syncEngine.enqueuePatientCreate({
+          'code': patientCode,
+          'name': draft.patientName.trim(),
+          'age': draft.age,
+          'gender': draft.gender,
+          'status': 'Normal',
+        }, id: patientId);
+      }
+      final segmentation = result.outcome.segmentation;
+      if (segmentation != null) {
+        final refs = <String, dynamic>{
+          'lung_area_px': segmentation.lungAreaPx,
+          'legend': [
+            for (final e in segmentation.legend)
+              {
+                'name': e.name,
+                'red': e.red,
+                'green': e.green,
+                'blue': e.blue,
+                'pixel_count': e.pixelCount,
+              },
+          ],
+        };
+        for (final entry in {
+          'xray': segmentation.xrayPng,
+          'lung': segmentation.lungPng,
+          'lesion': segmentation.lesionPng,
+        }.entries) {
+          refs[entry.key] = await _xrayStore.persist(
+            artifactId: '$diagnosisId:${entry.key}',
+            image: XrayImage.fromBytes(
+              bytes: entry.value,
+              filename: '${entry.key}.png',
+              source: XrayImageSource.gallery,
+            ),
+          );
+        }
+        clinicalSnapshot['segmentation_v1'] = refs;
+      }
       imageReference = await _xrayStore.persist(
         artifactId: diagnosisId,
         image: image,
@@ -105,15 +162,12 @@ class OfflineScreeningStore implements ScreeningStore {
       );
       await _syncEngine.enqueueDiagnosisCreate(
         diagnosisId,
-        _createPayload(
-          patientId: patientId,
-          outcome: outcome,
-          draft: result.draft,
-        ),
+        _createPayload(patientId: patientId, outcome: outcome, draft: draft),
       );
     });
 
     return result.copyWith(
+      draft: draft,
       id: diagnosisId,
       imageReference: imageReference,
       saveStatus: ScreeningSaveStatus.pendingSync,
@@ -197,6 +251,11 @@ class OfflineScreeningStore implements ScreeningStore {
       infiltrate: _number(findings['infiltrate']),
       imageId: clinical['inference_image_id'] as String?,
       provenance: storedProvenance,
+      segmentation: await readStoredSegmentation(
+        row.clinicalSnapshot,
+        _xrayStore,
+        diagnosisId: row.id,
+      ),
     );
     return ScreeningResult(
       draft: draft,
@@ -233,4 +292,40 @@ class OfflineScreeningStore implements ScreeningStore {
     'failed' => ScreeningSaveStatus.failed,
     _ => ScreeningSaveStatus.unsaved,
   };
+}
+
+Future<SegmentationOverlays?> readStoredSegmentation(
+  String snapshot,
+  EncryptedXrayStore store, {
+  required String diagnosisId,
+}) async {
+  final clinical = jsonDecode(snapshot);
+  final refs = clinical is Map ? clinical['segmentation_v1'] : null;
+  if (refs is! Map) return null;
+  for (final kind in ['xray', 'lung', 'lesion']) {
+    if (refs[kind] != 'local-encrypted://$diagnosisId:$kind') {
+      throw const FormatException(
+        'Segmentation belongs to a different screening.',
+      );
+    }
+  }
+  final xray = await store.read(refs['xray'] as String);
+  final lung = await store.read(refs['lung'] as String);
+  final lesion = await store.read(refs['lesion'] as String);
+  return SegmentationOverlays(
+    xrayPng: xray.bytes,
+    lungPng: lung.bytes,
+    lesionPng: lesion.bytes,
+    lungAreaPx: refs['lung_area_px'] as int,
+    legend: [
+      for (final e in refs['legend'] as List)
+        LesionLegendEntry(
+          name: e['name'] as String,
+          red: e['red'] as int,
+          green: e['green'] as int,
+          blue: e['blue'] as int,
+          pixelCount: e['pixel_count'] as int,
+        ),
+    ],
+  );
 }

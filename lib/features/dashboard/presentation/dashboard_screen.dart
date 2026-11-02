@@ -2,7 +2,6 @@ import 'package:myapp/core/localization/app_text.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/config/app_config.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/models.dart';
@@ -121,28 +120,6 @@ class DashboardScreen extends StatelessWidget {
                 icon: const Icon(Icons.refresh),
               ),
             ],
-            FilledButton.icon(
-              onPressed:
-                  context.watch<AuthProvider?>()?.mobileRole.allows(
-                        '/diagnosis',
-                      ) ==
-                      true
-                  ? () => context.go('/diagnosis')
-                  : null,
-              icon: const Icon(Icons.add_rounded),
-              label: const AppText('New Screening'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 16,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                ),
-              ),
-            ),
           ],
         ),
       ],
@@ -779,13 +756,6 @@ class DashboardScreen extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     color: AppTheme.navy,
                     fontSize: 18,
-                  ),
-                ),
-                TextButton(
-                  onPressed: null,
-                  child: const AppText(
-                    'Full history unavailable',
-                    style: TextStyle(color: AppTheme.primary),
                   ),
                 ),
               ],

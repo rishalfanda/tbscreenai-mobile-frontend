@@ -67,6 +67,7 @@ class HttpManagedUsersRepository {
     String query = '',
     int offset = 0,
     bool? active,
+    String? role,
   }) async {
     final response = await client.dio.get<Object?>(
       '/users',
@@ -75,6 +76,7 @@ class HttpManagedUsersRepository {
         'offset': offset,
         if (query.trim().isNotEmpty) 'q': query.trim(),
         'is_active': ?active,
+        'role': ?role,
       },
     );
     final raw = response.data;

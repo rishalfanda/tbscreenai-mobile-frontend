@@ -199,6 +199,12 @@ Map<String, Object?> receipt(
   };
 }
 
+class _NoArchiveKeyRead extends MemorySecureTokenStorage {
+  @override
+  Future<String?> read(String key) =>
+      throw StateError('Queue count must not decrypt images');
+}
+
 void main() {
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
@@ -218,6 +224,100 @@ void main() {
     await client.close();
     await db.close();
   });
+  test(
+    'received screening and masks remain encrypted and restore only for their doctor',
+    () async {
+      await seed(image: true);
+      final original = await xray.read('local-encrypted://$diagnosis');
+      final refs = <String, dynamic>{
+        'lung_area_px': 4,
+        'legend': [
+          {
+            'name': 'cavity',
+            'red': 255,
+            'green': 0,
+            'blue': 0,
+            'pixel_count': 1,
+          },
+        ],
+      };
+      for (final kind in ['xray', 'lung', 'lesion']) {
+        refs[kind] = await xray.persist(
+          artifactId: '$diagnosis:$kind',
+          image: original,
+        );
+      }
+      await (db.update(
+        db.localDiagnoses,
+      )..where((t) => t.id.equals(diagnosis))).write(
+        LocalDiagnosesCompanion(
+          clinicalSnapshot: Value(jsonEncode({'segmentation_v1': refs})),
+        ),
+      );
+      await handoff();
+      await activate();
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.path == '/sync/operator/push') return (200, receipt(o));
+        final body = o.data as Map;
+        return (
+          200,
+          {
+            'upload_id': 'synthetic-upload',
+            'diagnosis_id': diagnosis,
+            'size_bytes': body['size_bytes'],
+            'chunk_count': body['chunk_count'],
+            'chunk_size': body['chunk_size'],
+            'received_chunks': [0],
+            'status': 'completed',
+            'image_id': 'synthetic-image',
+          },
+        );
+      });
+      expect((await service().push()).applied, 2);
+      expect(await service().queuedCount(), 0);
+      expect(await db.findDiagnosis(diagnosis), isNull);
+      await db.clearSessionData();
+      await owner('other-doctor');
+      await outbox.restoreDoctorQueue();
+      expect(await db.findDiagnosis(diagnosis), isNull);
+      await db.clearSessionData();
+      await owner(doctor);
+      await outbox.restoreDoctorQueue();
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        xrayStore: xray,
+        localOnly: true,
+      );
+      expect(
+        (await repo.loadCaseImage(diagnosis))!.checksumSha256,
+        original.checksumSha256,
+      );
+      final masks = await repo.loadCaseSegmentation(diagnosis);
+      expect(masks!.lesionPng, original.bytes);
+      expect(masks.legend.single.name, 'cavity');
+      expect((await db.findDiagnosis(diagnosis))!.saveStatus, 'saved');
+    },
+  );
+
+  test(
+    'queue summary counts tenant/device metadata without decrypting archives',
+    () async {
+      await seed(image: true);
+      await handoff();
+      final summary = DeviceOperatorOutbox(db, _NoArchiveKeyRead());
+      expect(await summary.count(tenant, localDevice), 2);
+      expect(await summary.count('other-tenant', localDevice), 0);
+      expect(await summary.count(tenant, 'other-device'), 0);
+      expect(await service().queuedCount(), 2);
+    },
+  );
+
   test(
     'PR38 read-back preserves score endpoints and encrypted local X-ray',
     () async {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -20,6 +21,8 @@ class _LiveUsersScreenState extends State<LiveUsersScreen> {
   String? _error;
   bool _busy = false;
   bool? _active;
+  String? _role;
+  Timer? _searchDebounce;
   int _request = 0;
   UserProfile? _actor;
   HttpManagedUsersRepository get _repo =>
@@ -52,6 +55,7 @@ class _LiveUsersScreenState extends State<LiveUsersScreen> {
   @override
   void dispose() {
     _request++;
+    _searchDebounce?.cancel();
     _search.dispose();
     super.dispose();
   }
@@ -99,6 +103,7 @@ class _LiveUsersScreenState extends State<LiveUsersScreen> {
         query: _search.text,
         offset: offset,
         active: _active,
+        role: _role,
       );
       if (!_current(actor) || request != _request) return;
       setState(() => _page = page);
@@ -464,41 +469,87 @@ class _LiveUsersScreenState extends State<LiveUsersScreen> {
                 controller: _search,
                 maxLength: 100,
                 decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: IconButton(
+                    tooltip: context.trRead('Cari', 'Search'),
+                    icon: const Icon(Icons.arrow_forward),
+                    onPressed: _busy ? null : () => _load(),
+                  ),
                   labelText: context.trRead(
                     'Cari nama / email',
                     'Search name / email',
                   ),
                 ),
-                onSubmitted: (_) => _busy ? null : _load(),
+                onSubmitted: (_) => _load(),
+                onChanged: (_) {
+                  _searchDebounce?.cancel();
+                  _searchDebounce = Timer(
+                    const Duration(milliseconds: 350),
+                    () {
+                      if (mounted) _load();
+                    },
+                  );
+                },
               ),
             ),
-            DropdownButton<bool?>(
-              value: _active,
-              items: [
-                DropdownMenuItem(
-                  value: null,
-                  child: Text(context.trRead('Semua status', 'All statuses')),
+            SizedBox(
+              width: 160,
+              child: DropdownButtonFormField<bool?>(
+                isExpanded: true,
+                initialValue: _active,
+                decoration: InputDecoration(
+                  labelText: context.trRead('Status', 'Status'),
                 ),
-                DropdownMenuItem(
-                  value: true,
-                  child: Text(context.trRead('Aktif', 'Active')),
-                ),
-                DropdownMenuItem(
-                  value: false,
-                  child: Text(context.trRead('Nonaktif', 'Inactive')),
-                ),
-              ],
-              onChanged: _busy
-                  ? null
-                  : (v) {
-                      setState(() => _active = v);
-                      _load();
-                    },
+                items: [
+                  DropdownMenuItem(
+                    value: null,
+                    child: Text(context.trRead('Semua', 'All')),
+                  ),
+                  DropdownMenuItem(
+                    value: true,
+                    child: Text(context.trRead('Aktif', 'Active')),
+                  ),
+                  DropdownMenuItem(
+                    value: false,
+                    child: Text(context.trRead('Nonaktif', 'Inactive')),
+                  ),
+                ],
+                onChanged: _busy
+                    ? null
+                    : (v) {
+                        setState(() => _active = v);
+                        _load();
+                      },
+              ),
             ),
-            OutlinedButton(
-              onPressed: _busy ? null : () => _load(),
-              child: Text(
-                context.trRead('Cari / muat ulang', 'Search / refresh'),
+            SizedBox(
+              width: 160,
+              child: DropdownButtonFormField<String>(
+                isExpanded: true,
+                initialValue: _role,
+                decoration: InputDecoration(
+                  labelText: context.trRead('Role', 'Role'),
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: null,
+                    child: Text(context.trRead('Semua', 'All')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'doctor',
+                    child: Text(context.trRead('Dokter', 'Doctor')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'technician',
+                    child: Text(context.trRead('Teknisi', 'Technician')),
+                  ),
+                ],
+                onChanged: _busy
+                    ? null
+                    : (v) {
+                        setState(() => _role = v);
+                        _load();
+                      },
               ),
             ),
             FilledButton.icon(
@@ -521,57 +572,114 @@ class _LiveUsersScreenState extends State<LiveUsersScreen> {
               'No matching users.',
             ),
           ),
-        for (final u in _page?.items ?? <ManagedUser>[])
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(u.name, style: Theme.of(context).textTheme.titleMedium),
-                  Text(u.email),
-                  Text(
-                    '${u.role} · ${u.active ? context.trRead('Aktif', 'Active') : context.trRead('Nonaktif', 'Inactive')}',
-                  ),
-                  if (u.specialization?.isNotEmpty == true)
-                    Text(u.specialization!),
-                  if (u.mustChangePassword)
-                    Text(
-                      context.trRead(
-                        'Wajib ganti password',
-                        'Password change required',
-                      ),
-                    ),
-                  if (_manageable(u))
-                    Wrap(
-                      spacing: 12,
-                      children: [
-                        TextButton(
-                          onPressed: _busy ? null : () => _edit(u),
-                          child: Text(context.trRead('Edit', 'Edit')),
-                        ),
-                        TextButton(
-                          onPressed: _busy || !u.active
-                              ? null
-                              : () => _action(u, reset: true),
-                          child: Text(
-                            context.trRead('Reset password', 'Reset password'),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: _busy ? null : () => _action(u),
-                          child: Text(
-                            context.trRead(
-                              u.active ? 'Nonaktifkan' : 'Aktifkan',
-                              u.active ? 'Deactivate' : 'Activate',
+        if (_page?.items.isNotEmpty == true)
+          LayoutBuilder(
+            builder: (context, box) => SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: box.maxWidth),
+                child: DataTable(
+                  columnSpacing: 24,
+                  dataRowMinHeight: 76,
+                  dataRowMaxHeight: 90,
+                  columns: [
+                    DataColumn(label: Text(context.trRead('Pengguna', 'User'))),
+                    DataColumn(label: Text(context.trRead('Role', 'Role'))),
+                    DataColumn(label: Text(context.trRead('Status', 'Status'))),
+                    DataColumn(label: Text(context.trRead('Aksi', 'Actions'))),
+                  ],
+                  rows: [
+                    for (final u in _page!.items)
+                      DataRow(
+                        cells: [
+                          DataCell(
+                            Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  u.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(u.email),
+                                if (u.mustChangePassword)
+                                  Text(
+                                    context.trRead(
+                                      'Wajib ganti password',
+                                      'Password change required',
+                                    ),
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                              ],
                             ),
                           ),
-                        ),
-                      ],
-                    )
-                  else
-                    Text(context.trRead('Hanya baca', 'Read only')),
-                ],
+                          DataCell(
+                            Text(
+                              u.role == 'doctor'
+                                  ? context.trRead('Dokter', 'Doctor')
+                                  : u.role == 'technician'
+                                  ? context.trRead('Teknisi', 'Technician')
+                                  : u.role,
+                            ),
+                          ),
+                          DataCell(
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  u.active
+                                      ? context.trRead('Aktif', 'Active')
+                                      : context.trRead('Nonaktif', 'Inactive'),
+                                ),
+                                const SizedBox(width: 8),
+                                Switch.adaptive(
+                                  value: u.active,
+                                  onChanged: !_busy && _manageable(u)
+                                      ? (_) => _action(u, reset: false)
+                                      : null,
+                                ),
+                              ],
+                            ),
+                          ),
+                          DataCell(
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (!_manageable(u))
+                                  Text(
+                                    context.trRead('Hanya baca', 'Read only'),
+                                  ),
+                                if (_manageable(u)) ...[
+                                  IconButton(
+                                    tooltip: context.trRead('Edit', 'Edit'),
+                                    icon: const Icon(Icons.edit_outlined),
+                                    onPressed: _busy || !_manageable(u)
+                                        ? null
+                                        : () => _edit(u),
+                                  ),
+                                  IconButton(
+                                    tooltip: context.trRead(
+                                      'Reset password',
+                                      'Reset password',
+                                    ),
+                                    icon: const Icon(Icons.lock_reset),
+                                    onPressed:
+                                        _busy || !_manageable(u) || !u.active
+                                        ? null
+                                        : () => _action(u, reset: true),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
               ),
             ),
           ),

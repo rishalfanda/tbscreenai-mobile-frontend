@@ -1,3 +1,5 @@
+import 'package:myapp/data/offline/offline_screening_store.dart';
+import 'package:myapp/domain/models/segmentation_overlays.dart';
 import 'package:myapp/data/local/encrypted_xray_store.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'dart:async';
@@ -25,7 +27,7 @@ class ValidationContractException implements Exception {
 /// Owner-scoped doctor validation backed by Drift and the idempotent sync
 /// protocol. Every verdict is committed locally before network I/O begins.
 class OfflineValidationRepository extends ValidationRepository
-    implements NumericValidationRepository {
+    implements NumericValidationRepository, SegmentationValidationRepository {
   OfflineValidationRepository({
     required AppDatabase db,
     required ApiClient client,
@@ -96,6 +98,14 @@ class OfflineValidationRepository extends ValidationRepository
                 : (_map(row.clinicalSnapshot)['local_validation_v1']
                           as Map?)?['note']
                       as String?,
+            patientCode:
+                patient['patient_code'] as String? ?? cachedPatient?.code,
+            heightCm: (patient['height_cm'] as num?)?.toDouble(),
+            weightKg: (patient['weight_kg'] as num?)?.toDouble(),
+            symptoms:
+                (_map(row.clinicalSnapshot)['symptoms'] as List? ?? const [])
+                    .whereType<String>()
+                    .toList(),
             isPositive: row.isPositive,
             patientId: row.patientId,
             name: name,
@@ -156,6 +166,20 @@ class OfflineValidationRepository extends ValidationRepository
       );
     }
     return generation == _db.sessionGeneration ? image : null;
+  }
+
+  @override
+  Future<SegmentationOverlays?> loadCaseSegmentation(String id) async {
+    if (_db.activeOwner == null || _xrayStore == null) return null;
+    final generation = _db.sessionGeneration;
+    final row = await _db.findDiagnosis(id);
+    if (row == null || row.isMock) return null;
+    final result = await readStoredSegmentation(
+      row.clinicalSnapshot,
+      _xrayStore,
+      diagnosisId: id,
+    );
+    return generation == _db.sessionGeneration ? result : null;
   }
 
   @override

@@ -107,16 +107,8 @@ Map<String, Object?> tokenPair({
 };
 
 void main() {
-  test('technician permissions match PR37; doctor baseline is retained', () {
-    for (final path in [
-      '/users',
-      '/technician',
-      '/dashboard',
-      '/dataset',
-      '/account',
-      '/models',
-      '/sync',
-    ]) {
+  test('revised menus enforce doctor and technician route boundaries', () {
+    for (final path in ['/users', '/dataset', '/models', '/sync']) {
       expect(MobileRole.technician.allows(path), isTrue);
     }
     for (final path in [
@@ -125,6 +117,9 @@ void main() {
       '/validation',
       '/camera',
       '/patients',
+      '/technician',
+      '/dashboard',
+      '/account',
     ]) {
       expect(MobileRole.technician.allows(path), isFalse);
     }
@@ -398,9 +393,9 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Synthetic doctor'), findsOneWidget);
-      expect(find.text('Edit'), findsOneWidget);
+      expect(find.byTooltip('Edit'), findsOneWidget);
       expect(find.text('Read only'), findsOneWidget);
-      expect(find.text('Deactivate'), findsOneWidget);
+      expect(find.byType(Switch), findsNWidgets(2));
       expect(find.text('Delete'), findsNothing);
       expect(tester.takeException(), isNull);
       await auth.logout();
@@ -438,7 +433,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Reset password'));
+    await tester.ensureVisible(find.byTooltip('Reset password'));
+    await tester.tap(find.byTooltip('Reset password'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();

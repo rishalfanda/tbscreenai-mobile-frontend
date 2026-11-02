@@ -520,6 +520,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     );
     final age = _numberField(
       label: 'Usia',
+      unit: 'thn',
       key: const Key('age'),
       controller: _ageController,
       onChanged: (value) => diagnosis.updateAge(int.tryParse(value)),
@@ -527,7 +528,8 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
       max: 130,
     );
     final height = _numberField(
-      label: 'Tinggi Badan (cm)',
+      label: 'Tinggi Badan',
+      unit: 'cm',
       key: const Key('height'),
       controller: _heightController,
       onChanged: (value) => diagnosis.updateHeight(double.tryParse(value)),
@@ -536,7 +538,8 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
       decimal: true,
     );
     final weight = _numberField(
-      label: 'Berat Badan (kg)',
+      label: 'Berat Badan',
+      unit: 'kg',
       key: const Key('weight'),
       controller: _weightController,
       onChanged: (value) => diagnosis.updateWeight(double.tryParse(value)),
@@ -579,11 +582,13 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     required double min,
     required double max,
     bool decimal = false,
+    String? unit,
   }) {
     return LabeledField(
       label: label,
       child: DarkTextField(
         key: key,
+        unit: unit,
         controller: controller,
         keyboardType: TextInputType.numberWithOptions(decimal: decimal),
         inputFormatters: [

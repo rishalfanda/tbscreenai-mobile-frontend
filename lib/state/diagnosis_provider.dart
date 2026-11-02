@@ -339,6 +339,7 @@ class DiagnosisProvider extends ChangeNotifier {
       final persisted = await store.persist(current);
       if (_disposed || generation != _generation) return;
       _lastResult = persisted;
+      _draft = persisted.draft.copyWith();
       _watchSaveStatus(persisted, generation);
     } catch (error) {
       if (_disposed || generation != _generation) return;
