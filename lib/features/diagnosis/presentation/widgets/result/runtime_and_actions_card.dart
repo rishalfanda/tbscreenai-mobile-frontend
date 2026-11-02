@@ -103,14 +103,14 @@ class RuntimeAndActionsCard extends StatelessWidget {
                 Icons.picture_as_pdf_rounded,
                 'PDF',
                 tooltip:
-                    'Dinonaktifkan sampai kebijakan PHI untuk hasil tersimpan disetujui.',
+                    'Fitur ini belum tersedia.',
               ),
               const SizedBox(width: 8),
               _actionButton(
                 Icons.print_rounded,
                 'Cetak',
                 tooltip:
-                    'Dinonaktifkan sampai kebijakan PHI untuk hasil tersimpan disetujui.',
+                    'Fitur ini belum tersedia.',
               ),
             ],
           ),

@@ -343,8 +343,8 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
               padding: const EdgeInsets.only(top: 12),
               child: Text(
                 context.trRead(
-                  'Validasi tersimpan lokal dan menunggu sync teknisi. Skor dikirim setelah API mendukung kontrak terbaru.',
-                  'Validation saved locally, awaiting technician sync. Score uploads require the updated API contract.',
+                  'Validasi tersimpan di perangkat. Teknisi menyinkronkan data saat online.',
+                  'Validation saved on this device. Your technician syncs the data when online.',
                 ),
               ),
             ),
