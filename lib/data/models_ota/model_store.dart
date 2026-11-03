@@ -274,6 +274,11 @@ class ModelStore {
     if (await d.exists()) await d.delete(recursive: true);
   }
 
+  /// Clears the ACTIVE pointer so no bundle is active.
+  Future<void> clearActive() async {
+    await _writePointer('ACTIVE', null);
+  }
+
   Future<void> _pruneBroken() async {
     final root = await _root();
     await for (final e in root.list()) {

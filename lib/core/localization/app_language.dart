@@ -34,10 +34,16 @@ String localize(BuildContext context, String text) {
       final gender = identity.group(1)!;
       return '${_englishLabels[gender] ?? gender} · ${identity.group(2)} years';
     }
+    if (text.startsWith('Level Indikasi TB: ')) {
+      return 'TB Indication Level: ${text.substring(19)}';
+    }
     return _stagingEnglish[text] ?? _englishLabels[text] ?? text;
   }
   final translated = _stagingIndonesian[text] ?? _indonesian[text];
   if (translated != null) return translated;
+  if (text.startsWith('TB Indication Level: ')) {
+    return 'Level Indikasi TB: ${text.substring(21)}';
+  }
   // Display templates only; substituted account values are preserved.
   if (text.startsWith('Welcome back, ')) {
     return 'Selamat datang kembali, ${text.substring(14)}';
@@ -133,6 +139,29 @@ const _stagingEnglish = <String, String>{
       'This result is saved locally and awaiting synchronization. Starting a new screening will not delete it.',
   'Hasil ini belum tersimpan dengan aman. Tinjau atau coba simpan ulang sebelum melanjutkan.':
       'This result is not safely saved. Review or retry saving before continuing.',
+  'Level Indikasi TB: Very Low': 'TB Indication Level: Very Low',
+  'Level Indikasi TB: Low': 'TB Indication Level: Low',
+  'Level Indikasi TB: Grey Area': 'TB Indication Level: Grey Area',
+  'Level Indikasi TB: High': 'TB Indication Level: High',
+  'Level Indikasi TB: Very High': 'TB Indication Level: Very High',
+  'Model memiliki keyakinan sangat rendah terhadap adanya indikasi TB.':
+      'The model has very low confidence in the presence of TB indication.',
+  'Kemungkinan TB rendah, namun belum dapat sepenuhnya dikesampingkan.':
+      'TB likelihood is low, but cannot be ruled out completely.',
+  'Model tidak dapat memberikan keputusan dengan keyakinan yang cukup.':
+      'The model cannot make a decision with sufficient confidence.',
+  'Model menunjukkan indikasi TB dengan keyakinan tinggi.':
+      'The model indicates TB with high confidence.',
+  'Model menunjukkan indikasi TB dengan keyakinan sangat tinggi.':
+      'The model indicates TB with very high confidence.',
+  'Hasil skrining negatif. Tetap mempertimbangkan gejala klinis dan faktor risiko pasien.':
+      'Negative screening result. Continue considering clinical symptoms and patient risk factors.',
+  'Hasil skrining negatif. Pemeriksaan lanjutan bila terdapat gejala atau faktor risiko tinggi.':
+      'Negative screening result. Further examination if symptoms or high-risk factors exist.',
+  'Wajib dilakukan validasi tambahan oleh dokter, disertai evaluasi klinis dan pemeriksaan penunjang.':
+      'Additional doctor validation required, along with clinical evaluation and supporting tests.',
+  'Hasil skrining positif. Perlu dilanjutkan dengan pemeriksaan lanjutan.':
+      'Positive screening result. Must proceed with further examination.',
 };
 
 final _stagingIndonesian = <String, String>{

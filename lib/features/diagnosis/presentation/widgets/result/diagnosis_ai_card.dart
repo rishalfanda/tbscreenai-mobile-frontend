@@ -68,7 +68,7 @@ class DiagnosisAiCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    AppText(
                       'Level Indikasi TB: ${cat.label}',
                       style: const TextStyle(
                         color: Colors.white,
@@ -77,7 +77,7 @@ class DiagnosisAiCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 3),
-                    Text(
+                    AppText(
                       cat.interpretation,
                       style: const TextStyle(
                         color: Colors.white,

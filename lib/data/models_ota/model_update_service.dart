@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -225,7 +226,10 @@ class ModelUpdateService {
       }
 
       // Automatically activate after successful installation
-      await activateModelBundle(bundleKey);
+      await activateModelBundle(
+        bundleKey,
+        sampleBytes: sample.buffer.asUint8List(),
+      );
     } finally {
       _currentDownloadCancelToken = null;
     }
@@ -258,14 +262,47 @@ class ModelUpdateService {
   }
 
   /// Activates an already installed bundle without re-downloading.
-  Future<void> activateModelBundle(String bundleKey) async {
+  Future<void> activateModelBundle(
+    String bundleKey, {
+    Uint8List? sampleBytes,
+  }) async {
     final session = _db.sessionGeneration;
-    await _modelPipeline.activateExisting(bundleKey);
-    if (session != _db.sessionGeneration) return;
-    await _db.writeForSession(
-      session,
-      () => _settings.saveInstalledModelVersion(bundleKey),
-    );
+    final previousVersion = await _settings.readInstalledModelVersion();
+    try {
+      Uint8List? sample = sampleBytes;
+      if (sample == null) {
+        try {
+          final loaded = await rootBundle.load('assets/sample/xray.png');
+          sample = loaded.buffer.asUint8List();
+        } catch (_) {}
+      }
+      await _modelPipeline.activateExisting(
+        bundleKey,
+        smokeTestSampleBytes: sample,
+      );
+      if (session != _db.sessionGeneration) return;
+      await _db.writeForSession(
+        session,
+        () => _settings.saveInstalledModelVersion(bundleKey),
+      );
+    } catch (e) {
+      if (session == _db.sessionGeneration) {
+        if (previousVersion != null &&
+            previousVersion.isNotEmpty &&
+            previousVersion != bundleKey) {
+          await _db.writeForSession(
+            session,
+            () => _settings.saveInstalledModelVersion(previousVersion),
+          );
+        } else {
+          await _db.writeForSession(
+            session,
+            () => _settings.clearInstalledModelVersion(),
+          );
+        }
+      }
+      rethrow;
+    }
   }
 
   /// Check for updates from API.

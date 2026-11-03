@@ -151,15 +151,28 @@ void main() {
     updatePage(() => showResult = true);
     await tester.pumpAndSettle();
     expect(find.text('Identitas Pasien'), findsOneWidget);
+    expect(find.text('Level Indikasi TB: Low'), findsOneWidget);
+    expect(
+      find.text(
+        'Kemungkinan TB rendah, namun belum dapat sepenuhnya dikesampingkan.',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Normal'), findsOneWidget);
     expect(find.text('Dashboard'), findsOneWidget);
+    expect(find.text('27%'), findsOneWidget);
     await tester.tap(find.text('ENG'));
     await tester.pumpAndSettle();
     expect(find.text('Patient Identity'), findsOneWidget);
     expect(find.text('Female · 36 years'), findsOneWidget);
+    expect(find.text('TB Indication Level: Low'), findsOneWidget);
+    expect(
+      find.text('TB likelihood is low, but cannot be ruled out completely.'),
+      findsOneWidget,
+    );
     expect(find.text('Normal'), findsOneWidget);
     expect(find.text('Dashboard'), findsOneWidget);
-    expect(find.text('73%'), findsOneWidget);
+    expect(find.text('27%'), findsOneWidget);
     expect(identical(diagnosis.lastResult, result), isTrue);
     expect(diagnosis.lastResult!.draft.comorbidity, 'Diabetes');
     expect(tester.takeException(), isNull);

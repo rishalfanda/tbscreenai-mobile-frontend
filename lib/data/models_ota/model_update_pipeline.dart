@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:myapp/data/models_ota/bundle_archive.dart';
@@ -30,12 +31,14 @@ class ModelUpdatePipeline {
   ModelUpdatePipeline({
     required Dio downloadDio,
     required OnnxInferenceEngine engine,
-      Dio? authenticatedDio,
-      Uri? apiBase,
-    }) : _dio = downloadDio,
-         _engine = engine,
-         _authenticatedDio = authenticatedDio,
-         _apiBase = apiBase;
+    Dio? authenticatedDio,
+    Uri? apiBase,
+    ModelStore? store,
+  }) : _dio = downloadDio,
+       _engine = engine,
+       _authenticatedDio = authenticatedDio,
+       _apiBase = apiBase,
+       _store = store ?? ModelStore();
 
   final Dio _dio;
   final Dio? _authenticatedDio;
@@ -51,7 +54,7 @@ class ModelUpdatePipeline {
   }
 
   final OnnxInferenceEngine _engine;
-  final ModelStore _store = ModelStore();
+  final ModelStore _store;
 
   /// Downloads, verifies, and stages a model bundle with speed and cancellation support.
   Stream<ModelDownloadProgress> installBundleWithProgress({
@@ -237,13 +240,10 @@ class ModelUpdatePipeline {
       cancelToken: cancelToken,
       smokeTestSampleBytes: smokeTestSampleBytes,
     );
-    await activateExisting(info.latestVersion);
-    try {
-      await _engine.smokeTest(smokeTestSampleBytes);
-    } catch (e) {
-      await _rollback();
-      throw ModelInstallException(ModelInstallPhase.smokeTesting, '$e');
-    }
+    await activateExisting(
+      info.latestVersion,
+      smokeTestSampleBytes: smokeTestSampleBytes,
+    );
   }
 
   /// Verifies an already downloaded bundle directory on disk without re-downloading.
@@ -277,8 +277,11 @@ class ModelUpdatePipeline {
     }
   }
 
-  /// Activates an already installed bundle and reloads the inference engine.
-  Future<void> activateExisting(String bundleKey) async {
+  /// Activates an already installed bundle, executes a smoke test, and reloads the inference engine.
+  Future<void> activateExisting(
+    String bundleKey, {
+    Uint8List? smokeTestSampleBytes,
+  }) async {
     final isInstalled = await _store.isInstalled(bundleKey);
     if (!isInstalled) {
       throw StateError('Bundle $bundleKey is not installed on this device.');
@@ -290,10 +293,38 @@ class ModelUpdatePipeline {
       );
     }
     await _store.activate(bundleKey);
-    final opened = await _engine.init();
-    if (!opened) {
+    var initPassed = false;
+    try {
+      final opened = await _engine.init();
+      if (!opened) {
+        throw StateError('Failed to initialize inference engine for $bundleKey');
+      }
+      initPassed = true;
+
+      Uint8List? sample = smokeTestSampleBytes;
+      if (sample == null) {
+        try {
+          final data = await rootBundle.load('assets/sample/xray.png');
+          sample = data.buffer.asUint8List();
+        } catch (_) {}
+      }
+
+      if (sample != null) {
+        await _engine.smokeTest(sample);
+      }
+    } catch (e) {
+      await _store.setBundleStatus(
+        bundleKey,
+        ModelBundleStatus.verificationFailed,
+        error: '$e',
+      );
       await _rollback();
-      throw StateError('Failed to initialize inference engine for $bundleKey');
+      throw ModelInstallException(
+        initPassed
+            ? ModelInstallPhase.smokeTesting
+            : ModelInstallPhase.activating,
+        '$e',
+      );
     }
   }
 
@@ -302,10 +333,13 @@ class ModelUpdatePipeline {
     try {
       if (await _store.previousVersion() != null) {
         await _store.rollback();
+      } else {
+        await _store.clearActive();
       }
     } catch (_) {
-      // Nothing to roll back to (first-ever install failed) — leave ACTIVE as
-      // it is; `_engine.init()` below reports whatever is actually usable.
+      try {
+        await _store.clearActive();
+      } catch (_) {}
     }
     await _engine.init();
   }
