@@ -26,15 +26,23 @@ class OnnxInferenceEngine {
   final OrtSessionPool _pool;
   final ModelStore _modelStore;
 
+  ModelStore get modelStore => _modelStore;
+
   BundleStore? _store;
   OrtChainExecutor? _executor;
   Future<bool>? _readyFuture;
+  Future<bool>? _standbyFuture;
   bool _isStandbyReady = false;
+  int _activeRuns = 0;
+  bool _releasePendingAfterRun = false;
 
   bool get hasBundle => _executor != null && _store != null;
 
   /// Whether model sessions are preloaded and standing by in memory.
   bool get isStandbyReady => hasBundle && _isStandbyReady;
+
+  /// Whether an inference execution is actively in-flight.
+  bool get isRunningInference => _activeRuns > 0;
 
   /// Resolves once the initial [init] load (kicked off once, lazily) has
   /// finished. `hasBundle` reads `false` until this completes, so anything
@@ -57,6 +65,8 @@ class OnnxInferenceEngine {
   /// rollback. Returns `false` when no bundle is active.
   Future<bool> init() async {
     _isStandbyReady = false;
+    _standbyFuture = null;
+    _releasePendingAfterRun = false;
     await _executor?.dispose();
     _executor = null;
     _store = null;
@@ -77,10 +87,38 @@ class OnnxInferenceEngine {
     return true;
   }
 
+  /// Releases preloaded standby sessions from memory without clearing the
+  /// active bundle on disk. Safe to call on app pause, logout, or after smoke tests.
+  Future<void> releaseStandby() async {
+    _isStandbyReady = false;
+    _standbyFuture = null;
+    if (_activeRuns > 0) {
+      _releasePendingAfterRun = true;
+      return;
+    }
+    _releasePendingAfterRun = false;
+    await _executor?.releaseSessions();
+  }
+
   /// Preloads all pipeline sessions into memory and warms up inference
   /// so subsequent runs execute without cold-start delay.
   Future<bool> initiateStandby({Uint8List? sampleBytes}) async {
     if (isStandbyReady) return true;
+    final inFlight = _standbyFuture;
+    if (inFlight != null) return inFlight;
+
+    final future = _doInitiateStandby(sampleBytes: sampleBytes);
+    _standbyFuture = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_standbyFuture, future)) {
+        _standbyFuture = null;
+      }
+    }
+  }
+
+  Future<bool> _doInitiateStandby({Uint8List? sampleBytes}) async {
     final hasActive = await ready;
     if (!hasActive || _executor == null || _store == null) {
       _isStandbyReady = false;
@@ -130,17 +168,26 @@ class OnnxInferenceEngine {
       );
     }
 
-    final decoded = await decodeForBundle(imageBytes);
-    final out = await executor.run(decoded.toTensor());
+    _activeRuns++;
+    try {
+      final decoded = await decodeForBundle(imageBytes);
+      final out = await executor.run(decoded.toTensor());
 
-    return InferenceResult.fromChainOutputs(
-      out,
-      manifest: store.manifest,
-      elapsed: Duration.zero,
-      providersUsed: executor.providersUsed,
-      stepTimings: Map.of(executor.stepTimings),
-      rfModel: store.manifest.rfActive,
-    );
+      return InferenceResult.fromChainOutputs(
+        out,
+        manifest: store.manifest,
+        elapsed: Duration.zero,
+        providersUsed: executor.providersUsed,
+        stepTimings: Map.of(executor.stepTimings),
+        rfModel: store.manifest.rfActive,
+      );
+    } finally {
+      _activeRuns--;
+      if (_activeRuns == 0 && _releasePendingAfterRun) {
+        _releasePendingAfterRun = false;
+        await _executor?.releaseSessions();
+      }
+    }
   }
 
   /// Runs the chain once against a bundled sample and asserts the outputs are
@@ -217,6 +264,8 @@ class OnnxInferenceEngine {
 
   Future<void> dispose() async {
     _isStandbyReady = false;
+    _standbyFuture = null;
+    _releasePendingAfterRun = false;
     await _executor?.dispose();
     _executor = null;
     _store = null;

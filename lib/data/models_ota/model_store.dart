@@ -43,6 +43,26 @@ class ModelStore {
       if (!await d.exists()) await d.create(recursive: true);
       return d;
     }
+    // In automated widget / unit test runs where path_provider is not mocked,
+    // guard against hanging method channels by falling back to an isolated test temp directory.
+    // In production, always await getApplicationSupportDirectory() directly with no timeout.
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      try {
+        final base = await getApplicationSupportDirectory().timeout(
+          const Duration(milliseconds: 100),
+        );
+        final d = Directory('${base.path}${Platform.pathSeparator}$_dirName');
+        if (!await d.exists()) await d.create(recursive: true);
+        return d;
+      } catch (_) {
+        final d = Directory(
+          '${Directory.systemTemp.path}${Platform.pathSeparator}tbscreen_test_models',
+        );
+        if (!await d.exists()) await d.create(recursive: true);
+        return d;
+      }
+    }
+
     final base = await getApplicationSupportDirectory();
     final d = Directory('${base.path}${Platform.pathSeparator}$_dirName');
     if (!await d.exists()) await d.create(recursive: true);

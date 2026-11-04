@@ -9,10 +9,12 @@ import 'package:myapp/core/connectivity/connectivity_service.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
+import 'package:myapp/domain/models/access_scope.dart';
 import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/features/shared/presentation/model_initiation_dialog.dart';
+import 'package:myapp/state/auth_provider.dart';
 
 class SyncCenterScreen extends StatelessWidget {
   const SyncCenterScreen({super.key, this.modelsOnly = false});
@@ -483,15 +485,29 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       if (!mounted) return;
       setState(() => _state = _ModelSyncState.done);
 
-      OnnxInferenceEngine? engine;
+      AuthProvider? auth;
       try {
-        engine = context.read<OnnxInferenceEngine>();
+        auth = Provider.of<AuthProvider>(context, listen: false);
       } catch (_) {}
-      if (engine != null && mounted) {
-        await initiateModelStandbyWithDialog(
-          context,
-          engine,
-          message: 'Model berhasil diaktifkan. Menyiapkan model agar siap digunakan...',
+      if (auth?.mobileRole == MobileRole.clinician) {
+        OnnxInferenceEngine? engine;
+        try {
+          engine = context.read<OnnxInferenceEngine>();
+        } catch (_) {}
+        if (engine != null && mounted) {
+          await initiateModelStandbyWithDialog(
+            context,
+            engine,
+            message: 'Model berhasil diaktifkan. Menyiapkan model agar siap digunakan...',
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: AppText(
+              'Model $bundleKey berhasil diaktifkan.',
+            ),
+          ),
         );
       }
     } catch (e) {

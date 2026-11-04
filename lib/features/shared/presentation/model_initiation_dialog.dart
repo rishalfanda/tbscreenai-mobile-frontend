@@ -6,6 +6,8 @@ import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/data/models_ota/model_store.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 
+Future<bool>? _inFlightDialogFuture;
+
 /// Checks if an active model exists on device and is not yet in standby.
 /// If an active model exists, shows a non-dismissible loading dialog while
 /// preloading and initiating the model into standby memory.
@@ -18,21 +20,51 @@ Future<bool> initiateModelStandbyWithDialog(
   String message =
       'Menyiapkan dan memuat model AI ke memori agar proses analisis siap digunakan... Mohon tunggu.',
 }) async {
+  if (engine.isStandbyReady) return true;
+  final inFlight = _inFlightDialogFuture;
+  if (inFlight != null) return inFlight;
+
+  final future = _doInitiateModelStandbyWithDialog(
+    context,
+    engine,
+    modelStore: modelStore,
+    title: title,
+    message: message,
+  );
+  _inFlightDialogFuture = future;
+  try {
+    return await future;
+  } finally {
+    if (identical(_inFlightDialogFuture, future)) {
+      _inFlightDialogFuture = null;
+    }
+  }
+}
+
+Future<bool> _doInitiateModelStandbyWithDialog(
+  BuildContext context,
+  OnnxInferenceEngine engine, {
+  ModelStore? modelStore,
+  required String title,
+  required String message,
+}) async {
   // 1. If already standby ready, nothing to do
   if (engine.isStandbyReady) return true;
 
   // 2. Check if an active model bundle exists on device
-  final store = modelStore ?? ModelStore();
-  final activeDir = await store.activeBundleDir();
-  if (activeDir == null) {
-    // Model does not exist yet. Skip initiation silently.
-    return false;
-  }
+  if (!engine.hasBundle) {
+    final store = modelStore ?? engine.modelStore;
+    final activeDir = await store.activeBundleDir();
+    if (activeDir == null) {
+      // Model does not exist yet. Skip initiation silently.
+      return false;
+    }
 
-  // Ensure engine is ready (has opened active bundle store/executor)
-  final isReady = await engine.ready;
-  if (!isReady || !engine.hasBundle) {
-    return false;
+    // Ensure engine is ready (has opened active bundle store/executor)
+    final isReady = await engine.ready;
+    if (!isReady || !engine.hasBundle) {
+      return false;
+    }
   }
 
   if (engine.isStandbyReady) return true;

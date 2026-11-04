@@ -47,12 +47,36 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _pendingCount = 0;
   bool _railVisible = true;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   StreamSubscription<int>? _pendingSubscription;
   String? _pendingOwner;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      _releaseModelStandby();
+    } else if (state == AppLifecycleState.resumed) {
+      _checkModelStandby();
+    }
+  }
+
+  void _releaseModelStandby() {
+    try {
+      final engine = context.read<OnnxInferenceEngine>();
+      unawaited(engine.releaseStandby());
+    } catch (_) {}
+  }
 
   AuthProvider? _getAuth(BuildContext context, {bool listen = true}) {
     try {
@@ -94,6 +118,15 @@ class _AppShellState extends State<AppShell> {
   void _checkModelStandby() {
     if (!mounted) return;
     try {
+      final auth = _getAuth(context, listen: false);
+      if (auth == null ||
+          !auth.isLoggedIn ||
+          auth.mustChangePassword ||
+          auth.mobileRole != MobileRole.clinician) {
+        _releaseModelStandby();
+        return;
+      }
+
       final engine = context.read<OnnxInferenceEngine>();
       if (!engine.isStandbyReady) {
         initiateModelStandbyWithDialog(context, engine);
@@ -105,6 +138,7 @@ class _AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     unawaited(_pendingSubscription?.cancel());
     super.dispose();
   }

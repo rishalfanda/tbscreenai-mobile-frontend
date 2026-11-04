@@ -63,6 +63,24 @@ class OrtChainExecutor {
   final Map<String, OrtSessionHandle> _sessions = {};
   final Map<String, Future<OrtSessionHandle>> _sessionFutures = {};
   final Map<String, String> _providerUsed = {};
+  int _generation = 0;
+  bool _disposed = false;
+
+  /// Whether any native ONNX sessions are currently resident in memory.
+  bool get hasLoadedSessions => _sessions.isNotEmpty;
+
+  /// Closes all cached native ONNX sessions to free RAM while keeping the
+  /// executor ready to reload sessions on demand or on resume.
+  Future<void> releaseSessions() async {
+    _generation++;
+    final handles = _sessions.values.toList();
+    _sessions.clear();
+    _sessionFutures.clear();
+    _providerUsed.clear();
+    for (final s in handles) {
+      await s.close();
+    }
+  }
 
   /// Which EP preference each model file was loaded with (diagnostics/UI).
   Map<String, String> get providersUsed => Map.unmodifiable(_providerUsed);
@@ -220,12 +238,20 @@ class OrtChainExecutor {
   }
 
   Future<OrtSessionHandle> _session(PipelineStep step, String file) {
+    if (_disposed) {
+      throw StateError('OrtChainExecutor has been disposed.');
+    }
     return _sessionFutures.putIfAbsent(file, () async {
+      final gen = _generation;
       final session = await pool.createSession(
         store.modelPath(file),
         preferredProviders: _forceCpu ? const ['cpu'] : step.epPreference,
         label: file,
       );
+      if (_disposed || gen != _generation) {
+        await session.close();
+        throw StateError('OrtChainExecutor sessions were released or disposed.');
+      }
       _sessions[file] = session;
       _providerUsed[file] = session.activeProvider;
       logOrt('$file -> ${session.activeProvider}');
@@ -236,10 +262,8 @@ class OrtChainExecutor {
   static String _stem(String file) => file.split('/').last.split('.').first;
 
   Future<void> dispose() async {
-    for (final s in _sessions.values) {
-      await s.close();
-    }
-    _sessions.clear();
-    _sessionFutures.clear();
+    _disposed = true;
+    _generation++;
+    await releaseSessions();
   }
 }

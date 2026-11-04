@@ -346,7 +346,9 @@ void main() {
     tester.view.physicalSize = const Size(1900, 982);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(TBScreenApp(database: db));
+    await tester.pumpWidget(
+      TBScreenApp(database: db, hasActiveModelOverride: () async => true),
+    );
     await tester.pumpAndSettle();
     final context = tester.element(find.byType(MaterialApp));
     final auth = context.read<AuthProvider>();

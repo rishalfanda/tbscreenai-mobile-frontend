@@ -530,6 +530,8 @@ const _templates = {
 };
 
 const _englishAliases = <String, String>{
+  'Login gagal — belum ada model AI yang aktif. Silakan aktifkan model terlebih dahulu atau hubungi teknisi.':
+      'Login failed — no active AI model found. Please activate a model first or contact a technician.',
   'Hapus Item Ini?': 'Delete this item?',
   'Ya, Hapus': 'Yes, Delete',
   'DUMMY / DEMO ? BUKAN HASIL KLINIS': 'DUMMY / DEMO ? NOT A CLINICAL RESULT',
@@ -563,6 +565,8 @@ const _englishAliases = <String, String>{
 };
 
 const _indonesian = <String, String>{
+  'Login failed — no active AI model found. Please activate a model first or contact a technician.':
+      'Login gagal — belum ada model AI yang aktif. Silakan aktifkan model terlebih dahulu atau hubungi teknisi.',
   'Offline cache': 'Data lokal luring',
   'Check the connection and try again.': 'Periksa koneksi dan coba lagi.',
   'Patient cache could not be refreshed.':

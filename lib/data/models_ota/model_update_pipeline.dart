@@ -327,6 +327,9 @@ class ModelUpdatePipeline {
       if (sample != null) {
         await _engine.smokeTest(sample);
       }
+      // Release smoke test sessions so activation does not keep models resident
+      // in memory; only clinician login / app shell activates standby.
+      await _engine.releaseStandby();
     } catch (e) {
       await _store.setBundleStatus(
         bundleKey,

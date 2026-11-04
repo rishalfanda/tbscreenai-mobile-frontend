@@ -67,7 +67,9 @@ void main() {
       addTearDown(tester.view.reset);
       final database = AppDatabase(NativeDatabase.memory());
       await tester.runAsync(() => database.customSelect('SELECT 1').get());
-      await tester.pumpWidget(TBScreenApp(database: database));
+      await tester.pumpWidget(
+        TBScreenApp(database: database, hasActiveModelOverride: () async => true),
+      );
       await pumpApp(tester);
       final context = tester.element(find.byType(MaterialApp));
       context.read<ApiClient>().dio.httpClientAdapter = _Adapter();
