@@ -1,6 +1,6 @@
 # Reviewed visual baselines
 
-`diagnosis_form_1900x982.png` was generated and reviewed with Flutter 3.44.7 on
+`diagnosis_form_1900x982.png` was generated and reviewed with Flutter 3.47.1 on
 Windows. Keep golden comparison and baseline generation on that platform/SDK.
 Do not compare this Windows reference against a Linux renderer or auto-update it
 in CI: the original Ubuntu run differed by 25,623 pixels (1.37%), while the same
@@ -11,7 +11,7 @@ strict visual comparisons on Windows (`flutter test --tags golden`). Both jobs
 must pass. Tests are partitioned by the `golden` tag, not skipped. Failed Windows
 comparisons upload `test/failures/` as an artifact.
 
-Before changing a baseline, run on Windows with Flutter 3.44.7:
+Before changing a baseline, run on Windows with Flutter 3.47.1:
 
 ```sh
 flutter test --tags golden
