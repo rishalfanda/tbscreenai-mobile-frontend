@@ -1,4 +1,5 @@
 import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myapp/features/camera/presentation/camera_screen.dart';
@@ -235,5 +236,40 @@ void main() {
       );
       expect(turns, 2);
     });
+  });
+
+  group('CameraScreen right-center capture controls layout', () {
+    testWidgets(
+      'positions capture shutter button on the right-center of tablet screen',
+      (tester) async {
+        tester.view.physicalSize = const Size(1600, 1000);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await tester.pumpWidget(const MaterialApp(home: CameraScreen()));
+        await tester.pump();
+
+        final rightControlsFinder = find.byKey(
+          const Key('camera-capture-controls-right-center'),
+        );
+        expect(rightControlsFinder, findsOneWidget);
+
+        final positioned = tester.widget<Positioned>(rightControlsFinder);
+        expect(positioned.right, 24);
+        expect(positioned.top, 0);
+        expect(positioned.bottom, 0);
+        expect(positioned.left, isNull);
+
+        final shutterFinder = find.byKey(
+          const Key('camera-capture-shutter-button'),
+        );
+        expect(shutterFinder, findsOneWidget);
+
+        final shutterCenter = tester.getCenter(shutterFinder);
+        // Right side of the 1600px wide tablet screen (> 1400px) and vertically centered (~500px)
+        expect(shutterCenter.dx, greaterThan(1400));
+        expect(shutterCenter.dy, closeTo(500, 40));
+      },
+    );
   });
 }

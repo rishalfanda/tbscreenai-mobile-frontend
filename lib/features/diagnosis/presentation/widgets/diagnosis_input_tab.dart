@@ -961,6 +961,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
                   onPressed: diagnosis.isRunning ? null : _confirmAndReset,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: diagnosisText,
+                    disabledForegroundColor: diagnosisMuted,
                     side: const BorderSide(color: diagnosisBorder),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -988,6 +989,9 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
                       alpha: 0.55,
                     ),
                     foregroundColor: Colors.white,
+                    disabledForegroundColor: Colors.white.withValues(
+                      alpha: 0.75,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),

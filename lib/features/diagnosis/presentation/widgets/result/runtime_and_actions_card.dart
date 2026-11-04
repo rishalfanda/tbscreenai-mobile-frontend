@@ -142,14 +142,21 @@ class RuntimeAndActionsCard extends StatelessWidget {
     VoidCallback? onPressed,
     String? tooltip,
   }) {
+    final isEnabled = onPressed != null;
     final button = OutlinedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 18),
       label: AppText(label),
       style: OutlinedButton.styleFrom(
         foregroundColor: kResultTextHiColor,
-        side: const BorderSide(color: kResultBorderColor),
-        backgroundColor: kResultSurfaceColor,
+        disabledForegroundColor: kResultTextLoColor,
+        backgroundColor: kResultSurfaceAltColor,
+        disabledBackgroundColor: kResultSurfaceAltColor.withValues(alpha: 0.55),
+        side: BorderSide(
+          color: isEnabled
+              ? const Color(0x40FFFFFF)
+              : const Color(0x24FFFFFF),
+        ),
       ),
     );
     return tooltip == null ? button : Tooltip(message: tooltip, child: button);

@@ -275,18 +275,25 @@ class _CameraScreenState extends State<CameraScreen>
             if (_error != null)
               Positioned(
                 left: 24,
-                right: 24,
-                bottom: 132,
+                right: _capturedBytes == null ? 136 : 24,
+                bottom: _capturedBytes == null ? 24 : 132,
                 child: _ErrorBanner(message: _error!),
               ),
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 20,
-              child: _capturedBytes == null
-                  ? _captureControls()
-                  : _confirmationControls(),
-            ),
+            if (_capturedBytes == null)
+              Positioned(
+                key: const Key('camera-capture-controls-right-center'),
+                top: 0,
+                bottom: 0,
+                right: 24,
+                child: Center(child: _captureControls()),
+              )
+            else
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 20,
+                child: _confirmationControls(),
+              ),
           ],
         ),
       ),
@@ -408,45 +415,54 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Widget _captureControls() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _roundButton(
-          tooltip: _flashOn ? 'Turn flash off' : 'Turn flash on',
-          icon: _flashOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
-          onPressed: _toggleFlash,
-        ),
-        const SizedBox(width: 36),
-        Semantics(
-          button: true,
-          label: 'Capture X-ray image',
-          child: InkResponse(
-            onTap: _takingPicture ? null : _takePicture,
-            radius: 48,
-            child: Container(
-              width: 82,
-              height: 82,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-                border: Border.all(color: AppTheme.primary, width: 7),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.black38,
+        borderRadius: BorderRadius.circular(56),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _roundButton(
+            tooltip: _flashOn ? 'Turn flash off' : 'Turn flash on',
+            icon: _flashOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
+            onPressed: _toggleFlash,
+          ),
+          const SizedBox(height: 24),
+          Semantics(
+            button: true,
+            label: 'Capture X-ray image',
+            child: InkResponse(
+              key: const Key('camera-capture-shutter-button'),
+              onTap: _takingPicture ? null : _takePicture,
+              radius: 48,
+              child: Container(
+                width: 82,
+                height: 82,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  border: Border.all(color: AppTheme.primary, width: 7),
+                ),
+                child: _takingPicture
+                    ? const Padding(
+                        padding: EdgeInsets.all(22),
+                        child: CircularProgressIndicator(strokeWidth: 3),
+                      )
+                    : null,
               ),
-              child: _takingPicture
-                  ? const Padding(
-                      padding: EdgeInsets.all(22),
-                      child: CircularProgressIndicator(strokeWidth: 3),
-                    )
-                  : null,
             ),
           ),
-        ),
-        const SizedBox(width: 36),
-        _roundButton(
-          tooltip: 'Switch camera',
-          icon: Icons.cameraswitch_rounded,
-          onPressed: _cameras.length > 1 ? _switchCamera : null,
-        ),
-      ],
+          const SizedBox(height: 24),
+          _roundButton(
+            tooltip: 'Switch camera',
+            icon: Icons.cameraswitch_rounded,
+            onPressed: _cameras.length > 1 ? _switchCamera : null,
+          ),
+        ],
+      ),
     );
   }
 
@@ -460,6 +476,7 @@ class _CameraScreenState extends State<CameraScreen>
           label: const AppText('Retake'),
           style: OutlinedButton.styleFrom(
             foregroundColor: Colors.white,
+            disabledForegroundColor: Colors.white60,
             side: const BorderSide(color: Colors.white54),
             backgroundColor: Colors.black45,
           ),
@@ -478,7 +495,12 @@ class _CameraScreenState extends State<CameraScreen>
                 )
               : const Icon(Icons.check_rounded),
           label: AppText(_confirming ? 'Memproses...' : 'Use this image'),
-          style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppTheme.primary,
+            disabledBackgroundColor: AppTheme.primary.withValues(alpha: 0.55),
+            foregroundColor: Colors.white,
+            disabledForegroundColor: Colors.white70,
+          ),
         ),
       ],
     );

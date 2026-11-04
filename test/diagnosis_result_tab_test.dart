@@ -293,4 +293,45 @@ void main() {
       expect(find.byKey(const Key('new-screening-button')), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'disabled action buttons (PDF, Cetak, Simpan when mock) use readable light disabledForegroundColor on dark card',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final provider = DiagnosisProvider(MockDiagnosisRepository())
+        ..attachPlaceholderImage('xray.png')
+        ..lastOutcome = DiagnosisOutcome(
+          isPositive: true,
+          confidence: 88,
+          processingTime: '1.8s',
+          modelVersion: 'TBScreen v2.1.0',
+          createdAt: DateTime(2026, 7, 24, 10, 30),
+          isMock: true,
+        );
+
+      await tester.pumpWidget(_wrap(provider));
+      await tester.pump();
+
+      for (final label in ['Simpan', 'PDF', 'Cetak']) {
+        final buttonFinder = find.ancestor(
+          of: find.text(label),
+          matching: find.byWidgetPredicate((w) => w is OutlinedButton),
+        );
+        expect(buttonFinder, findsOneWidget, reason: 'Button "$label" exists');
+        final button = tester.widget<OutlinedButton>(buttonFinder);
+        expect(button.onPressed, isNull, reason: 'Button "$label" is disabled');
+        final disabledFg = button.style?.foregroundColor?.resolve({
+          WidgetState.disabled,
+        });
+        expect(
+          disabledFg,
+          const Color(0xFF94A3B8),
+          reason: 'Disabled "$label" button must have high-contrast light text',
+        );
+      }
+    },
+  );
 }

@@ -148,6 +148,7 @@ class _XrayImageCardState extends State<XrayImageCard> {
 
   Widget _buildViewButton(int value, String label, IconData icon) {
     final isSelected = _view == value;
+    final unselectedFg = kResultTextHiColor.withValues(alpha: 0.85);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -160,7 +161,7 @@ class _XrayImageCardState extends State<XrayImageCard> {
             color: isSelected ? AppTheme.primary : kResultSurfaceAltColor,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isSelected ? AppTheme.primary : kResultBorderColor,
+              color: isSelected ? AppTheme.primary : const Color(0x33FFFFFF),
             ),
           ),
           child: Row(
@@ -169,15 +170,15 @@ class _XrayImageCardState extends State<XrayImageCard> {
               Icon(
                 icon,
                 size: 16,
-                color: isSelected ? Colors.white : kResultTextLoColor,
+                color: isSelected ? Colors.white : unselectedFg,
               ),
               const SizedBox(width: 6),
               AppText(
                 label,
                 style: TextStyle(
                   fontSize: 12.5,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? Colors.white : kResultTextLoColor,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  color: isSelected ? Colors.white : unselectedFg,
                 ),
               ),
             ],
