@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/data/mock/mock_repositories.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
@@ -370,6 +371,64 @@ void main() {
 
       expect(find.text('Pilih Pasien untuk Dicadangkan'), findsOneWidget);
       expect(find.text('Batal Semua'), findsOneWidget);
+    });
+  });
+
+  group('SyncCenterScreen language localization (EN / ID)', () {
+    testWidgets('translates Model Sync & Data Backup UI between English and Indonesian',
+        (tester) async {
+      sizeTablet(tester);
+      final lang = AppLanguage(); // defaults to 'en'
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AppLanguage>.value(value: lang),
+            Provider<SyncRepository>(create: (_) => MockSyncRepository()),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.lightTheme.copyWith(
+              splashFactory: InkRipple.splashFactory,
+            ),
+            home: const Scaffold(body: SyncCenterScreen()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // English mode ('en')
+      expect(find.text('Sync Center'), findsOneWidget);
+      expect(find.text('AI Model Update'), findsOneWidget);
+      expect(find.text('Active AI Model'), findsOneWidget);
+      expect(find.text('READY FOR INFERENCE'), findsOneWidget);
+      expect(find.text('Check Model Updates'), findsOneWidget);
+      expect(find.text('Models Stored on Device (2)'), findsOneWidget);
+      expect(find.text('Medical Data Backup'), findsOneWidget);
+      expect(find.text('Select Data & Upload'), findsOneWidget);
+
+      // Expand stored models in English
+      await tester.tap(find.text('Models Stored on Device (2)'));
+      await tester.pumpAndSettle();
+      expect(find.text('Active'), findsOneWidget);
+      expect(find.text('Verified'), findsOneWidget);
+      expect(find.text('Verification Failed'), findsOneWidget);
+      expect(find.text('Re-verify'), findsOneWidget);
+
+      // Switch to Indonesian ('id')
+      lang.select('id');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pusat Sinkronisasi'), findsOneWidget);
+      expect(find.text('Pembaruan Model AI'), findsOneWidget);
+      expect(find.text('Model AI Aktif'), findsOneWidget);
+      expect(find.text('SIAP INFERENSI'), findsOneWidget);
+      expect(find.text('Periksa Pembaruan Model'), findsOneWidget);
+      expect(find.text('Model Tersimpan di Perangkat (2)'), findsOneWidget);
+      expect(find.text('Aktif'), findsOneWidget);
+      expect(find.text('Terverifikasi'), findsOneWidget);
+      expect(find.text('Gagal Verifikasi'), findsOneWidget);
+      expect(find.text('Verify Ulang'), findsOneWidget);
+      expect(find.text('Cadangan Data Medis'), findsOneWidget);
+      expect(find.text('Pilih Data & Unggah'), findsOneWidget);
     });
   });
 }

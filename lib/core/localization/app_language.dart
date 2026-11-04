@@ -37,6 +37,119 @@ String localize(BuildContext context, String text) {
     if (text.startsWith('Level Indikasi TB: ')) {
       return 'TB Indication Level: ${text.substring(19)}';
     }
+    if (text.startsWith('Terakhir diperiksa: ')) {
+      return 'Last checked: ${text.substring(20)}';
+    }
+    if (text.startsWith('Gagal memeriksa pembaruan model: ')) {
+      return 'Failed to check for model updates: ${text.substring(33)}';
+    }
+    if (text.startsWith('Gagal mengaktifkan model: ')) {
+      return 'Failed to activate model: ${text.substring(26)}';
+    }
+    if (text.startsWith('Verifikasi ulang gagal: ')) {
+      return 'Re-verification failed: ${text.substring(24)}';
+    }
+    final httpErr = RegExp(r'^Gagal menghubungi server \(HTTP (\d+)\)\.$').firstMatch(text);
+    if (httpErr != null) {
+      return 'Failed to reach server (HTTP ${httpErr.group(1)}).';
+    }
+    final storedModels = RegExp(r'^Model Tersimpan di Perangkat \((\d+)\)$').firstMatch(text);
+    if (storedModels != null) {
+      return 'Models Stored on Device (${storedModels.group(1)})';
+    }
+    final pctDone = RegExp(r'^(\d+)% selesai$').firstMatch(text);
+    if (pctDone != null) {
+      return '${pctDone.group(1)}% completed';
+    }
+    final readyVer = RegExp(
+      r'^Versi (.+) telah diverifikasi dan siap digunakan tanpa perlu mengunduh ulang\.$',
+    ).firstMatch(text);
+    if (readyVer != null) {
+      return 'Version ${readyVer.group(1)} has been verified and is ready to use without re-downloading.';
+    }
+    final checksumErr = RegExp(
+      r'^Checksum atau tanda tangan digital model v(.+) tidak cocok\.$',
+    ).firstMatch(text);
+    if (checksumErr != null) {
+      return 'Checksum or digital signature for model v${checksumErr.group(1)} did not match.';
+    }
+    final doneVer = RegExp(
+      r'^Model AI versi (.+) berhasil diaktifkan dan siap digunakan\.$',
+    ).firstMatch(text);
+    if (doneVer != null) {
+      return 'AI model version ${doneVer.group(1)} has been activated and is ready to use.';
+    }
+    final deleteTitle = RegExp(r'^Hapus Model v(.+)\?$').firstMatch(text);
+    if (deleteTitle != null) {
+      return 'Delete Model v${deleteTitle.group(1)}?';
+    }
+    final deleteActiveBody = RegExp(
+      r'^Model (.+) v(.+) akan dihapus dari penyimpanan perangkat\. PERINGATAN: Model ini sedang aktif digunakan untuk inferensi\.$',
+    ).firstMatch(text);
+    if (deleteActiveBody != null) {
+      return 'Model ${deleteActiveBody.group(1)} v${deleteActiveBody.group(2)} will be deleted from device storage. WARNING: This model is currently active for inference.';
+    }
+    final deleteInactiveBody = RegExp(
+      r'^Model (.+) v(.+) akan dihapus dari penyimpanan perangkat\. Tindakan ini akan membebaskan ruang memori\.$',
+    ).firstMatch(text);
+    if (deleteInactiveBody != null) {
+      return 'Model ${deleteInactiveBody.group(1)} v${deleteInactiveBody.group(2)} will be deleted from device storage. This action will free up storage space.';
+    }
+    final deletedSwitch = RegExp(
+      r'^Model v(.+) berhasil dihapus\. Model (.+) sekarang menjadi model aktif\.$',
+    ).firstMatch(text);
+    if (deletedSwitch != null) {
+      return 'Model v${deletedSwitch.group(1)} deleted. Model ${deletedSwitch.group(2)} is now the active model.';
+    }
+    final deletedNone = RegExp(
+      r'^Model v(.+) berhasil dihapus\. Tidak ada model aktif\.$',
+    ).firstMatch(text);
+    if (deletedNone != null) {
+      return 'Model v${deletedNone.group(1)} deleted. No active model selected.';
+    }
+    final deletedSimple = RegExp(
+      r'^Model v(.+) berhasil dihapus\.$',
+    ).firstMatch(text);
+    if (deletedSimple != null) {
+      return 'Model v${deletedSimple.group(1)} deleted.';
+    }
+    final patientsCount = RegExp(r'^(\d+) pasien$').firstMatch(text);
+    if (patientsCount != null) {
+      return '${patientsCount.group(1)} patients';
+    }
+    final recordsCount = RegExp(r'^(\d+) data$').firstMatch(text);
+    if (recordsCount != null) {
+      return '${recordsCount.group(1)} records';
+    }
+    final selectedCount = RegExp(r'^(\d+) dipilih$').firstMatch(text);
+    if (selectedCount != null) {
+      return '${selectedCount.group(1)} selected';
+    }
+    final uploadingProgress = RegExp(r'^Mengunggah (\d+)/(\d+) pasien\.\.\.$').firstMatch(text);
+    if (uploadingProgress != null) {
+      return 'Uploading ${uploadingProgress.group(1)}/${uploadingProgress.group(2)} patients...';
+    }
+    final uploadedDone = RegExp(r'^(\d+) pasien berhasil diunggah$').firstMatch(text);
+    if (uploadedDone != null) {
+      return '${uploadedDone.group(1)} patients uploaded successfully';
+    }
+    final patientSub = RegExp(r'^(\d+) th • (Laki-laki|Perempuan)$').firstMatch(text);
+    if (patientSub != null) {
+      final g = patientSub.group(2) == 'Laki-laki' ? 'Male' : 'Female';
+      return '${patientSub.group(1)} yrs • $g';
+    }
+    final conflictsMsg = RegExp(
+      r'^(\d+) data konflik — versi di server lebih baru\. Data TIDAK ditimpa; perlu ditinjau manual oleh dokter\.$',
+    ).firstMatch(text);
+    if (conflictsMsg != null) {
+      return '${conflictsMsg.group(1)} conflicting records — server version is newer. Data was NOT overwritten; manual doctor review required.';
+    }
+    final failedMsg = RegExp(
+      r'^(\d+) gagal terkirim — tetap tersimpan di antrean, akan dicoba lagi saat sinkronisasi berikutnya\.$',
+    ).firstMatch(text);
+    if (failedMsg != null) {
+      return '${failedMsg.group(1)} failed to send — retained in queue, will retry on next sync.';
+    }
     return _stagingEnglish[text] ?? _englishLabels[text] ?? text;
   }
   final translated = _stagingIndonesian[text] ?? _indonesian[text];
@@ -162,6 +275,82 @@ const _stagingEnglish = <String, String>{
       'Additional doctor validation required, along with clinical evaluation and supporting tests.',
   'Hasil skrining positif. Perlu dilanjutkan dengan pemeriksaan lanjutan.':
       'Positive screening result. Must proceed with further examination.',
+  'Model AI Aktif': 'Active AI Model',
+  'Belum Ada Model Aktif': 'No Active Model',
+  'TIDAK ADA MODEL AKTIF': 'NO ACTIVE MODEL',
+  'SIAP INFERENSI': 'READY FOR INFERENCE',
+  'Belum Ada Model AI di Server': 'No AI Model on Server Yet',
+  'Server belum memiliki berkas model AI yang dirilis untuk channel ini. Hubungi administrator sistem untuk mengunggah bundle model AI ke server.':
+      'The server does not have a released AI model bundle for this channel yet. Contact your system administrator to upload an AI model bundle to the server.',
+  'Periksa Lagi': 'Check Again',
+  'Model versi terbaru terpasang': 'Latest model version installed',
+  'Model Terbaru Sudah Tersimpan di Perangkat':
+      'Latest Model Already Stored on Device',
+  'Aktifkan Model': 'Activate Model',
+  'Verifikasi Integritas Model Gagal': 'Model Integrity Verification Failed',
+  'Verify Ulang': 'Re-verify',
+  'Unduh Ulang': 'Re-download',
+  'Versi Baru': 'New Version',
+  'Ukuran': 'Size',
+  'Tanggal Rilis': 'Release Date',
+  'Catatan Pembaruan:': 'Release Notes:',
+  'Mengunduh model AI...': 'Downloading AI model...',
+  'Memverifikasi integritas model...': 'Verifying model integrity...',
+  'Memeriksa checksum SHA256 & tanda tangan digital Ed25519.':
+      'Checking SHA256 checksum & Ed25519 digital signature.',
+  'Mengaktifkan model & inisialisasi mesin inferensi...':
+      'Activating model & initializing inference engine...',
+  'Memuat session ONNX Runtime dan menjalankan smoke test.':
+      'Loading ONNX Runtime session and running smoke test.',
+  'Pembaruan Selesai': 'Update Complete',
+  'Gagal menghubungi server': 'Failed to reach server',
+  'Belum ada model tersimpan di perangkat.': 'No models stored on device yet.',
+  'Aktif': 'Active',
+  'Unduh': 'Download',
+  'Gunakan': 'Use',
+  'Verifikasi': 'Verify',
+  'Hapus model': 'Delete model',
+  'Terverifikasi': 'Verified',
+  'Gagal Verifikasi': 'Verification Failed',
+  'Diunduh': 'Downloaded',
+  'Belum Diunduh': 'Not Downloaded',
+  'Hapus': 'Delete',
+  'Unduhan model dibatalkan.': 'Model download cancelled.',
+  'Model berhasil diunduh dan diverifikasi. Silakan pilih model untuk menggunakannya.':
+      'Model downloaded and verified successfully. Please select the model to use it.',
+  'Gagal mengunduh model — periksa koneksi internet Anda.':
+      'Failed to download model — check your internet connection.',
+  'Verifikasi model gagal — berkas model rusak atau tidak sah.':
+      'Model verification failed — model bundle is corrupted or invalid.',
+  'Model tidak kompatibel dengan aplikasi ini.':
+      'Model is not compatible with this application.',
+  'Model gagal uji inferensi (smoke test) — periksa format input/output.':
+      'Model failed inference smoke test — check input/output format.',
+  'Instalasi model gagal.': 'Model installation failed.',
+  'Model berhasil diaktifkan. Menyiapkan model agar siap digunakan...':
+      'Model activated successfully. Preparing model for standby...',
+  'Verifikasi integritas model berhasil.':
+      'Model integrity verification succeeded.',
+  'Tidak ada koneksi internet. Periksa koneksi Anda.':
+      'No internet connection. Check your connection.',
+  'Menginisialisasi Model AI': 'Initializing AI Model',
+  'Menyiapkan dan memuat model AI ke memori agar proses analisis siap digunakan... Mohon tunggu.':
+      'Preparing and loading the AI model into memory so analysis is ready... Please wait.',
+  'Total Pasien': 'Total Patients',
+  'Total Diagnosis': 'Total Diagnoses',
+  'Estimasi Ukuran': 'Estimated Size',
+  'Terakhir Cadang': 'Last Backup',
+  'Belum pernah': 'Never',
+  'Batal Semua': 'Deselect All',
+  'Tidak ada data pasien untuk dicadangkan.': 'No patient data to back up.',
+  'Sinkronisasi selesai sebagian': 'Synchronization partially completed',
+  'Sinkronisasi selesai': 'Synchronization completed',
+  'Data medis pasien (rekam medis dan citra X-Ray) akan diunggah ke server pusat TB Screen AI melalui koneksi terenkripsi (TLS 1.3).':
+      'Patient medical data (medical records and X-Ray images) will be uploaded to the central TB Screen AI server over an encrypted connection (TLS 1.3).',
+  'Data dide-identifikasi sesuai standar privasi data medis sebelum dikirim.':
+      'Data is de-identified in accordance with medical data privacy standards before transmission.',
+  'Saya mengonfirmasi bahwa data ini siap dicadangkan ke server pusat dan persetujuan pasien telah diperoleh.':
+      'I confirm that this data is ready to be backed up to the central server and patient consent has been obtained.',
 };
 
 final _stagingIndonesian = <String, String>{

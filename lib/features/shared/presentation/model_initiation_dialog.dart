@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/data/models_ota/model_store.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
@@ -72,7 +73,7 @@ Future<bool> initiateModelStandbyWithDialog(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      AppText(
                         title,
                         style: const TextStyle(
                           fontSize: 16,
@@ -81,7 +82,7 @@ Future<bool> initiateModelStandbyWithDialog(
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Text(
+                      AppText(
                         message,
                         style: const TextStyle(
                           fontSize: 13,
