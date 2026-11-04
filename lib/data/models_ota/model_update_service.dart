@@ -51,9 +51,21 @@ class ModelUpdateService {
 
   CancelToken? _currentDownloadCancelToken;
 
-  /// `null` means no model bundle is installed on this device yet.
-  Future<String?> getInstalledModelVersion() =>
-      _settings.readInstalledModelVersion();
+  /// `null` means no model bundle is installed or selected on this device yet.
+  Future<String?> getInstalledModelVersion() async {
+    final active = await _store.activeVersion();
+    if (active == null) {
+      await _settings.clearInstalledModelVersion();
+      return null;
+    }
+    final status = await _store.getBundleStatus(active);
+    if (status != ModelBundleStatus.verified) {
+      await _store.clearActive();
+      await _settings.clearInstalledModelVersion();
+      return null;
+    }
+    return active;
+  }
 
   /// Returns list of all installed bundle keys on disk.
   Future<List<String>> getInstalledModelKeys() =>
@@ -122,6 +134,25 @@ class ModelUpdateService {
         }
       }
 
+      if (rawList == null || rawList.isEmpty) {
+        try {
+          final info = await checkForUpdate();
+          if (info.latestVersion.isNotEmpty) {
+            rawList = [
+              AvailableModelBundle(
+                channel: _channel,
+                version: info.latestVersion,
+                isLatest: true,
+                bundleZip: info.downloadUrl,
+                bundleZipSha256: info.sha256,
+                changelog: info.changelog,
+                notes: info.changelog.isNotEmpty ? info.changelog.first : null,
+              ),
+            ];
+          }
+        } catch (_) {}
+      }
+
       rawList ??= await _synthesizeFromInstalledBundles();
     }
 
@@ -141,6 +172,17 @@ class ModelUpdateService {
         ),
       );
     }
+
+    // Always merge locally installed bundles so both remote and local models are present
+    final localBundles = await _synthesizeFromInstalledBundles();
+    final seenIds = enriched.map((e) => e.id).toSet();
+    for (final local in localBundles) {
+      if (!seenIds.contains(local.id)) {
+        enriched.add(local);
+        seenIds.add(local.id);
+      }
+    }
+
     return enriched;
   }
 
@@ -224,12 +266,7 @@ class ModelUpdateService {
         if (session != _db.sessionGeneration) return;
         yield progress;
       }
-
-      // Automatically activate after successful installation
-      await activateModelBundle(
-        bundleKey,
-        sampleBytes: sample.buffer.asUint8List(),
-      );
+      // Verified model is NOT automatically activated; user must select/choose it.
     } finally {
       _currentDownloadCancelToken = null;
     }
@@ -244,19 +281,42 @@ class ModelUpdateService {
       _modelPipeline.verifyExistingBundle(bundleKey);
 
   /// Deletes a bundle from disk and unloads active model if deleted.
+  /// If the deleted model was active, automatically activates the newest remaining
+  /// verified model in the app, or falls back to no model selected.
   Future<void> deleteModelBundle(String bundleKey) async {
     final session = _db.sessionGeneration;
+    final activeBefore = await _store.activeVersion();
+    final installedSetting = await _settings.readInstalledModelVersion();
+    final wasActive = (activeBefore != null &&
+            (activeBefore == bundleKey ||
+                activeBefore.toLowerCase() == bundleKey.toLowerCase())) ||
+        (installedSetting != null &&
+            (installedSetting == bundleKey ||
+                installedSetting.toLowerCase() == bundleKey.toLowerCase() ||
+                bundleKey.endsWith('_$installedSetting')));
+
     await _modelPipeline.deleteBundle(bundleKey);
-    final installed = await _settings.readInstalledModelVersion();
-    if (installed == bundleKey ||
-        (installed != null &&
-            (installed.toLowerCase() == bundleKey.toLowerCase() ||
-             bundleKey.endsWith('_$installed')))) {
-      if (session == _db.sessionGeneration) {
-        await _db.writeForSession(
-          session,
-          () => _settings.clearInstalledModelVersion(),
-        );
+
+    if (wasActive) {
+      final nextVerified = await _store.findNewestVerifiedBundleKey();
+      if (nextVerified != null) {
+        await _store.activate(nextVerified);
+        await _modelPipeline.engine.init();
+        if (session == _db.sessionGeneration) {
+          await _db.writeForSession(
+            session,
+            () => _settings.saveInstalledModelVersion(nextVerified),
+          );
+        }
+      } else {
+        await _store.clearActive();
+        await _modelPipeline.engine.init();
+        if (session == _db.sessionGeneration) {
+          await _db.writeForSession(
+            session,
+            () => _settings.clearInstalledModelVersion(),
+          );
+        }
       }
     }
   }

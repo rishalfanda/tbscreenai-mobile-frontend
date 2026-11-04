@@ -56,6 +56,9 @@ class ModelUpdatePipeline {
   final OnnxInferenceEngine _engine;
   final ModelStore _store;
 
+  OnnxInferenceEngine get engine => _engine;
+  ModelStore get store => _store;
+
   /// Downloads, verifies, and stages a model bundle with speed and cancellation support.
   Stream<ModelDownloadProgress> installBundleWithProgress({
     required String bundleKey,
@@ -170,10 +173,13 @@ class ModelUpdatePipeline {
     final destDir = await _store.versionDir(bundleKey);
     try {
       final manifest = await verifyBundleDir(destDir);
-      if (manifest.bundleVersion != version) {
+      if (manifest.bundleVersion != version && version.isNotEmpty) {
         throw StateError(
           'downloaded bundle is v${manifest.bundleVersion}, expected v$version',
         );
+      }
+      if (smokeTestSampleBytes.isNotEmpty) {
+        await _engine.smokeTestBundleDir(destDir, smokeTestSampleBytes);
       }
       await _store.setBundleStatus(bundleKey, ModelBundleStatus.verified);
     } catch (e) {
@@ -240,14 +246,13 @@ class ModelUpdatePipeline {
       cancelToken: cancelToken,
       smokeTestSampleBytes: smokeTestSampleBytes,
     );
-    await activateExisting(
-      info.latestVersion,
-      smokeTestSampleBytes: smokeTestSampleBytes,
-    );
   }
 
   /// Verifies an already downloaded bundle directory on disk without re-downloading.
-  Future<bool> verifyExistingBundle(String bundleKey) async {
+  Future<bool> verifyExistingBundle(
+    String bundleKey, {
+    Uint8List? smokeTestSampleBytes,
+  }) async {
     final d = await _store.versionDir(bundleKey);
     if (!await d.exists()) {
       throw StateError(
@@ -256,6 +261,16 @@ class ModelUpdatePipeline {
     }
     try {
       await verifyBundleDir(d);
+      Uint8List? sample = smokeTestSampleBytes;
+      if (sample == null) {
+        try {
+          final loaded = await rootBundle.load('assets/sample/xray.png');
+          sample = loaded.buffer.asUint8List();
+        } catch (_) {}
+      }
+      if (sample != null && sample.isNotEmpty) {
+        await _engine.smokeTestBundleDir(d, sample);
+      }
       await _store.setBundleStatus(bundleKey, ModelBundleStatus.verified);
       return true;
     } catch (e) {

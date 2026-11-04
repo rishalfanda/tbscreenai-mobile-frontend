@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show rootBundle;
@@ -147,7 +148,50 @@ class OnnxInferenceEngine {
   /// catches this to trigger rollback.
   Future<void> smokeTest(Uint8List sampleBytes) async {
     final r = await run(sampleBytes);
+    _assertSmokeTestOutputs(r);
+  }
 
+  /// Runs the ONNX chain against an arbitrary staged bundle directory without
+  /// modifying the active engine or activating the bundle. Throws on any failure.
+  Future<void> smokeTestBundleDir(
+    Directory bundleDir,
+    Uint8List sampleBytes,
+  ) async {
+    final store = await BundleStore.open(bundleDir);
+    final input = store.manifest.input;
+    if (input.layout.toUpperCase() != 'NHWC' ||
+        input.channels.toUpperCase() != 'RGB') {
+      throw StateError(
+        'bundle input is ${input.layout}/${input.channels}; this app only '
+        'feeds NHWC/RGB pixels',
+      );
+    }
+
+    final executor = OrtChainExecutor(
+      store: store,
+      pool: _pool,
+      keepSessionsStandby: false,
+    );
+    await executor.setForceCpu(forceCpu);
+
+    try {
+      final decoded = await decodeForBundle(sampleBytes);
+      final out = await executor.run(decoded.toTensor());
+      final r = InferenceResult.fromChainOutputs(
+        out,
+        manifest: store.manifest,
+        elapsed: Duration.zero,
+        providersUsed: executor.providersUsed,
+        stepTimings: Map.of(executor.stepTimings),
+        rfModel: store.manifest.rfActive,
+      );
+      _assertSmokeTestOutputs(r);
+    } finally {
+      await executor.dispose();
+    }
+  }
+
+  void _assertSmokeTestOutputs(InferenceResult r) {
     void check(bool ok, String why) {
       if (!ok) throw StateError('smoke test failed: $why');
     }

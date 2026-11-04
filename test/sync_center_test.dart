@@ -214,6 +214,12 @@ void main() {
       }
       await tester.pumpAndSettle();
 
+      // In the new lifecycle, downloaded and verified models are not automatically active.
+      // User must explicitly choose / activate the verified model.
+      expect(find.text('Aktifkan Model'), findsOneWidget);
+      await tester.tap(find.text('Aktifkan Model'));
+      await tester.pumpAndSettle();
+
       expect(find.text('Pembaruan Selesai'), findsOneWidget);
     });
   });

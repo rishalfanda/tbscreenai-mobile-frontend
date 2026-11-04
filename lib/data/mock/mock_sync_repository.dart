@@ -5,7 +5,10 @@ import 'package:myapp/domain/repositories/sync_repository.dart';
 
 /// Mock Sync Center backend.
 class MockSyncRepository implements SyncRepository {
-  String? _activeModelKey = 'stable_2026.09.04';
+  MockSyncRepository({String? initialActiveModelKey = 'stable_2026.09.04'})
+      : _activeModelKey = initialActiveModelKey;
+
+  String? _activeModelKey;
   final Set<String> _installedKeys = {'stable_2026.09.04', 'beta_2026.09.04'};
   final Map<String, ModelBundleStatus> _modelStatuses = {
     'stable_2026.09.04': ModelBundleStatus.verified,
@@ -84,7 +87,7 @@ class MockSyncRepository implements SyncRepository {
     _installedKeys.add(ver);
     _modelStatuses[key] = ModelBundleStatus.verified;
     _modelStatuses[ver] = ModelBundleStatus.verified;
-    _activeModelKey = model != null ? key : ver;
+    // Verified models are NOT automatically activated; user must select it.
 
     yield ModelDownloadProgress(
       fraction: 1.0,
@@ -163,9 +166,15 @@ class MockSyncRepository implements SyncRepository {
   Future<void> deleteModelBundle(String bundleKey) async {
     await Future<void>.delayed(const Duration(milliseconds: 200));
     _installedKeys.remove(bundleKey);
-    _modelStatuses[bundleKey] = ModelBundleStatus.notDownloaded;
+    _modelStatuses.remove(bundleKey);
     if (_activeModelKey == bundleKey) {
-      _activeModelKey = null;
+      // If the current active model is deleted, choose the newer verified model.
+      // If there are no verified models, default to no model selected.
+      final remainingVerified = _installedKeys
+          .where((k) => _modelStatuses[k] == ModelBundleStatus.verified)
+          .toList();
+      _activeModelKey =
+          remainingVerified.isNotEmpty ? remainingVerified.last : null;
     }
   }
 

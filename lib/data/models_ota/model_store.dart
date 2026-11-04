@@ -19,6 +19,11 @@ import 'package:myapp/domain/models/available_model_bundle.dart';
 /// `lib/data/models_ota/model_update_pipeline.dart`; this type only manages the
 /// on-disk layout. Stateless: every method reads/writes the filesystem.
 class ModelStore {
+  ModelStore({Future<Directory> Function()? rootProvider})
+      : _rootProvider = rootProvider;
+
+  final Future<Directory> Function()? _rootProvider;
+
   static const _dirName = 'models';
   static const _incoming = 'incoming';
   static const _metaFile = 'meta.json';
@@ -32,6 +37,12 @@ class ModelStore {
   }
 
   Future<Directory> _root() async {
+    final provider = _rootProvider;
+    if (provider != null) {
+      final d = await provider();
+      if (!await d.exists()) await d.create(recursive: true);
+      return d;
+    }
     final base = await getApplicationSupportDirectory();
     final d = Directory('${base.path}${Platform.pathSeparator}$_dirName');
     if (!await d.exists()) await d.create(recursive: true);
@@ -66,21 +77,62 @@ class ModelStore {
   Future<Directory> versionDir(String version) async =>
       Directory('${(await _root()).path}${Platform.pathSeparator}$version');
 
-  /// Directory of the active bundle, or `null` if none / its files are missing.
+  /// Directory of the active bundle, or `null` if none / unverified / its files are missing.
   Future<Directory?> activeBundleDir() async {
-    var v = await activeVersion();
-    if (v == null) {
-      final installed = await listInstalledBundleKeys();
-      if (installed.isNotEmpty) {
-        v = installed.first;
-        await _writePointer('ACTIVE', v);
-      }
-    }
+    final v = await activeVersion();
     if (v == null) return null;
+
+    final status = await getBundleStatus(v);
+    if (status != ModelBundleStatus.verified) {
+      await clearActive();
+      return null;
+    }
+
     final d = await versionDir(v);
     final manifest = File('${d.path}${Platform.pathSeparator}manifest.json');
-    if (!await d.exists() || !await manifest.exists()) return null;
+    if (!await d.exists() || !await manifest.exists()) {
+      await clearActive();
+      return null;
+    }
     return d;
+  }
+
+  /// Finds the newest verified model bundle key among installed bundles.
+  /// Returns `null` if no verified bundles are installed.
+  Future<String?> findNewestVerifiedBundleKey({String? excludingKey}) async {
+    final installed = await listInstalledBundleKeys();
+    final verifiedKeys = <String>[];
+    for (final key in installed) {
+      if (excludingKey != null && key == excludingKey) continue;
+      if (await getBundleStatus(key) == ModelBundleStatus.verified) {
+        verifiedKeys.add(key);
+      }
+    }
+    if (verifiedKeys.isEmpty) return null;
+
+    DateTime? parseDate(Map<String, dynamic>? meta) {
+      final raw = meta?['released_utc'];
+      if (raw is String) return DateTime.tryParse(raw);
+      return null;
+    }
+
+    final metaMap = <String, Map<String, dynamic>?>{};
+    for (final key in verifiedKeys) {
+      metaMap[key] = await readBundleMeta(key);
+    }
+
+    verifiedKeys.sort((a, b) {
+      final dateA = parseDate(metaMap[a]);
+      final dateB = parseDate(metaMap[b]);
+      if (dateA != null && dateB != null) {
+        return dateB.compareTo(dateA); // Newer first
+      }
+      if (dateA != null) return -1;
+      if (dateB != null) return 1;
+      return b.compareTo(a); // Lexical fallback
+    });
+
+    return verifiedKeys.first;
   }
 
   /// Lists all valid installed bundle keys (directories containing manifest.json).

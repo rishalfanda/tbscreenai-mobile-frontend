@@ -285,22 +285,29 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
     final repository = context.read<SyncRepository>();
     try {
       final info = await repository.checkForUpdate();
-      final localModels = await repository.getAvailableModels(localOnly: true);
+      final allModels = await repository.getAvailableModels(localOnly: false);
       final currentVersion = await repository.getInstalledModelVersion();
       if (!mounted) return;
       setState(() {
         _updateInfo = info;
         _lastChecked = DateTime.now();
         _currentVersion = currentVersion ?? '';
-        _storedModels = localModels;
-        _evaluateModelStatus(info, localModels, currentVersion);
+        _storedModels = allModels;
+        _evaluateModelStatus(info, allModels, currentVersion);
       });
     } catch (e) {
       if (!mounted) return;
+      final msg = _formatErrorMessage(e);
       setState(() {
         _state = _ModelSyncState.error;
-          _errorMessage = _formatErrorMessage(e);
+        _errorMessage = msg;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: AppTheme.error,
+        ),
+      );
     }
   }
 
@@ -330,13 +337,19 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
     return 'Gagal memeriksa pembaruan model: $error';
   }
 
-  void _startDownload() {
+  void _startDownload({AvailableModelBundle? model}) {
     if (!_isOnline) {
       setState(() {
         _state = _ModelSyncState.error;
         _errorMessage =
             'Tidak ada koneksi internet. Hubungkan perangkat dan coba lagi.';
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tidak ada koneksi internet. Periksa koneksi Anda.'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
       return;
     }
 
@@ -351,7 +364,7 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
     _downloadSub?.cancel();
     bool hasError = false;
     _downloadSub = repository
-        .downloadModelWithProgress()
+        .downloadModelWithProgress(model: model)
         .listen(
           (progress) {
             if (!mounted || hasError) return;
@@ -386,80 +399,65 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         );
   }
 
-    void _onDownloadDone() async {
-      if (!mounted) return;
-      final newVersion = _updateInfo?.latestVersion ?? _currentVersion;
-      final String? installed;
-      try {
-        installed = await context
-            .read<SyncRepository>()
-            .getInstalledModelVersion();
-      } catch (_) {
-        if (mounted) {
-          _onDownloadError(StateError('Installed model could not be confirmed'));
+  void _onDownloadDone() async {
+    if (!mounted) return;
+    final repository = context.read<SyncRepository>();
+    final allModels = await repository.getAvailableModels(localOnly: false);
+    if (!mounted) return;
+    final currentVersion = await repository.getInstalledModelVersion();
+    if (!mounted) return;
+    setState(() {
+      _currentVersion = currentVersion ?? '';
+      _storedModels = allModels;
+      _state = _ModelSyncState.readyToActivate;
+      _progress = 1.0;
+      _downloadSpeed = '';
+      if (_updateInfo != null) {
+        _evaluateModelStatus(_updateInfo!, allModels, currentVersion);
+        if (_state != _ModelSyncState.upToDate && _state != _ModelSyncState.error) {
+          _state = _ModelSyncState.readyToActivate;
         }
-        return;
       }
-      if (!mounted) return;
-      final isMatch = installed != null &&
-          newVersion.isNotEmpty &&
-          (installed == newVersion ||
-              installed.endsWith('_$newVersion') ||
-              newVersion.endsWith('_$installed'));
-      if (!isMatch) {
-        _onDownloadError(StateError('Model activation was not confirmed'));
-        return;
-      }
-      final localModels = await context.read<SyncRepository>().getAvailableModels(localOnly: true);
-      if (!mounted) return;
-      setState(() {
-        _currentVersion = newVersion;
-        _storedModels = localModels;
-        _state = _ModelSyncState.done;
-        _progress = 1.0;
-        _downloadSpeed = '';
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: AppText('Model berhasil diperbarui ke $newVersion')),
-      );
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Model berhasil diunduh dan diverifikasi. Silakan pilih model untuk menggunakannya.',
+        ),
+      ),
+    );
+  }
 
-      OnnxInferenceEngine? engine;
-      try {
-        engine = context.read<OnnxInferenceEngine>();
-      } catch (_) {}
-      if (engine != null && mounted) {
-        await initiateModelStandbyWithDialog(
-          context,
-          engine,
-          message: 'Model berhasil diperbarui. Menyiapkan model agar siap digunakan...',
-        );
-      }
-    }
-
-    void _onDownloadError(Object error) {
-      if (!mounted) return;
-      final message = switch (error) {
-        ModelInstallException(:final phase) => switch (phase) {
-          ModelInstallPhase.downloading =>
-            'Gagal mengunduh model — periksa koneksi internet Anda.',
-          ModelInstallPhase.verifying =>
-            'Verifikasi model gagal — berkas model rusak atau tidak sah.',
-          ModelInstallPhase.activating =>
-            'Model tidak kompatibel dengan aplikasi ini.',
-          ModelInstallPhase.smokeTesting =>
-            'Model baru gagal diuji — sistem kembali ke versi sebelumnya secara otomatis.',
-          ModelInstallPhase.completed =>
-            'Instalasi model gagal.',
-        },
-        _ => 'Gagal menghubungi server',
-      };
-      setState(() {
-        _state = _ModelSyncState.error;
-        _errorMessage = message;
-        _progress = 0.0;
-        _downloadSpeed = '';
-      });
-    }
+  void _onDownloadError(Object error) {
+    if (!mounted) return;
+    final message = switch (error) {
+      ModelInstallException(:final phase) => switch (phase) {
+        ModelInstallPhase.downloading =>
+          'Gagal mengunduh model — periksa koneksi internet Anda.',
+        ModelInstallPhase.verifying =>
+          'Verifikasi model gagal — berkas model rusak atau tidak sah.',
+        ModelInstallPhase.activating =>
+          'Model tidak kompatibel dengan aplikasi ini.',
+        ModelInstallPhase.smokeTesting =>
+          'Model gagal uji inferensi (smoke test) — periksa format input/output.',
+        ModelInstallPhase.completed =>
+          'Instalasi model gagal.',
+      },
+      _ => 'Gagal menghubungi server',
+    };
+    setState(() {
+      _state = _ModelSyncState.error;
+      _errorMessage = message;
+      _progress = 0.0;
+      _downloadSpeed = '';
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppTheme.error,
+      ),
+    );
+  }
 
     void _cancelDownload() {
       final repository = context.read<SyncRepository>();
@@ -551,12 +549,35 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
 
     if (confirmed == true && mounted) {
       final repository = context.read<SyncRepository>();
+      final wasActive = model.isCurrent ||
+          _currentVersion == model.id ||
+          _currentVersion == model.version;
       await repository.deleteModelBundle(model.id);
       await _refreshInstalledState();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Model v${model.version} berhasil dihapus.')),
-      );
+      if (wasActive) {
+        if (_currentVersion.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Model v${model.version} berhasil dihapus. Model $_currentVersion sekarang menjadi model aktif.',
+              ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Model v${model.version} berhasil dihapus. Tidak ada model aktif.',
+              ),
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Model v${model.version} berhasil dihapus.')),
+        );
+      }
     }
   }
 
@@ -1333,25 +1354,37 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
             ),
           ),
           // Actions
-          if (!isActive && model.isVerified)
+          if (model.localStatus == ModelBundleStatus.notDownloaded)
+            TextButton.icon(
+              onPressed: () => _startDownload(model: model),
+              icon: const Icon(Icons.download_rounded, size: 16),
+              label: const Text('Unduh', style: TextStyle(fontSize: 12)),
+            )
+          else if (!isActive && model.isVerified)
             TextButton(
               onPressed: () => _activateBundle(model.id),
               child: const Text('Gunakan', style: TextStyle(fontSize: 12)),
             )
-          else if (!isActive && model.isVerificationFailed)
+          else if (!isActive &&
+              (model.localStatus == ModelBundleStatus.downloaded ||
+                  model.isVerificationFailed))
             TextButton(
               onPressed: () => _verifyBundle(model.id),
-              child: const Text('Verify Ulang', style: TextStyle(fontSize: 12)),
+              child: Text(
+                model.isVerificationFailed ? 'Verify Ulang' : 'Verifikasi',
+                style: const TextStyle(fontSize: 12),
+              ),
             ),
-          IconButton(
-            icon: const Icon(
-              Icons.delete_outline_rounded,
-              color: AppTheme.textSecondary,
-              size: 20,
+          if (model.isDownloaded)
+            IconButton(
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                color: AppTheme.textSecondary,
+                size: 20,
+              ),
+              tooltip: 'Hapus model',
+              onPressed: () => _confirmDelete(model),
             ),
-            tooltip: 'Hapus model',
-            onPressed: () => _confirmDelete(model),
-          ),
         ],
       ),
     );
@@ -1378,12 +1411,22 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         ),
       );
     }
+    if (model.localStatus == ModelBundleStatus.downloaded) {
+      return const Text(
+        'Diunduh',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.warning,
+        ),
+      );
+    }
     return const Text(
-      'Diunduh',
+      'Belum Diunduh',
       style: TextStyle(
         fontSize: 11,
         fontWeight: FontWeight.w600,
-        color: AppTheme.warning,
+        color: AppTheme.textSecondary,
       ),
     );
   }
