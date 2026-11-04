@@ -182,6 +182,8 @@ Map<String, Object?> receipt(
   RequestOptions o, {
   String status = 'applied',
   String? ownerId = doctor,
+  int? opVersion = 1,
+  int? serverVersion = 1,
 }) {
   final item = ((o.data as Map)['items'] as List).single as Map;
   return {
@@ -191,6 +193,11 @@ Map<String, Object?> receipt(
       {
         'client_op_id': item['client_op_id'],
         'entity_id': item['entity_id'],
+        'entity_type': item['entity_type'],
+        'op_version': ['applied', 'skipped'].contains(status)
+            ? opVersion
+            : null,
+        'server_version': serverVersion,
         'owner_user_id': ownerId,
         'status': status,
         'code': status == 'failed' ? 'invalid_payload' : null,
@@ -204,6 +211,92 @@ class _NoArchiveKeyRead extends MemorySecureTokenStorage {
   Future<String?> read(String key) =>
       throw StateError('Queue count must not decrypt images');
 }
+
+Map<String, Object?> _serverState({bool deleted = false}) => {
+  'server_time': '2026-11-04T00:00:00Z',
+  'patients': deleted
+      ? []
+      : [
+          {
+            'id': patient,
+            'tenant_id': tenant,
+            'code': 'SYN-OPERATOR',
+            'name': 'Updated synthetic patient',
+            'age': 30,
+            'gender': 'Male',
+            'status': 'Normal',
+            'history': [],
+            'version': 2,
+            'updated_at': '2026-11-04T00:00:00Z',
+          },
+        ],
+  'diagnoses': deleted
+      ? []
+      : [
+          {
+            'id': diagnosis,
+            'tenant_id': tenant,
+            'patient_id': patient,
+            'created_by': doctor,
+            'is_positive': false,
+            'confidence': 80,
+            'model_version': 'synthetic-model',
+            'status': 'agreed',
+            'doctor_note': 'Server review',
+            'validation_score': 4,
+            'validated_by': doctor,
+            'validated_at': '2026-11-04T00:00:00Z',
+            'version': 3,
+            'findings': {},
+            'updated_at': '2026-11-04T00:00:00Z',
+          },
+        ],
+  'gone': deleted
+      ? [
+          {'entity_type': 'patient', 'id': patient, 'reason': 'deleted'},
+          {'entity_type': 'diagnosis', 'id': diagnosis, 'reason': 'deleted'},
+        ]
+      : [],
+};
+
+Map<String, Object?> _scoreContract() => {
+  'components': {'schemas': {}},
+  'paths': {
+    '/api/v1/diagnoses/{id}/status': {
+      'patch': {
+        'requestBody': {
+          'content': {
+            'application/json': {
+              'schema': {
+                'properties': {
+                  'status': {},
+                  'base_version': {},
+                  'validation_score': {},
+                  'validated_at': {},
+                },
+              },
+            },
+          },
+        },
+        'responses': {
+          '200': {
+            'content': {
+              'application/json': {
+                'schema': {
+                  'properties': {
+                    'validation_score': {},
+                    'validated_at': {},
+                    'validated_by': {},
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};
 
 void main() {
   setUp(() async {
@@ -224,6 +317,298 @@ void main() {
     await client.close();
     await db.close();
   });
+  test(
+    'PR39 retry baseline uses op_version, never newer server_version',
+    () async {
+      await seed(image: true);
+      await handoff();
+      await activate();
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.path == '/sync/operator/push') {
+          return (
+            200,
+            receipt(o, status: 'skipped', opVersion: 2, serverVersion: 3),
+          );
+        }
+        final body = o.data as Map;
+        return (
+          200,
+          {
+            'upload_id': 'synthetic-upload',
+            'diagnosis_id': diagnosis,
+            'size_bytes': body['size_bytes'],
+            'chunk_count': body['chunk_count'],
+            'chunk_size': body['chunk_size'],
+            'received_chunks': [0],
+            'status': 'completed',
+            'image_id': 'synthetic-image',
+          },
+        );
+      });
+      await service().push(refreshCache: false);
+      final retained = await outbox.entries(
+        tenant,
+        localDevice,
+        includeReceived: true,
+      );
+      final dx = retained.singleWhere((e) => e['diagnosis'] != null);
+      expect((dx['diagnosis'] as Map)['serverVersion'], 2);
+      expect((dx['diagnosis'] as Map)['hasConflict'], true);
+      expect((dx['op'] as Map)['baseVersion'], 2);
+    },
+  );
+
+  for (final deleted in [false, true]) {
+    test(
+      'PR39 state refresh updates received cache, deleted=$deleted',
+      () async {
+        await seed(image: true);
+        await handoff();
+        await activate();
+        client.dio.httpClientAdapter = _Adapter((o) {
+          if (o.path == '/sync/operator/push') return (200, receipt(o));
+          if (o.path == '/sync/operator/state') {
+            expect((o.data as Map)['patient_ids'], [patient]);
+            expect((o.data as Map)['diagnosis_ids'], [diagnosis]);
+            return (200, _serverState(deleted: deleted));
+          }
+          final body = o.data as Map;
+          return (
+            200,
+            {
+              'upload_id': 'synthetic-upload',
+              'diagnosis_id': diagnosis,
+              'size_bytes': body['size_bytes'],
+              'chunk_count': body['chunk_count'],
+              'chunk_size': body['chunk_size'],
+              'received_chunks': [0],
+              'status': 'completed',
+              'image_id': 'synthetic-image',
+            },
+          );
+        });
+        expect((await service().push()).applied, 2);
+        await db.clearSessionData();
+        await owner(doctor);
+        await outbox.restoreDoctorQueue();
+        final row = await db.findDiagnosis(diagnosis);
+        if (deleted) {
+          expect(row, isNull);
+          expect(await db.findPatient(patient), isNull);
+        } else {
+          expect(row!.serverVersion, 3);
+          expect(row.validationScore, 4);
+          expect(row.validatedBy, doctor);
+          expect(row.hasConflict, false);
+          expect(row.imageReference, 'local-encrypted://$diagnosis');
+          final repo = OfflineValidationRepository(
+            db: db,
+            client: client,
+            syncEngine: SyncEngine(
+              db: db,
+              client: client,
+              settings: SettingsStore(db),
+            ),
+            localOnly: true,
+          );
+          await repo.submitScore(id: diagnosis, score: 8, status: 'agreed');
+          final update = (await db.pendingOps()).single;
+          expect(update.baseVersion, 3);
+          await outbox.captureDoctorQueue();
+          expect(await outbox.count(tenant, localDevice), 1);
+        }
+      },
+    );
+  }
+
+  test(
+    'PR39 not_found retains unsent work; foreign state cannot alter archives',
+    () async {
+      await seed();
+      await handoff();
+      await activate();
+      var foreign = false;
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.path == '/sync/operator/push') return (503, {});
+        if (foreign) {
+          return (
+            200,
+            {
+              'server_time': '2026-11-04T00:00:00Z',
+              'diagnoses': [],
+              'gone': [],
+              'patients': [
+                {
+                  ...(_serverState()['patients'] as List).single as Map,
+                  'tenant_id': 'foreign-tenant',
+                },
+              ],
+            },
+          );
+        }
+        return (
+          200,
+          {
+            'server_time': '2026-11-04T00:00:00Z',
+            'patients': [],
+            'diagnoses': [],
+            'gone': [
+              {'entity_type': 'patient', 'id': patient, 'reason': 'not_found'},
+            ],
+          },
+        );
+      });
+      expect((await service().push()).failed, 1);
+      expect(await service().queuedCount(), 1);
+      foreign = true;
+      await expectLater(service().push(), throwsFormatException);
+      expect(await service().queuedCount(), 1);
+      await db.clearSessionData();
+      await owner(doctor);
+      await outbox.restoreDoctorQueue();
+      expect((await db.findPatient(patient))!.name, 'Synthetic patient');
+    },
+  );
+
+  test(
+    'PR39 heatmap failure retains receipt for safe retry without record resend',
+    () async {
+      await seed(image: true);
+      final image = await xray.read('local-encrypted://$diagnosis');
+      await xray.persist(artifactId: '$diagnosis:lesion', image: image);
+      await handoff();
+      await activate();
+      var recordCalls = 0, heatmaps = 0;
+      var accept = false;
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.path == '/sync/operator/push') {
+          recordCalls++;
+          return (200, receipt(o));
+        }
+        if (o.path.endsWith('/heatmap')) {
+          heatmaps++;
+          expect(o.contentType, 'image/png');
+          expect(o.data, image.bytes);
+          return (
+            200,
+            {
+              'diagnosis_id': diagnosis,
+              'sha256': accept ? image.checksumSha256 : 'wrong',
+              'size_bytes': image.sizeBytes,
+              'created': false,
+            },
+          );
+        }
+        final body = o.data as Map;
+        return (
+          200,
+          {
+            'upload_id': 'upload',
+            'diagnosis_id': diagnosis,
+            'size_bytes': body['size_bytes'],
+            'chunk_count': body['chunk_count'],
+            'chunk_size': body['chunk_size'],
+            'received_chunks': [0],
+            'status': 'completed',
+            'image_id': 'image',
+          },
+        );
+      });
+      expect((await service().push(refreshCache: false)).failed, 1);
+      expect(await service().queuedCount(), 1);
+      accept = true;
+      expect((await service().push(refreshCache: false)).skipped, 1);
+      expect(recordCalls, 2);
+      expect(heatmaps, 2);
+      expect(await service().queuedCount(), 0);
+    },
+  );
+  test(
+    'PR39 newer state never overwrites a queued clinical decision or baseline',
+    () async {
+      await seed(image: true);
+      await db.upsertDiagnosis(
+        (await db.findDiagnosis(
+          diagnosis,
+        ))!.copyWith(serverVersion: const Value(2)).toCompanion(false),
+      );
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        localOnly: true,
+      );
+      await repo.submitScore(id: diagnosis, score: 8, status: 'agreed');
+      await handoff();
+      await activate();
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.uri.path == '/openapi.json') return (200, _scoreContract());
+        if (o.path == '/sync/operator/push') {
+          final item = ((o.data as Map)['items'] as List).single as Map;
+          if (item['operation'] == 'update') {
+            expect(item['base_version'], 2);
+            return (200, receipt(o, status: 'conflict', serverVersion: 3));
+          }
+          return (200, receipt(o));
+        }
+        if (o.path == '/sync/operator/state') return (200, _serverState());
+        final body = o.data as Map;
+        return (
+          200,
+          {
+            'upload_id': 'upload',
+            'diagnosis_id': diagnosis,
+            'size_bytes': body['size_bytes'],
+            'chunk_count': body['chunk_count'],
+            'chunk_size': body['chunk_size'],
+            'received_chunks': [0],
+            'status': 'completed',
+            'image_id': 'image',
+          },
+        );
+      });
+      expect((await service().push()).conflicts, 1);
+      await db.clearSessionData();
+      await owner(doctor);
+      await outbox.restoreDoctorQueue();
+      final row = (await db.findDiagnosis(diagnosis))!;
+      expect(row.serverVersion, 2);
+      expect(row.validationScore, 8);
+      expect(row.hasConflict, true);
+      final op = (await db.opsWithStatus(syncConflict)).single;
+      expect(op.baseVersion, 2);
+    },
+  );
+
+  test(
+    'PR39 server deletion quarantines pending work without restoring retired patients',
+    () async {
+      await seed(image: true);
+      await handoff();
+      await activate();
+      client.dio.httpClientAdapter = _Adapter(
+        (o) => o.path == '/sync/operator/state'
+            ? (200, _serverState(deleted: true))
+            : (503, {}),
+      );
+      expect((await service().push()).failed, 2);
+      expect(await service().queuedCount(), 2);
+      expect(
+        (await service().queued()).every((e) => e['retired'] == true),
+        true,
+      );
+      await db.clearSessionData();
+      await owner(doctor);
+      await outbox.restoreDoctorQueue();
+      expect(await db.findPatient(patient), isNull);
+      expect(await db.findDiagnosis(diagnosis), isNull);
+    },
+  );
+
   test(
     'received screening and masks remain encrypted and restore only for their doctor',
     () async {
@@ -258,6 +643,17 @@ void main() {
       await activate();
       client.dio.httpClientAdapter = _Adapter((o) {
         if (o.path == '/sync/operator/push') return (200, receipt(o));
+        if (o.path.endsWith('/heatmap')) {
+          return (
+            200,
+            {
+              'diagnosis_id': diagnosis,
+              'sha256': original.checksumSha256,
+              'size_bytes': original.sizeBytes,
+              'created': true,
+            },
+          );
+        }
         final body = o.data as Map;
         return (
           200,
@@ -273,7 +669,7 @@ void main() {
           },
         );
       });
-      expect((await service().push()).applied, 2);
+      expect((await service().push(refreshCache: false)).applied, 2);
       expect(await service().queuedCount(), 0);
       expect(await db.findDiagnosis(diagnosis), isNull);
       await db.clearSessionData();
@@ -576,7 +972,7 @@ void main() {
           );
           return (200, receipt(o));
         });
-        final report = await service().push();
+        final report = await service().push(refreshCache: false);
         expect(posts, supported ? 1 : 0);
         expect(report.blocked, supported ? 0 : 1);
         expect(report.applied, supported ? 1 : 0);
@@ -638,7 +1034,7 @@ void main() {
           await outbox.remove((entry['op'] as Map)['clientOpId'] as String);
         }
       }
-      final report = await service().push();
+      final report = await service().push(refreshCache: false);
       expect(report.blocked, 1);
       expect(requests, 0);
       expect((await service().queued()).length, 1);
@@ -666,7 +1062,12 @@ void main() {
         await handoff();
         await activate();
       });
-      client.dio.httpClientAdapter = _Adapter((o) => (200, receipt(o)));
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.path == '/sync/operator/state') {
+          return (200, {..._serverState(), 'diagnoses': []});
+        }
+        return (200, receipt(o));
+      });
       await tester.pumpWidget(
         MultiProvider(
           providers: [
@@ -907,7 +1308,7 @@ void main() {
         expect(item['client_op_id'], 'patient-op');
         return (200, receipt(o));
       });
-      final report = await service().push();
+      final report = await service().push(refreshCache: false);
       expect(report.applied, 1);
       expect(await service().queued(), isEmpty);
     },
@@ -920,7 +1321,7 @@ void main() {
       requests++;
       return (200, {});
     });
-    await expectLater(service().push(), throwsStateError);
+    await expectLater(service().push(refreshCache: false), throwsStateError);
     expect(requests, 0);
     expect((await service().queued()).length, 1);
   });
@@ -934,7 +1335,7 @@ void main() {
         client.dio.httpClientAdapter = _Adapter(
           (o) => (200, receipt(o, status: status)),
         );
-        final report = await service().push();
+        final report = await service().push(refreshCache: false);
         expect(report.conflicts + report.failed, 1);
         expect((await service().queued()).length, 1);
         await db.clearSessionData();
@@ -956,7 +1357,7 @@ void main() {
     client.dio.httpClientAdapter = _Adapter(
       (o) => (200, receipt(o, ownerId: technician)),
     );
-    expect((await service().push()).failed, 1);
+    expect((await service().push(refreshCache: false)).failed, 1);
     expect((await service().queued()).length, 1);
   });
   test(
@@ -971,7 +1372,7 @@ void main() {
           reason: 'synthetic offline',
         ),
       );
-      expect((await service().push()).failed, 1);
+      expect((await service().push(refreshCache: false)).failed, 1);
       client.dio.httpClientAdapter = _Adapter((o) {
         expect(
           ((o.data as Map)['items'] as List).single['client_op_id'],
@@ -979,7 +1380,7 @@ void main() {
         );
         return (200, receipt(o, status: 'skipped'));
       });
-      expect((await service().push()).skipped, 1);
+      expect((await service().push(refreshCache: false)).skipped, 1);
       expect(await service().queued(), isEmpty);
     },
   );
@@ -995,7 +1396,7 @@ void main() {
         started.complete(o);
         return waiting.future;
       });
-      final run = service().push();
+      final run = service().push(refreshCache: false);
       final failed = expectLater(run, throwsStateError);
       final request = await started.future;
       await auth.logout();
@@ -1047,12 +1448,12 @@ void main() {
           },
         );
       });
-      final first = await service().push();
+      final first = await service().push(refreshCache: false);
       expect(first.applied, 1);
       expect(first.failed, 1);
       expect((await service().queued()).length, 1);
       complete = true;
-      final second = await service().push();
+      final second = await service().push(refreshCache: false);
       expect(second.skipped, 1);
       expect(recordRequests, 2);
       expect(chunkRequests, 1);

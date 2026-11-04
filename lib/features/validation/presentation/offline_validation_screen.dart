@@ -297,8 +297,8 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
           ),
           Text(
             context.trRead(
-              'Pilih skor sebelum konfirmasi. Skor dokter terpisah dari skor AI.',
-              'Select a score before confirming. The doctor score is separate from the AI score.',
+              'Nilai kepercayaan terhadap hasil AI: 0 = sama sekali tidak percaya, 10 = sangat percaya. Pilih skor sebelum konfirmasi; skor tidak menggantikan keputusan dokter.',
+              'Rate your trust in the AI result: 0 = no trust at all, 10 = full trust. Select a score before confirming; it does not replace your assessment.',
             ),
           ),
           const SizedBox(height: 12),

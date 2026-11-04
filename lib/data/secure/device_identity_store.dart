@@ -22,6 +22,13 @@ class DeviceIdentityStore {
   final SecureTokenStorage storage;
   static const _identityKey = 'registered_tablet_identity_v1';
   static const _nonceKey = 'tablet_activation_nonce_v1';
+
+  /// Server refused this registration. Clinical archives and their keys stay.
+  Future<void> clearRegistration() async {
+    await storage.delete(_identityKey);
+    await storage.delete(_nonceKey);
+  }
+
   Future<DeviceIdentity?> read() async {
     final raw = await storage.read(_identityKey);
     if (raw == null) return null;

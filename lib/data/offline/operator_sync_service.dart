@@ -59,7 +59,10 @@ class OperatorSyncService {
     return count;
   }
 
-  Future<SyncReport> push({void Function(int, int)? onProgress}) async {
+  Future<SyncReport> push({
+    void Function(int, int)? onProgress,
+    bool refreshCache = true,
+  }) async {
     if (_running) throw StateError('Sync is already running');
     _running = true;
     try {
@@ -176,6 +179,12 @@ class OperatorSyncService {
                 ].contains(result['status']) ||
                 (result['entity_id'] != null &&
                     result['entity_id'] != op.entityId) ||
+                (result['entity_type'] != null &&
+                    result['entity_type'] != op.entityType) ||
+                [
+                  result['op_version'],
+                  result['server_version'],
+                ].any((v) => v != null && (v is! int || v < 1)) ||
                 (result['owner_user_id'] != null &&
                     result['owner_user_id'] != op.userId) ||
                 (['applied', 'skipped'].contains(result['status']) &&
@@ -203,8 +212,46 @@ class OperatorSyncService {
               continue;
             }
             entry['record_synced'] = true;
+            outbox.applyReceipt(entry, result);
             await outbox.save(entry);
             current();
+          }
+          if (op.entityType == 'diagnosis' &&
+              op.operation == 'create' &&
+              entry['heatmap_synced'] != true) {
+            for (final raw
+                in entry['segmentation_artifacts'] as List? ?? const []) {
+              final artifact = EncryptedXrayArtifact.fromJson(
+                (raw as Map).cast<String, dynamic>(),
+              );
+              if (artifact.id != '${op.entityId}:lesion') continue;
+              if (artifact.tenantId != actor.tenantId ||
+                  artifact.userId != op.userId ||
+                  artifact.deviceId != op.deviceId ||
+                  artifact.mimeType != 'image/png') {
+                throw const FormatException(
+                  'Archived heatmap ownership mismatch',
+                );
+              }
+              final heatmap = await xray.decodeArtifact(artifact);
+              current();
+              final receipt = (await client.dio.put<Object?>(
+                '/diagnoses/${Uri.encodeComponent(op.entityId)}/heatmap',
+                data: heatmap.bytes,
+                options: Options(contentType: 'image/png'),
+              )).data;
+              current();
+              if (receipt is! Map ||
+                  receipt['diagnosis_id'] != op.entityId ||
+                  receipt['sha256'] != heatmap.checksumSha256 ||
+                  receipt['size_bytes'] != heatmap.sizeBytes ||
+                  receipt['created'] is! bool) {
+                throw const FormatException('Invalid heatmap receipt');
+              }
+              entry['heatmap_synced'] = true;
+              await outbox.save(entry);
+              current();
+            }
           }
           if (op.entityType == 'diagnosis' &&
               op.operation == 'create' &&
@@ -242,6 +289,7 @@ class OperatorSyncService {
         }
         onProgress?.call(++done, entries.length);
       }
+      if (refreshCache) await _refreshCache(current);
       return SyncReport(
         applied: applied,
         skipped: skipped,
@@ -252,6 +300,122 @@ class OperatorSyncService {
     } finally {
       _running = false;
     }
+  }
+
+  Future<void> _refreshCache(void Function() current) async {
+    current();
+    final device = await SettingsStore(db).readOrCreateDeviceId();
+    final archived = await outbox.entries(
+      auth.tenantId,
+      device,
+      includeReceived: true,
+    );
+    current();
+    final patients = <String>{}, diagnoses = <String>{};
+    for (final entry in archived) {
+      final patient = (entry['patient'] as Map?)?['id'];
+      final diagnosis = (entry['diagnosis'] as Map?)?['id'];
+      if (patient is String) patients.add(patient);
+      if (diagnosis is String) diagnoses.add(diagnosis);
+    }
+    final records = <String, Map<String, dynamic>>{};
+    final gone = <String, String>{};
+    final patientIds = patients.toList(), diagnosisIds = diagnoses.toList();
+    for (
+      var start = 0;
+      start < max(patientIds.length, diagnosisIds.length);
+      start += 500
+    ) {
+      final p = patientIds.skip(start).take(500).toList();
+      final d = diagnosisIds.skip(start).take(500).toList();
+      final requested = {
+        for (final id in p) 'patient:$id',
+        for (final id in d) 'diagnosis:$id',
+      };
+      final data = (await client.dio.post<Object?>(
+        '/sync/operator/state',
+        data: {'patient_ids': p, 'diagnosis_ids': d},
+      )).data;
+      current();
+      if (data is! Map ||
+          data['patients'] is! List ||
+          data['diagnoses'] is! List ||
+          data['gone'] is! List ||
+          data['server_time'] is! String ||
+          DateTime.tryParse(data['server_time'] as String) == null) {
+        throw const FormatException('Invalid operator state');
+      }
+      final seen = <String>{};
+      for (final kind in ['patient', 'diagnosis']) {
+        for (final raw
+            in data[kind == 'patient' ? 'patients' : 'diagnoses'] as List) {
+          if (raw is! Map<String, dynamic>) {
+            throw const FormatException('Invalid state record');
+          }
+          final key = '$kind:${raw['id']}';
+          if (!requested.contains(key) ||
+              !seen.add(key) ||
+              raw['tenant_id'] != auth.tenantId ||
+              raw['version'] is! int ||
+              (raw['version'] as int) < 1 ||
+              raw['updated_at'] is! String ||
+              DateTime.tryParse(raw['updated_at'] as String) == null) {
+            throw const FormatException('State record identity mismatch');
+          }
+          if (kind == 'diagnosis') {
+            if (!patients.contains(raw['patient_id']) ||
+                raw['is_positive'] is! bool ||
+                raw['confidence'] is! int ||
+                raw['model_version'] is! String ||
+                raw['status'] is! String ||
+                raw['findings'] is! Map ||
+                (raw['validation_score'] != null &&
+                    (raw['validation_score'] is! int ||
+                        (raw['validation_score'] as int) < 0 ||
+                        (raw['validation_score'] as int) > 10))) {
+              throw const FormatException('Invalid diagnosis state');
+            }
+            // A server record may not rebind a retained doctor's diagnosis.
+            for (final entry in archived) {
+              final local = entry['diagnosis'] as Map?;
+              if (local?['id'] == raw['id'] &&
+                  (local?['patientId'] != raw['patient_id'] ||
+                      (raw['created_by'] != null &&
+                          raw['created_by'] != local?['userId']))) {
+                throw const FormatException(
+                  'Diagnosis state ownership mismatch',
+                );
+              }
+            }
+          } else if (raw['name'] is! String ||
+              raw['code'] is! String ||
+              raw['age'] is! int ||
+              raw['gender'] is! String) {
+            throw const FormatException('Invalid patient state');
+          }
+          records[key] = raw;
+        }
+      }
+      for (final raw in data['gone'] as List) {
+        if (raw is! Map) throw const FormatException('Invalid state tombstone');
+        final key = '${raw['entity_type']}:${raw['id']}';
+        if (!requested.contains(key) ||
+            !seen.add(key) ||
+            !['deleted', 'not_found'].contains(raw['reason'])) {
+          throw const FormatException('Invalid state tombstone');
+        }
+        gone[key] = raw['reason'] as String;
+      }
+      if (seen.length != requested.length) {
+        throw const FormatException('Incomplete operator state');
+      }
+    }
+    final generation = db.sessionGeneration;
+    await db.writeForSession(
+      generation,
+      () => outbox.reconcileState(archived, records, gone, current: current),
+    );
+    current();
   }
 
   Future<void> _upload(

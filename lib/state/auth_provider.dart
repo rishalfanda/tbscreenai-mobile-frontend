@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:myapp/data/http/backend_refusal.dart';
 
 import 'package:myapp/domain/models/access_scope.dart';
 import 'package:myapp/domain/models/user_profile.dart';
@@ -23,6 +24,7 @@ class AuthProvider extends ChangeNotifier {
   int _generation = 0;
   bool _disposed = false;
   Future<void>? _logoutInProgress;
+  String? sessionRefusalCode;
 
   bool get isLoggedIn => _status == AuthStatus.authenticated;
   bool get isBusy =>
@@ -41,6 +43,7 @@ class AuthProvider extends ChangeNotifier {
   bool get deviceActivated => _deviceActivated;
   void setDeviceActivated(bool value) {
     _deviceActivated = value;
+    if (value) sessionRefusalCode = null;
     _notifyIfAlive();
   }
 
@@ -100,10 +103,15 @@ class AuthProvider extends ChangeNotifier {
       );
       _ensureCurrent(generation);
       _profile = profile;
+      sessionRefusalCode = null;
       _status = AuthStatus.authenticated;
       _notifyIfAlive();
-    } catch (_) {
+    } catch (error) {
       if (!_disposed && generation == _generation) {
+        sessionRefusalCode = refusalFromError(error);
+        if (requiresTabletActivation(sessionRefusalCode)) {
+          _deviceActivated = false;
+        }
         _profile = null;
         _status = AuthStatus.loggedOut;
         notifyListeners();
@@ -147,7 +155,11 @@ class AuthProvider extends ChangeNotifier {
     return tracked;
   }
 
-  Future<void> expireSession() => logout();
+  Future<void> expireSession({String? code}) {
+    sessionRefusalCode = code;
+    if (requiresTabletActivation(code)) _deviceActivated = false;
+    return logout();
+  }
 
   void _ensureCurrent(int generation) {
     if (_disposed || generation != _generation) {

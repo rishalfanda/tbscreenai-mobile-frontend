@@ -2,6 +2,8 @@ import 'package:myapp/data/secure/doctor_session_store.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:async';
+import 'package:myapp/core/connectivity/connectivity_service.dart';
+import 'package:myapp/data/http/online_session_check.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -241,7 +243,49 @@ class _RouterView extends StatefulWidget {
   State<_RouterView> createState() => _RouterViewState();
 }
 
-class _RouterViewState extends State<_RouterView> {
+class _RouterViewState extends State<_RouterView> with WidgetsBindingObserver {
+  final _connectivity = ConnectivityService();
+  StreamSubscription<bool>? _connectivitySubscription;
+  bool _checkingSession = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_checkSession());
+  }
+
+  Future<void> _checkSession() async {
+    if (!AppConfig.useHttp || !mounted || _checkingSession || _client == null) {
+      return;
+    }
+    _checkingSession = true;
+    try {
+      if (await _connectivity.checkNow() && mounted) {
+        await checkOnlineSession(_client!, context.read<AuthProvider>());
+      }
+    } finally {
+      _checkingSession = false;
+    }
+  }
+
+  Future<void> _watchConnectivity() async {
+    // Check platform availability before subscribing, including desktop tests
+    // where connectivity_plus has no native implementation.
+    final online = await _connectivity.checkNow();
+    if (!mounted) return;
+    _connectivitySubscription ??= _connectivity.onStatusChange
+        .distinct()
+        .listen((online) {
+          if (online) unawaited(_checkSession());
+        });
+    if (online) unawaited(_checkSession());
+  }
+
   bool _ready = !AppConfig.useHttp;
   bool _starting = false;
   String? _startupError;
@@ -261,8 +305,8 @@ class _RouterViewState extends State<_RouterView> {
     if (!identical(_client, client)) {
       unawaited(_sessionSubscription?.cancel());
       _client = client;
-      _sessionSubscription = client.sessionExpired.listen((_) {
-        unawaited(auth.expireSession().catchError((_) {}));
+      _sessionSubscription = client.sessionExpired.listen((event) {
+        unawaited(auth.expireSession(code: event.code).catchError((_) {}));
       });
     }
   }
@@ -272,6 +316,9 @@ class _RouterViewState extends State<_RouterView> {
       final client = context.read<ApiClient>();
       auth.setDeviceActivated(await client.deviceIdentity.read() != null);
       if (auth.deviceActivated) await auth.restoreSession();
+      if (mounted) {
+        unawaited(_watchConnectivity());
+      }
       if (mounted) {
         setState(() {
           _ready = true;
@@ -290,6 +337,8 @@ class _RouterViewState extends State<_RouterView> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_connectivitySubscription?.cancel());
     unawaited(_sessionSubscription?.cancel());
     _router?.dispose();
     super.dispose();

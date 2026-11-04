@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'backend_refusal.dart';
 
 import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/secure/secure_token_storage.dart';
@@ -13,12 +14,13 @@ const String requestBodyFactoryKey = 'request_body_factory';
 
 typedef RequestBodyFactory = Object? Function();
 
-enum SessionEndReason { refreshRejected, repeatedUnauthorized }
+enum SessionEndReason { refreshRejected, repeatedUnauthorized, serverRefused }
 
 class SessionExpiredEvent {
-  const SessionExpiredEvent(this.reason);
+  const SessionExpiredEvent(this.reason, {this.code});
 
   final SessionEndReason reason;
+  final String? code;
 }
 
 /// Owns the in-memory token snapshot and its encrypted at-rest copy.
@@ -313,6 +315,20 @@ class ApiClient {
   ) async {
     final options = error.requestOptions;
     final generation = options.extra[_sessionGenerationKey];
+    final code = backendRefusalCode(error.response?.data);
+    final status = error.response?.statusCode;
+    if (generation == tokens.generation &&
+        (status == 401 || status == 403) &&
+        requiresTabletActivation(code)) {
+      await deviceIdentity.clearRegistration();
+    }
+    if (generation == tokens.generation &&
+        tokens.accessToken != null &&
+        (status == 401 || status == 403) &&
+        endsTabletSession(code)) {
+      await _expire(SessionEndReason.serverRefused, code: code);
+      return handler.next(error);
+    }
     if (generation != tokens.generation ||
         error.response?.statusCode != 401 ||
         _isAuthPath(options.path)) {
@@ -347,7 +363,15 @@ class ApiClient {
       final rejected =
           status != null && status >= 400 && status < 500 && status != 429;
       if (generation == tokens.generation && rejected) {
-        await _expire(SessionEndReason.refreshRejected);
+        if (requiresTabletActivation(
+          backendRefusalCode(refreshError.response?.data),
+        )) {
+          await deviceIdentity.clearRegistration();
+        }
+        await _expire(
+          SessionEndReason.refreshRejected,
+          code: backendRefusalCode(refreshError.response?.data),
+        );
       }
       return handler.next(refreshError);
     } catch (_) {
@@ -403,7 +427,7 @@ class ApiClient {
     return options.copyWith(data: data, headers: headers, extra: extra);
   }
 
-  Future<void> _expire(SessionEndReason reason) {
+  Future<void> _expire(SessionEndReason reason, {String? code}) {
     final running = _expiryInFlight;
     if (running != null) return running;
 
@@ -412,7 +436,7 @@ class ApiClient {
         await tokens.clear();
       } finally {
         if (!_sessionEvents.isClosed) {
-          _sessionEvents.add(SessionExpiredEvent(reason));
+          _sessionEvents.add(SessionExpiredEvent(reason, code: code));
         }
       }
     }();
@@ -422,7 +446,8 @@ class ApiClient {
     });
   }
 
-  bool _isAuthPath(String path) => path.startsWith('/auth/');
+  bool _isAuthPath(String path) =>
+      path == '/auth/login' || path == '/auth/refresh';
 
   DioException _sessionChanged(RequestOptions options) => DioException(
     requestOptions: options,

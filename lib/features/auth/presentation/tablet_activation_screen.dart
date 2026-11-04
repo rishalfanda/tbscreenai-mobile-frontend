@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/data/http/api_client.dart';
+import 'package:myapp/data/http/backend_refusal.dart';
 import 'package:myapp/core/localization/app_language.dart';
 
 class TabletActivationScreen extends StatefulWidget {
@@ -73,6 +74,21 @@ class _TabletActivationScreenState extends State<TabletActivationScreen> {
           style: Theme.of(context).textTheme.headlineSmall,
         ),
         const SizedBox(height: 24),
+        if (context.watch<AuthProvider>().sessionRefusalCode != null)
+          Text(
+            context.trRead(
+              refusalMessage(
+                    context.read<AuthProvider>().sessionRefusalCode,
+                    english: false,
+                  ) ??
+                  'Aktivasi tablet diperlukan.',
+              refusalMessage(
+                    context.read<AuthProvider>().sessionRefusalCode,
+                    english: true,
+                  ) ??
+                  'Tablet activation required.',
+            ),
+          ),
         SecretFormField(
           controller: _code,
           label: context.trRead('Kode aktivasi', 'Activation code'),

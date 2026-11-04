@@ -5,7 +5,7 @@ import 'package:myapp/core/localization/app_language.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import 'package:dio/dio.dart';
+import 'package:myapp/data/http/backend_refusal.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/state/auth_provider.dart';
 import 'package:myapp/core/config/app_config.dart';
@@ -45,22 +45,16 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (failure) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
-      final data = failure is DioException ? failure.response?.data : null;
-      final detail = data is Map ? data['detail'] : null;
-      final expired =
-          detail is Map && detail['code'] == 'temporary_password_expired';
+      final code = refusalFromError(failure);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            expired
-                ? context.trRead(
-                    'Password sementara kedaluwarsa. Minta teknisi mereset password.',
-                    'Temporary password expired. Ask your technician for a reset.',
-                  )
-                : context.trRead(
-                    'Login gagal — periksa email/password atau koneksi server',
-                    'Login failed — check email/password or server connection',
-                  ),
+            context.trRead(
+              refusalMessage(code, english: false) ??
+                  'Login gagal — periksa email/password atau koneksi server',
+              refusalMessage(code, english: true) ??
+                  'Login failed — check email/password or server connection',
+            ),
           ),
           backgroundColor: AppTheme.error,
         ),
@@ -91,6 +85,24 @@ class _LoginScreenState extends State<LoginScreen> {
               context.trRead('Masuk', 'Sign In'),
               style: Theme.of(context).textTheme.headlineSmall,
             ),
+            if (context.watch<AuthProvider>().sessionRefusalCode != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  context.trRead(
+                    refusalMessage(
+                          context.read<AuthProvider>().sessionRefusalCode,
+                          english: false,
+                        ) ??
+                        'Silakan login kembali.',
+                    refusalMessage(
+                          context.read<AuthProvider>().sessionRefusalCode,
+                          english: true,
+                        ) ??
+                        'Please sign in again.',
+                  ),
+                ),
+              ),
             const SizedBox(height: 24),
             TextFormField(
               controller: _emailController,

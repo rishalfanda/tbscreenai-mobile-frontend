@@ -1,5 +1,9 @@
 # Revisi frontend 2 November 2026 — catatan untuk backend
 
+**Tindak lanjut 4 November:** permintaan di bawah adalah snapshot 2 November.
+Backend telah menambahkan kontrak melalui `537dc90`; penyesuaian APK dan batas
+verifikasinya dicatat di [integrasi backend 537dc90](backend537-tablet-integration.md).
+
 Branch frontend: `feat/frontend-revision-nov02`, berbasis `79bc1ce`.
 Tidak ada kode backend yang diubah dalam revisi ini.
 

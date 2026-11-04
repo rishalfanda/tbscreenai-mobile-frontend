@@ -276,7 +276,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.textContaining('Hubungi teknisi'),
-      AppConfig.useHttp ? findsNothing : findsOneWidget,
+      // This isolated widget has no AppLanguage provider, so its original
+      // Indonesian copy is shown in either build environment.
+      findsOneWidget,
     );
     expect(find.text('Buka Pusat Sinkronisasi'), findsNothing);
     expect(tester.takeException(), isNull);

@@ -100,6 +100,138 @@ class DeviceOperatorOutbox {
     );
   }
 
+  /// A receipt proves our operation's version, never a later server edit.
+  void applyReceipt(Map<String, dynamic> entry, Map<String, dynamic> receipt) {
+    final version = receipt['op_version'];
+    final server = receipt['server_version'];
+    entry['receipt'] = {
+      'op_version': version,
+      'server_version': server,
+      'entity_type': receipt['entity_type'],
+    };
+    final op = SyncQueueData.fromJson(entry['op'] as Map<String, dynamic>);
+    final field = op.entityType == 'patient' ? 'patient' : 'diagnosis';
+    final raw = entry[field];
+    if (raw is Map) {
+      entry[field] = {
+        ...raw,
+        'serverVersion': version,
+        if (version == null || server != version) 'hasConflict': true,
+      };
+    }
+    entry['op'] = op.copyWith(baseVersion: Value(version as int?)).toJson();
+  }
+
+  /// Updates only received snapshots. Queued clinical edits retain their old
+  /// baseline; server tombstones prevent restoration without losing the queue.
+  Future<void> reconcileState(
+    List<Map<String, dynamic>> archived,
+    Map<String, Map<String, dynamic>> records,
+    Map<String, String> gone, {
+    required void Function() current,
+  }) async {
+    String identity(Map<String, dynamic> entry) {
+      final op = SyncQueueData.fromJson(entry['op'] as Map<String, dynamic>);
+      return '${op.entityType}:${op.entityId}';
+    }
+
+    final pending = {
+      for (final e in archived)
+        if ((e['op'] as Map)['status'] != syncSynced) identity(e),
+    };
+    for (final entry in archived) {
+      current();
+      final op = SyncQueueData.fromJson(entry['op'] as Map<String, dynamic>);
+      final received = op.status == syncSynced;
+      final key = identity(entry);
+      final patientId = (entry['patient'] as Map?)?['id'];
+      final retired =
+          gone[key] == 'deleted' ||
+          (patientId != null && gone['patient:$patientId'] == 'deleted');
+      final missing = gone[key] == 'not_found' && !pending.contains(key);
+      final cacheKey =
+          '$cachePrefix${op.userId}:${op.entityType}:${op.entityId}';
+      if (retired || (received && missing)) {
+        if (received) {
+          await db.deleteSetting(cacheKey);
+        } else {
+          entry['retired'] = true;
+          entry['op'] = op
+              .copyWith(
+                status: syncConflict,
+                detail: const Value('server_deleted'),
+              )
+              .toJson();
+          await save(entry);
+        }
+        continue;
+      }
+      if (!received) continue;
+      final patient = records['patient:$patientId'];
+      if (patient != null && !pending.contains('patient:$patientId')) {
+        final local = LocalPatient.fromJson(
+          entry['patient'] as Map<String, dynamic>,
+        );
+        entry['patient'] = local
+            .copyWith(
+              code: patient['code'] as String,
+              name: patient['name'] as String,
+              age: patient['age'] as int,
+              gender: patient['gender'] as String,
+              status: patient['status'] as String? ?? 'Normal',
+              confidence: Value(patient['confidence'] as int?),
+              lastVisit: Value(patient['last_visit'] as String?),
+              history: jsonEncode(patient['history'] ?? []),
+              serverVersion: Value(patient['version'] as int),
+              updatedAt: Value(DateTime.parse(patient['updated_at'] as String)),
+              hasConflict: false,
+            )
+            .toJson();
+      }
+      final diagnosisId = (entry['diagnosis'] as Map?)?['id'];
+      final diagnosis = records['diagnosis:$diagnosisId'];
+      if (diagnosis != null && !pending.contains('diagnosis:$diagnosisId')) {
+        final local = LocalDiagnose.fromJson(
+          entry['diagnosis'] as Map<String, dynamic>,
+        );
+        final clinical =
+            jsonDecode(local.clinicalSnapshot) as Map<String, dynamic>;
+        clinical.remove('local_validation_v1');
+        entry['diagnosis'] = local
+            .copyWith(
+              isPositive: diagnosis['is_positive'] as bool,
+              confidence: diagnosis['confidence'] as int,
+              modelVersion: diagnosis['model_version'] as String,
+              status: diagnosis['status'] as String,
+              doctorNote: Value(diagnosis['doctor_note'] as String?),
+              validationScore: Value(diagnosis['validation_score'] as int?),
+              validatedBy: Value(diagnosis['validated_by'] as String?),
+              validatedAt: Value(
+                DateTime.tryParse(diagnosis['validated_at'] as String? ?? ''),
+              ),
+              serverVersion: Value(diagnosis['version'] as int),
+              updatedAt: Value(
+                DateTime.parse(diagnosis['updated_at'] as String),
+              ),
+              findings: jsonEncode(diagnosis['findings']),
+              clinicalSnapshot: jsonEncode(clinical),
+              hasConflict: false,
+              saveStatus: 'saved',
+            )
+            .toJson();
+      }
+      final record = records[key];
+      if (record != null && !pending.contains(key)) {
+        entry['op'] = op
+            .copyWith(baseVersion: Value(record['version'] as int))
+            .toJson();
+      }
+      current();
+      await save(entry, cacheKey: cacheKey);
+    }
+    current();
+  }
+
   /// Counts metadata in SQLite without loading/decrypting image archives.
   Future<int> count(String tenantId, String deviceId) async {
     final legacy = await db
@@ -223,6 +355,14 @@ class DeviceOperatorOutbox {
         );
       }
       for (final op in ops) {
+        if (op.status == syncSynced &&
+            await db.getSetting(
+                  '$cachePrefix${op.userId}:${op.entityType}:${op.entityId}',
+                ) !=
+                null) {
+          // An acknowledged retained snapshot is not pending upload work.
+          continue;
+        }
         if (op.tenantId != owner.tenantId ||
             op.userId != owner.userId ||
             op.deviceId != owner.deviceId) {
@@ -301,6 +441,7 @@ class DeviceOperatorOutbox {
     );
     await db.writeForSession(generation, () async {
       for (final entry in saved) {
+        if (entry['retired'] == true) continue;
         final archivedOp = SyncQueueData.fromJson(
           entry['op'] as Map<String, dynamic>,
         );
@@ -355,6 +496,7 @@ class DeviceOperatorOutbox {
         );
       }
       for (final entry in saved) {
+        if (entry['retired'] == true) continue;
         final op = SyncQueueData.fromJson(entry['op'] as Map<String, dynamic>);
         if (op.status == syncConflict) {
           if (op.entityType == 'patient') {
