@@ -452,6 +452,118 @@ void main() {
       expect(await store.activeVersion(), isNull);
       expect(await settings.readInstalledModelVersion(), isNull);
     });
+
+    test('P2 regression: ModelUpdateService clears active and installed version if engine.init() fails on fallback candidate', () async {
+      final tempDir = await Directory.systemTemp.createTemp('service_fallback_fail_');
+      addTearDown(() => tempDir.delete(recursive: true));
+
+      final store = ModelStore(rootProvider: () async => tempDir);
+
+      for (final (name, date) in [
+        ('stable_v1', '2026-08-01T00:00:00Z'),
+        ('stable_v2', '2026-09-01T00:00:00Z'),
+      ]) {
+        final dir = Directory('${tempDir.path}${Platform.pathSeparator}$name');
+        await dir.create(recursive: true);
+        await File('${dir.path}${Platform.pathSeparator}manifest.json').writeAsString('{}');
+        await store.writeBundleMeta(name, {'released_utc': date});
+        await store.setBundleStatus(name, ModelBundleStatus.verified);
+      }
+
+      final db = AppDatabase(NativeDatabase.memory());
+      final settings = SettingsStore(db);
+      final client = ApiClient(baseUrl: 'https://example.com/api/v1');
+      addTearDown(db.close);
+      addTearDown(client.close);
+
+      // Fail engine.init() specifically when candidate stable_v1 is active
+      final engine = _FailingSmokeTestEngine(
+        failOnSmokeTest: false,
+        failingBundlesOnInit: {'stable_v1'},
+        store: store,
+      );
+      final pipeline = ModelUpdatePipeline(
+        downloadDio: Dio(),
+        engine: engine,
+        store: store,
+      );
+      final service = ModelUpdateService(
+        client: client,
+        settings: settings,
+        db: db,
+        modelPipeline: pipeline,
+        store: store,
+      );
+
+      // Initially activate stable_v2
+      await store.activate('stable_v2');
+      await settings.saveInstalledModelVersion('stable_v2');
+      expect(await store.activeVersion(), 'stable_v2');
+
+      // Delete active model stable_v2 -> candidate stable_v1 fails engine.init()
+      await service.deleteModelBundle('stable_v2');
+
+      // Crucial P2 assertion: ACTIVE and installed setting must NOT point to stable_v1
+      expect(await store.activeVersion(), isNull);
+      expect(await settings.readInstalledModelVersion(), isNull);
+      expect(await store.getBundleStatus('stable_v1'), ModelBundleStatus.verificationFailed);
+    });
+
+    test('ModelUpdateService falls back to next verified model if first candidate fails engine.init()', () async {
+      final tempDir = await Directory.systemTemp.createTemp('service_fallback_multi_');
+      addTearDown(() => tempDir.delete(recursive: true));
+
+      final store = ModelStore(rootProvider: () async => tempDir);
+
+      for (final (name, date) in [
+        ('stable_v1', '2026-07-01T00:00:00Z'),
+        ('stable_v2', '2026-08-01T00:00:00Z'),
+        ('stable_v3', '2026-09-01T00:00:00Z'),
+      ]) {
+        final dir = Directory('${tempDir.path}${Platform.pathSeparator}$name');
+        await dir.create(recursive: true);
+        await File('${dir.path}${Platform.pathSeparator}manifest.json').writeAsString('{}');
+        await store.writeBundleMeta(name, {'released_utc': date});
+        await store.setBundleStatus(name, ModelBundleStatus.verified);
+      }
+
+      final db = AppDatabase(NativeDatabase.memory());
+      final settings = SettingsStore(db);
+      final client = ApiClient(baseUrl: 'https://example.com/api/v1');
+      addTearDown(db.close);
+      addTearDown(client.close);
+
+      // Fail engine.init() specifically when stable_v2 is active
+      final engine = _FailingSmokeTestEngine(
+        failOnSmokeTest: false,
+        failingBundlesOnInit: {'stable_v2'},
+        store: store,
+      );
+      final pipeline = ModelUpdatePipeline(
+        downloadDio: Dio(),
+        engine: engine,
+        store: store,
+      );
+      final service = ModelUpdateService(
+        client: client,
+        settings: settings,
+        db: db,
+        modelPipeline: pipeline,
+        store: store,
+      );
+
+      // Initially activate stable_v3
+      await store.activate('stable_v3');
+      await settings.saveInstalledModelVersion('stable_v3');
+
+      // Delete active model stable_v3 -> candidate stable_v2 fails engine.init(), falls back to stable_v1
+      await service.deleteModelBundle('stable_v3');
+
+      expect(await store.activeVersion(), 'stable_v1');
+      expect(await settings.readInstalledModelVersion(), 'stable_v1');
+      expect(await store.getBundleStatus('stable_v2'), ModelBundleStatus.verificationFailed);
+      expect(await store.getBundleStatus('stable_v1'), ModelBundleStatus.verified);
+    });
   });
 }
 
@@ -509,20 +621,35 @@ class _MockStoreForRollback extends ModelStore {
   }
 
   @override
+  Future<List<String>> listInstalledBundleKeys() async => installed.toList();
+
+  @override
   Future<void> clearActive() async {
     active = null;
   }
 }
 
 class _FailingSmokeTestEngine extends OnnxInferenceEngine {
-  _FailingSmokeTestEngine({this.failOnSmokeTest = true});
+  _FailingSmokeTestEngine({
+    this.failOnSmokeTest = true,
+    this.failingBundlesOnInit,
+    this.store,
+  });
   final bool failOnSmokeTest;
+  final Set<String>? failingBundlesOnInit;
+  final ModelStore? store;
   int initCount = 0;
   int smokeTestCount = 0;
 
   @override
   Future<bool> init() async {
     initCount++;
+    if (failingBundlesOnInit != null && store != null) {
+      final active = await store!.activeVersion();
+      if (active != null && failingBundlesOnInit!.contains(active)) {
+        return false;
+      }
+    }
     return true;
   }
 

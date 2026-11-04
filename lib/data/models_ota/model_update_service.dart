@@ -298,17 +298,43 @@ class ModelUpdateService {
     await _modelPipeline.deleteBundle(bundleKey);
 
     if (wasActive) {
-      final nextVerified = await _store.findNewestVerifiedBundleKey();
-      if (nextVerified != null) {
-        await _store.activate(nextVerified);
-        await _modelPipeline.engine.init();
-        if (session == _db.sessionGeneration) {
-          await _db.writeForSession(
-            session,
-            () => _settings.saveInstalledModelVersion(nextVerified),
+      var activated = false;
+      final tried = <String>{};
+      var candidate = await _store.findNewestVerifiedBundleKey();
+
+      while (candidate != null && !tried.contains(candidate)) {
+        tried.add(candidate);
+        await _store.activate(candidate);
+        var initPassed = false;
+        try {
+          initPassed = await _modelPipeline.engine.init();
+        } catch (_) {
+          initPassed = false;
+        }
+
+        if (initPassed) {
+          activated = true;
+          if (session == _db.sessionGeneration) {
+            await _db.writeForSession(
+              session,
+              () => _settings.saveInstalledModelVersion(candidate!),
+            );
+          }
+          break;
+        } else {
+          await _store.clearActive();
+          await _store.setBundleStatus(
+            candidate,
+            ModelBundleStatus.verificationFailed,
+            error: 'Inference engine failed to initialize bundle.',
+          );
+          candidate = await _store.findNewestVerifiedBundleKey(
+            excludingKeys: tried,
           );
         }
-      } else {
+      }
+
+      if (!activated) {
         await _store.clearActive();
         await _modelPipeline.engine.init();
         if (session == _db.sessionGeneration) {

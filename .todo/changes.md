@@ -29,9 +29,10 @@ This update addresses the latest review comment on Pull Request #7 (P1 issue whe
 ## 4. Service-Level Fallback & Server-Local Merging (`ModelUpdateService` & `MockSyncRepository`)
 - **Default State:** Defaults to no model selected (`getInstalledModelVersion()` returns `null` when no verified model is active).
 - **Refresh Catalog:** Merges server models (`GET /models` and `/models/check`) with models stored locally on the device so both remote and local models are displayed.
-- **Active Model Deletion Fallback:**
-  - When the active model is deleted, `deleteModelBundle()` automatically identifies the newest remaining verified model in the app and activates it.
-  - If no verified models remain, it resets to the default state (no model selected) and clears settings.
+- **Active Model Deletion Fallback (with Engine Init Verification):**
+  - When the active model is deleted, `deleteModelBundle()` identifies candidate verified models and validates each candidate with `engine.init()`.
+  - If a candidate fails `engine.init()`, it clears `ACTIVE`, marks the candidate as `verificationFailed`, and attempts fallback to the next verified model.
+  - If no candidates succeed (or no verified models remain), it resets to the default state (clearing `ACTIVE`, unloading engine, and clearing settings).
 
 ---
 

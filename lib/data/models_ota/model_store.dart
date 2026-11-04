@@ -99,11 +99,15 @@ class ModelStore {
 
   /// Finds the newest verified model bundle key among installed bundles.
   /// Returns `null` if no verified bundles are installed.
-  Future<String?> findNewestVerifiedBundleKey({String? excludingKey}) async {
+  Future<String?> findNewestVerifiedBundleKey({
+    String? excludingKey,
+    Set<String>? excludingKeys,
+  }) async {
     final installed = await listInstalledBundleKeys();
     final verifiedKeys = <String>[];
     for (final key in installed) {
       if (excludingKey != null && key == excludingKey) continue;
+      if (excludingKeys != null && excludingKeys.contains(key)) continue;
       if (await getBundleStatus(key) == ModelBundleStatus.verified) {
         verifiedKeys.add(key);
       }
