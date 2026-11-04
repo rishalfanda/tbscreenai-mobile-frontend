@@ -150,12 +150,57 @@ String localize(BuildContext context, String text) {
     if (failedMsg != null) {
       return '${failedMsg.group(1)} failed to send — retained in queue, will retry on next sync.';
     }
+    final deleteItemPrompt = RegExp(
+      r'^Apakah Anda yakin ingin menghapus (.*)\? Tindakan ini tidak dapat dibatalkan\.$',
+    ).firstMatch(text);
+    if (deleteItemPrompt != null) {
+      return 'Are you sure you want to delete ${deleteItemPrompt.group(1)}? This action cannot be undone.';
+    }
+    final ditambahkanDate = RegExp(r'^Ditambahkan (.+)$').firstMatch(text);
+    if (ditambahkanDate != null) {
+      return 'Added ${ditambahkanDate.group(1)}';
+    }
+    final volId = RegExp(r'^Jumlah skrining, (\d+) hari terakhir$').firstMatch(text);
+    if (volId != null) {
+      return 'Screening volume, last ${volId.group(1)} days';
+    }
     return _stagingEnglish[text] ?? _englishLabels[text] ?? text;
   }
   final translated = _stagingIndonesian[text] ?? _indonesian[text];
   if (translated != null) return translated;
   if (text.startsWith('TB Indication Level: ')) {
     return 'Level Indikasi TB: ${text.substring(21)}';
+  }
+  final screeningVolume = RegExp(r'^Screening volume, last (\d+) days$').firstMatch(text);
+  if (screeningVolume != null) {
+    return 'Jumlah skrining, ${screeningVolume.group(1)} hari terakhir';
+  }
+  final addedDate = RegExp(r'^Added (.+)$').firstMatch(text);
+  if (addedDate != null) {
+    return 'Ditambahkan ${addedDate.group(1)}';
+  }
+  final valErr = RegExp(r'^Validation was not saved: (.*)$').firstMatch(text);
+  if (valErr != null) {
+    return 'Validasi gagal disimpan: ${valErr.group(1)}';
+  }
+  final confErr = RegExp(r'^Conflict was not resolved: (.*)$').firstMatch(text);
+  if (confErr != null) {
+    return 'Konflik gagal diselesaikan: ${confErr.group(1)}';
+  }
+  final verdictMatch = RegExp(r'^Verdict: (.*)$').firstMatch(text);
+  if (verdictMatch != null) {
+    final st = verdictMatch.group(1)!;
+    final stTr = switch (st.toLowerCase()) {
+      'agreed' => 'Disetujui',
+      'disagreed' => 'Ditolak',
+      'pending' => 'Menunggu',
+      'unavailable' => 'Tidak tersedia',
+      _ => st,
+    };
+    return 'Keputusan: $stTr';
+  }
+  if (text.startsWith('Note: ')) {
+    return 'Catatan: ${text.substring(6)}';
   }
   // Display templates only; substituted account values are preserved.
   if (text.startsWith('Welcome back, ')) {
@@ -351,6 +396,21 @@ const _stagingEnglish = <String, String>{
       'Data is de-identified in accordance with medical data privacy standards before transmission.',
   'Saya mengonfirmasi bahwa data ini siap dicadangkan ke server pusat dan persetujuan pasien telah diperoleh.':
       'I confirm that this data is ready to be backed up to the central server and patient consent has been obtained.',
+  'Pilih Sumber Citra': 'Select Image Source',
+  'Flashdisk USB / Berkas': 'USB Flash Drive / Files',
+  'Buka pengelola berkas untuk memilih citra dari flashdisk USB atau memori':
+      'Open file manager to select image from USB flash drive or storage',
+  'Pastikan flashdisk USB sudah terpasang di perangkat':
+      'Make sure the USB flash drive is connected to the device',
+  'Galeri Foto': 'Photo Gallery',
+  'Pilih citra dari galeri foto perangkat':
+      'Select an image from device photo gallery',
+  'Hapus Rontgen': 'Remove X-Ray',
+  'Dinonaktifkan sampai kebijakan PHI untuk hasil tersimpan disetujui.':
+      'Disabled until PHI policy for stored results is approved.',
+  'Apakah Anda yakin ingin mengatur ulang data? Seluruh data pasien dan citra rontgen yang belum dianalisis akan dihapus.':
+      'Are you sure you want to reset? All unanalyzed patient data and X-ray images will be cleared.',
+  'Tidak': 'No',
 };
 
 final _stagingIndonesian = <String, String>{
@@ -367,6 +427,38 @@ final _stagingIndonesian = <String, String>{
   'Technician': 'Teknisi',
   'Users': 'Pengguna',
   'Models': 'Model',
+  'Tenant': 'Instansi / Tenant',
+  'TBScreen.AI': 'TBScreen.AI',
+  '© 2026 TBScreen. All rights reserved.':
+      '© 2026 TBScreen. Seluruh hak cipta dilindungi.',
+  'Close camera': 'Tutup kamera',
+  'Turn flash off': 'Matikan lampu kilat',
+  'Turn flash on': 'Nyalakan lampu kilat',
+  'Switch camera': 'Ganti kamera',
+  'The server changed after this device loaded the diagnosis.':
+      'Data di server telah berubah setelah perangkat ini memuat diagnosis.',
+  'Doctor': 'Dokter',
+  'Doctor Review': 'Tinjauan Dokter',
+  'Validate AI screening results': 'Validasi hasil skrining AI',
+  'AI Screening Result': 'Hasil Skrining AI',
+  'Heatmap not available for this case':
+      'Peta panas tidak tersedia untuk kasus ini',
+  "Doctor's Note": 'Catatan Dokter',
+  'Disagree': 'Tidak Setuju',
+  'Agree with AI Result': 'Setuju dengan Hasil AI',
+  'Re-validate': 'Validasi Ulang',
+  'Confirm conflict decision': 'Konfirmasi keputusan konflik',
+  'Cancel / keep open': 'Batal / tetap buka',
+  'Keep server': 'Gunakan versi server',
+  'Reapply local': 'Terapkan versi lokal',
+  'Reconnect to fetch the authoritative server snapshot.':
+      'Hubungkan kembali untuk mengambil data server terbaru.',
+  'Select a patient from the list to review\nthe AI screening result':
+      'Pilih pasien dari daftar untuk meninjau\nhasil skrining AI',
+  'Conflict details are loading. No clinical value was overwritten.':
+      'Detail konflik sedang dimuat. Tidak ada data klinis yang ditimpa.',
+  'Online': 'Online',
+  'Offline': 'Offline',
   for (final entry in _stagingEnglish.entries) entry.value: entry.key,
 };
 

@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/core/theme/app_theme.dart';
@@ -85,6 +86,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
             children: [
               SizedBox(
                 child: _actionButton(
+                  context,
                   Icons.save_rounded,
                   _saveButtonLabel(diagnosis.saveStatus),
                   onPressed:
@@ -99,6 +101,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _actionButton(
+                context,
                 Icons.picture_as_pdf_rounded,
                 'PDF',
                 tooltip:
@@ -106,6 +109,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _actionButton(
+                context,
                 Icons.print_rounded,
                 'Cetak',
                 tooltip:
@@ -137,6 +141,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
   }
 
   Widget _actionButton(
+    BuildContext context,
     IconData icon,
     String label, {
     VoidCallback? onPressed,
@@ -159,7 +164,9 @@ class RuntimeAndActionsCard extends StatelessWidget {
         ),
       ),
     );
-    return tooltip == null ? button : Tooltip(message: tooltip, child: button);
+    return tooltip == null
+        ? button
+        : Tooltip(message: localize(context, tooltip), child: button);
   }
 
   String _saveButtonLabel(ScreeningSaveStatus status) => switch (status) {

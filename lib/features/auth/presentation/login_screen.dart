@@ -197,10 +197,16 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {
-                                return 'Email wajib diisi';
+                                return context.tr(
+                                  'Email wajib diisi',
+                                  'Email is required',
+                                );
                               }
                               if (!value.contains('@')) {
-                                return 'Format email belum valid';
+                                return context.tr(
+                                  'Format email belum valid',
+                                  'Invalid email format',
+                                );
                               }
                               return null;
                             },
@@ -254,7 +260,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             validator: (value) {
                               if (value == null || value.isEmpty) {
-                                return 'Password wajib diisi';
+                                return context.tr(
+                                  'Password wajib diisi',
+                                  'Password is required',
+                                );
                               }
                               return null;
                             },

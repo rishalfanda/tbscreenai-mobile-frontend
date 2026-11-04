@@ -1032,7 +1032,7 @@ class _ImageSourceSheet extends StatelessWidget {
             const Row(
               children: [
                 SizedBox(width: 8),
-                Text(
+                AppText(
                   'Pilih Sumber Citra',
                   style: TextStyle(
                     color: diagnosisText,
@@ -1107,7 +1107,7 @@ class _SourceTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    AppText(
                       title,
                       style: const TextStyle(
                         color: diagnosisText,
@@ -1116,7 +1116,7 @@ class _SourceTile extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 3),
-                    Text(
+                    AppText(
                       subtitle,
                       style: const TextStyle(
                         fontSize: 12.5,
@@ -1147,7 +1147,7 @@ class _SourceTile extends StatelessWidget {
                             ),
                             const SizedBox(width: 5),
                             Flexible(
-                              child: Text(
+                              child: AppText(
                                 badge!,
                                 style: TextStyle(
                                   fontSize: 11,

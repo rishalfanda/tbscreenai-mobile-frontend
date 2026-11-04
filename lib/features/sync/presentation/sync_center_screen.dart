@@ -118,7 +118,7 @@ class _ConnectionChipState extends State<_ConnectionChip> {
         size: 10,
         color: isOnline ? AppTheme.success : AppTheme.textSecondary,
       ),
-      label: Text(
+      label: AppText(
         isOnline ? 'Online' : 'Offline',
         style: TextStyle(
           fontSize: 12,
@@ -670,57 +670,118 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
               : AppTheme.borderLight,
         ),
       ),
-      child: Row(
-        children: [
-          Icon(
-            hasActive ? Icons.check_circle_rounded : Icons.info_outline_rounded,
-            size: 20,
-            color: hasActive ? AppTheme.primary : AppTheme.textSecondary,
-          ),
-          const SizedBox(width: AppTheme.sp8),
-          Expanded(
-            child: Column(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 280;
+          final statusBadge = hasActive
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.success.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppTheme.success.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: const AppText(
+                    'SIAP INFERENSI',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.success,
+                    ),
+                  ),
+                )
+              : null;
+
+          if (isNarrow) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                AppText(
-                  hasActive ? 'Model AI Aktif' : 'Belum Ada Model Aktif',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: hasActive ? AppTheme.primary : AppTheme.textSecondary,
-                  ),
+                Row(
+                  children: [
+                    Icon(
+                      hasActive
+                          ? Icons.check_circle_rounded
+                          : Icons.info_outline_rounded,
+                      size: 20,
+                      color: hasActive ? AppTheme.primary : AppTheme.textSecondary,
+                    ),
+                    const SizedBox(width: AppTheme.sp8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          AppText(
+                            hasActive ? 'Model AI Aktif' : 'Belum Ada Model Aktif',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: hasActive
+                                  ? AppTheme.primary
+                                  : AppTheme.textSecondary,
+                            ),
+                          ),
+                          AppText(
+                            hasActive ? _currentVersion : 'TIDAK ADA MODEL AKTIF',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.navy,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                AppText(
-                  hasActive ? _currentVersion : 'TIDAK ADA MODEL AKTIF',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.navy,
-                  ),
-                ),
+                if (statusBadge != null) ...[
+                  const SizedBox(height: AppTheme.sp8),
+                  statusBadge,
+                ],
               ],
-            ),
-          ),
-          if (hasActive)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppTheme.success.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: AppTheme.success.withValues(alpha: 0.3),
+            );
+          }
+
+          return Row(
+            children: [
+              Icon(
+                hasActive
+                    ? Icons.check_circle_rounded
+                    : Icons.info_outline_rounded,
+                size: 20,
+                color: hasActive ? AppTheme.primary : AppTheme.textSecondary,
+              ),
+              const SizedBox(width: AppTheme.sp8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AppText(
+                      hasActive ? 'Model AI Aktif' : 'Belum Ada Model Aktif',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: hasActive
+                            ? AppTheme.primary
+                            : AppTheme.textSecondary,
+                      ),
+                    ),
+                    AppText(
+                      hasActive ? _currentVersion : 'TIDAK ADA MODEL AKTIF',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.navy,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              child: const AppText(
-                'SIAP INFERENSI',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.success,
-                ),
-              ),
-            ),
-        ],
+              ?statusBadge,
+            ],
+          );
+        },
       ),
     );
   }
@@ -1452,26 +1513,56 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 130,
-            child: AppText(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppTheme.textSecondary,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 260;
+          if (isNarrow) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppText(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                AppText(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 130,
+                child: AppText(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
               ),
-            ),
-          ),
-          Expanded(
-            child: AppText(
-              value,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
+              Expanded(
+                child: AppText(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

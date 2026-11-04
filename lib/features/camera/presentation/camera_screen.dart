@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/localization/app_text.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -512,7 +513,7 @@ class _CameraScreenState extends State<CameraScreen>
     required VoidCallback? onPressed,
   }) {
     return IconButton(
-      tooltip: tooltip,
+      tooltip: localize(context, tooltip),
       onPressed: onPressed,
       style: IconButton.styleFrom(
         minimumSize: const Size(52, 52),

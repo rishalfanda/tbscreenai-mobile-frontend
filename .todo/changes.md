@@ -85,3 +85,24 @@ This update addresses the latest review comment on Pull Request #7 (P1 issue whe
   - **`lib/features/sync/presentation/sync_center_screen.dart` & `lib/features/shared/presentation/model_initiation_dialog.dart`:** Replaced hardcoded `Text(...)` widgets with `AppText(...)`, localized tooltips via `localize(context, ...)`, and fixed UTF-8 punctuation (`•` and `—`).
 - **Verification:**
   - Added `SyncCenterScreen language localization (EN / ID)` widget test in `test/sync_center_test.dart` (`18/18` tests in `sync_center_test.dart` and `language_regression_test.dart` passed).
+
+---
+
+## 9. Comprehensive UI Localization Audit & Full Test Suite Pass
+- **Audit & Standardization across All Screens:**
+  - Audited all user-facing presentation pages across `lib/features/` (`account`, `auth`, `camera`, `dashboard`, `dataset`, `diagnosis`, `institution`, `patients`, `shared`, `sync`, `validation`).
+  - **`lib/features/diagnosis/presentation/widgets/diagnosis_input_tab.dart`:** Replaced raw `Text` widgets in `_SourceSelectionSheet` and `_SourceTile` (sheet title, title, subtitle, USB hint badge) with `AppText`.
+  - **`lib/features/diagnosis/presentation/widgets/input/dashed_upload_panel.dart`:** Localized the `'Hapus Rontgen'` tooltip via `localize(context, ...)`.
+  - **`lib/features/diagnosis/presentation/widgets/result/runtime_and_actions_card.dart`:** Localized action button tooltips (such as PHI policy disclaimer) with `localize(context, ...)`.
+  - **`lib/features/auth/presentation/login_screen.dart`:** Localized form field validators (`Email wajib diisi`, `Format email belum valid`, `Password wajib diisi`) using `context.tr(...)`.
+  - **`lib/features/camera/presentation/camera_screen.dart`:** Localized round button tooltips (`Close camera`, `Turn flash off/on`, `Switch camera`) with `localize(context, ...)`.
+  - **`lib/features/validation/presentation/validation_screen.dart`:** Converted fallback conflict text to `AppText` with bilingual support for verdicts, doctor notes, and conflict resolution options.
+  - **`lib/features/sync/presentation/sync_center_screen.dart`:** Localized connection status chip (`Online` / `Offline`) with `AppText` and added responsive `LayoutBuilder` wrapping to eliminate horizontal overflow at 320px screen width.
+- **`lib/core/localization/app_language.dart` Enhancements:**
+  - Expanded `_stagingEnglish` with image source selection options, reset confirmations, and tooltips.
+  - Expanded `_stagingIndonesian` with tenant metadata, camera control tooltips, doctor review validations, conflict dialog strings, and connection states.
+  - Added dynamic regex matchers in `localize()` for screening volume periods with variable day counts, added dates, deletion confirmation prompts, validation error messages, and verdict statuses.
+- **Regression Tests & Verification:**
+  - Added `newly added UI strings translate correctly in both languages` test in `test/language_regression_test.dart` verifying all audited UI strings translate accurately in both English and Indonesian modes.
+  - Ran `flutter analyze` with 0 warnings/errors.
+  - Executed the full test suite (`flutter test`) across all 49 test files with temporary directory redirected to `build\tmp`. All **347 test cases passed cleanly** with zero failures.
