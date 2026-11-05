@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_palette.dart';
 
@@ -13,7 +14,7 @@ class SectionLabel extends StatelessWidget {
       children: [
         Icon(icon, size: 19, color: const Color(0xFFD7DEE8)),
         const SizedBox(width: 6),
-        Text(
+        AppText(
           text,
           style: const TextStyle(
             color: diagnosisText,
@@ -25,4 +26,3 @@ class SectionLabel extends StatelessWidget {
     );
   }
 }
-

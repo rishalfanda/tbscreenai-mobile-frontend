@@ -1,3 +1,5 @@
+import 'package:myapp/core/localization/app_language.dart';
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_palette.dart';
@@ -29,12 +31,25 @@ class DashedUploadPanel extends StatelessWidget {
         child: ColoredBox(
           color: diagnosisInput,
           child: loading
-              ? _loadingState()
-              : (image == null ? _emptyState() : _preview()),
+              ? _scrollableContent(_loadingState())
+              : (image == null
+                    ? _scrollableContent(_emptyState())
+                    : _preview(context)),
         ),
       ),
     );
   }
+
+  Widget _scrollableContent(Widget child) => LayoutBuilder(
+    builder: (context, constraints) => SingleChildScrollView(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: constraints.hasBoundedHeight ? constraints.maxHeight : 0,
+        ),
+        child: child,
+      ),
+    ),
+  );
 
   Widget _loadingState() {
     return Center(
@@ -55,7 +70,7 @@ class DashedUploadPanel extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            Text(
+            AppText(
               loadingMessage,
               textAlign: TextAlign.center,
               style: const TextStyle(
@@ -65,7 +80,7 @@ class DashedUploadPanel extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            const AppText(
               'Menyesuaikan kontras dan histogram warna dengan citra referensi acuan.',
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -92,7 +107,7 @@ class DashedUploadPanel extends StatelessWidget {
             color: diagnosisMuted,
           ),
           const SizedBox(height: 16),
-          const Text(
+          const AppText(
             'Unggah Citra Rontgen',
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -102,7 +117,7 @@ class DashedUploadPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          const AppText(
             'PNG/JPEG - Maksimal 25 MB dan 20 juta pixel. Ekspor DICOM dahulu.',
             style: TextStyle(color: Color(0xFF71809A), fontSize: 12),
           ),
@@ -116,7 +131,7 @@ class DashedUploadPanel extends StatelessWidget {
                 key: const Key('upload-xray'),
                 onPressed: onUpload,
                 icon: const Icon(Icons.upload_file_rounded, size: 19),
-                label: const Text('Pilih Gambar'),
+                label: const AppText('Pilih Gambar'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: diagnosisAccent,
                   side: const BorderSide(color: diagnosisAccent),
@@ -126,13 +141,13 @@ class DashedUploadPanel extends StatelessWidget {
                 key: const Key('capture-xray'),
                 onPressed: onCamera,
                 icon: const Icon(Icons.photo_camera_rounded, size: 19),
-                label: const Text('Gunakan Kamera'),
+                label: const AppText('Gunakan Kamera'),
                 style: FilledButton.styleFrom(backgroundColor: diagnosisAction),
               ),
             ],
           ),
           const SizedBox(height: 14),
-          const Text(
+          const AppText(
             'Gunakan citra rontgen digital asli jika tersedia. Pengambilan foto '
             'dengan kamera dapat menurunkan kualitas gambar.',
             textAlign: TextAlign.center,
@@ -143,7 +158,7 @@ class DashedUploadPanel extends StatelessWidget {
     );
   }
 
-  Widget _preview() {
+  Widget _preview(BuildContext context) {
     final current = image!;
     return Stack(
       fit: StackFit.expand,
@@ -179,7 +194,7 @@ class DashedUploadPanel extends StatelessWidget {
           top: 10,
           right: 10,
           child: IconButton(
-            tooltip: 'Hapus Rontgen',
+            tooltip: localize(context, 'Hapus Rontgen'),
             onPressed: onRemove,
             style: IconButton.styleFrom(
               backgroundColor: Colors.black.withValues(alpha: 0.72),

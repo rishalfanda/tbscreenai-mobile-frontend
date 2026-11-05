@@ -1,8 +1,12 @@
+import 'package:myapp/core/localization/app_language.dart';
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:dio/dio.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/state/auth_provider.dart';
+import 'package:myapp/core/config/app_config.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -32,14 +36,43 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text,
       );
       if (!mounted) return;
-      context.go('/dashboard');
-    } catch (_) {
+      _passwordController.clear();
+      context.go(
+        auth.mustChangePassword ? '/change-password' : auth.mobileRole.home,
+      );
+    } catch (failure) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
+      if (failure is NoActiveModelException) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.trRead(
+                'Login gagal — belum ada model AI yang aktif. Silakan aktifkan model terlebih dahulu atau hubungi teknisi.',
+                'Login failed — no active AI model found. Please activate a model first or contact a technician.',
+              ),
+            ),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+        return;
+      }
+      final data = failure is DioException ? failure.response?.data : null;
+      final detail = data is Map ? data['detail'] : null;
+      final expired =
+          detail is Map && detail['code'] == 'temporary_password_expired';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Login gagal — periksa email/password atau koneksi server',
+            expired
+                ? context.trRead(
+                    'Password sementara kedaluwarsa. Minta teknisi mereset password.',
+                    'Temporary password expired. Ask your technician for a reset.',
+                  )
+                : context.trRead(
+                    'Login gagal — periksa email/password atau koneksi server',
+                    'Login failed — check email/password or server connection',
+                  ),
           ),
           backgroundColor: AppTheme.error,
         ),
@@ -100,7 +133,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   excludeFromSemantics: true,
                                 ),
                                 const SizedBox(width: 12),
-                                Text(
+                                AppText(
                                   'TBScreen.AI',
                                   style: Theme.of(context)
                                       .textTheme
@@ -114,7 +147,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           const SizedBox(height: 32),
-                          Text(
+                          AppText(
                             'Welcome Back',
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.headlineSmall
@@ -124,7 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                           ),
                           const SizedBox(height: 8),
-                          const Text(
+                          const AppText(
                             'AI-Powered TB Screening',
                             textAlign: TextAlign.center,
                             style: TextStyle(
@@ -135,7 +168,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 40),
 
                           // Email field
-                          const Text(
+                          const AppText(
                             'Email',
                             style: TextStyle(
                               color: AppTheme.navy,
@@ -148,7 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
                             decoration: InputDecoration(
-                              hintText: 'Enter your email',
+                              hintText: localize(context, 'Enter your email'),
                               hintStyle: const TextStyle(
                                 color: AppTheme.textSecondary,
                               ),
@@ -178,10 +211,16 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {
-                                return 'Email wajib diisi';
+                                return context.tr(
+                                  'Email wajib diisi',
+                                  'Email is required',
+                                );
                               }
                               if (!value.contains('@')) {
-                                return 'Format email belum valid';
+                                return context.tr(
+                                  'Format email belum valid',
+                                  'Invalid email format',
+                                );
                               }
                               return null;
                             },
@@ -189,7 +228,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 24),
 
                           // Password field
-                          const Text(
+                          const AppText(
                             'Password',
                             style: TextStyle(
                               color: AppTheme.navy,
@@ -202,7 +241,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             controller: _passwordController,
                             obscureText: true,
                             decoration: InputDecoration(
-                              hintText: 'Enter your password',
+                              hintText: localize(
+                                context,
+                                'Enter your password',
+                              ),
                               hintStyle: const TextStyle(
                                 color: AppTheme.textSecondary,
                               ),
@@ -232,7 +274,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             validator: (value) {
                               if (value == null || value.isEmpty) {
-                                return 'Password wajib diisi';
+                                return context.tr(
+                                  'Password wajib diisi',
+                                  'Password is required',
+                                );
                               }
                               return null;
                             },
@@ -275,7 +320,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         strokeWidth: 2.5,
                                       ),
                                     )
-                                  : const Text(
+                                  : const AppText(
                                       'Sign In',
                                       style: TextStyle(
                                         fontSize: 16,
@@ -284,6 +329,18 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                             ),
                           ),
+                          if (AppConfig.useHttp)
+                            TextButton(
+                              onPressed: _isSubmitting
+                                  ? null
+                                  : () => context.go('/activate-tablet'),
+                              child: Text(
+                                context.tr(
+                                  'Aktivasi tablet',
+                                  'Activate tablet',
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -296,7 +353,7 @@ class _LoginScreenState extends State<LoginScreen> {
             bottom: 24,
             left: 0,
             right: 0,
-            child: Text(
+            child: AppText(
               '© 2026 TBScreen. All rights reserved.',
               textAlign: TextAlign.center,
               style: TextStyle(

@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 
@@ -34,7 +35,7 @@ class EmptyState extends StatelessWidget {
               child: Icon(icon, size: 44, color: AppTheme.primaryDark),
             ),
             const SizedBox(height: AppTheme.sp24),
-            Text(
+            AppText(
               title,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleLarge,
@@ -43,13 +44,12 @@ class EmptyState extends StatelessWidget {
               const SizedBox(height: AppTheme.sp8),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 360),
-                child: Text(
+                child: AppText(
                   message!,
                   textAlign: TextAlign.center,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: AppTheme.subtitleGrey),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppTheme.subtitleGrey,
+                  ),
                 ),
               ),
             ],

@@ -1,4 +1,7 @@
+import 'dart:io';
 import 'dart:typed_data';
+
+import 'package:flutter/services.dart' show rootBundle;
 
 import 'package:myapp/data/models_ota/model_store.dart';
 import 'package:myapp/data/onnx/bundle_manifest.dart';
@@ -16,13 +19,30 @@ import 'package:myapp/data/onnx/ort_session_pool.dart';
 /// Trimmed from `inf_app`'s `InferenceRunner`: no memory probe, no overlay
 /// rendering — this app's `DiagnosisOutcome` has no slot for either.
 class OnnxInferenceEngine {
-  final OrtSessionPool _pool = OrtSessionPool();
+  OnnxInferenceEngine({OrtSessionPool? pool, ModelStore? modelStore})
+      : _pool = pool ?? OrtSessionPool(),
+        _modelStore = modelStore ?? ModelStore();
+
+  final OrtSessionPool _pool;
+  final ModelStore _modelStore;
+
+  ModelStore get modelStore => _modelStore;
 
   BundleStore? _store;
   OrtChainExecutor? _executor;
   Future<bool>? _readyFuture;
+  Future<bool>? _standbyFuture;
+  bool _isStandbyReady = false;
+  int _activeRuns = 0;
+  bool _releasePendingAfterRun = false;
 
   bool get hasBundle => _executor != null && _store != null;
+
+  /// Whether model sessions are preloaded and standing by in memory.
+  bool get isStandbyReady => hasBundle && _isStandbyReady;
+
+  /// Whether an inference execution is actively in-flight.
+  bool get isRunningInference => _activeRuns > 0;
 
   /// Resolves once the initial [init] load (kicked off once, lazily) has
   /// finished. `hasBundle` reads `false` until this completes, so anything
@@ -44,24 +64,93 @@ class OnnxInferenceEngine {
   /// repeatedly — the update pipeline calls it after every activation /
   /// rollback. Returns `false` when no bundle is active.
   Future<bool> init() async {
+    _isStandbyReady = false;
+    _standbyFuture = null;
+    _releasePendingAfterRun = false;
     await _executor?.dispose();
     _executor = null;
     _store = null;
 
-    final dir = await ModelStore().activeBundleDir();
-    if (dir == null) return false;
+    final dir = await _modelStore.activeBundleDir();
+    if (dir == null) {
+      _readyFuture = Future.value(false);
+      return false;
+    }
 
     final store = await BundleStore.open(dir);
-    final executor = OrtChainExecutor(store: store, pool: _pool);
+    final executor = OrtChainExecutor(store: store, pool: _pool, keepSessionsStandby: true);
     await executor.setForceCpu(forceCpu);
 
     _store = store;
     _executor = executor;
+    _readyFuture = Future.value(true);
     return true;
+  }
+
+  /// Releases preloaded standby sessions from memory without clearing the
+  /// active bundle on disk. Safe to call on app pause, logout, or after smoke tests.
+  Future<void> releaseStandby() async {
+    _isStandbyReady = false;
+    _standbyFuture = null;
+    if (_activeRuns > 0) {
+      _releasePendingAfterRun = true;
+      return;
+    }
+    _releasePendingAfterRun = false;
+    await _executor?.releaseSessions();
+  }
+
+  /// Preloads all pipeline sessions into memory and warms up inference
+  /// so subsequent runs execute without cold-start delay.
+  Future<bool> initiateStandby({Uint8List? sampleBytes}) async {
+    if (isStandbyReady) return true;
+    final inFlight = _standbyFuture;
+    if (inFlight != null) return inFlight;
+
+    final future = _doInitiateStandby(sampleBytes: sampleBytes);
+    _standbyFuture = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_standbyFuture, future)) {
+        _standbyFuture = null;
+      }
+    }
+  }
+
+  Future<bool> _doInitiateStandby({Uint8List? sampleBytes}) async {
+    final hasActive = await ready;
+    if (!hasActive || _executor == null || _store == null) {
+      _isStandbyReady = false;
+      return false;
+    }
+
+    try {
+      await _executor!.preloadSessions();
+      Uint8List? bytes = sampleBytes;
+      if (bytes == null) {
+        try {
+          final data = await rootBundle.load('assets/sample/xray.png');
+          bytes = data.buffer.asUint8List();
+        } catch (_) {}
+      }
+
+      if (bytes != null) {
+        await run(bytes);
+      }
+      _isStandbyReady = true;
+      return true;
+    } catch (_) {
+      _isStandbyReady = false;
+      return false;
+    }
   }
 
   /// Run the pipeline on [imageBytes].
   Future<InferenceResult> run(Uint8List imageBytes) async {
+    if (_executor == null || _store == null) {
+      await ready;
+    }
     final executor = _executor;
     final store = _store;
     if (executor == null || store == null) {
@@ -79,17 +168,26 @@ class OnnxInferenceEngine {
       );
     }
 
-    final decoded = await decodeForBundle(imageBytes);
-    final out = await executor.run(decoded.toTensor());
+    _activeRuns++;
+    try {
+      final decoded = await decodeForBundle(imageBytes);
+      final out = await executor.run(decoded.toTensor());
 
-    return InferenceResult.fromChainOutputs(
-      out,
-      manifest: store.manifest,
-      elapsed: Duration.zero,
-      providersUsed: executor.providersUsed,
-      stepTimings: Map.of(executor.stepTimings),
-      rfModel: store.manifest.rfActive,
-    );
+      return InferenceResult.fromChainOutputs(
+        out,
+        manifest: store.manifest,
+        elapsed: Duration.zero,
+        providersUsed: executor.providersUsed,
+        stepTimings: Map.of(executor.stepTimings),
+        rfModel: store.manifest.rfActive,
+      );
+    } finally {
+      _activeRuns--;
+      if (_activeRuns == 0 && _releasePendingAfterRun) {
+        _releasePendingAfterRun = false;
+        await _executor?.releaseSessions();
+      }
+    }
   }
 
   /// Runs the chain once against a bundled sample and asserts the outputs are
@@ -97,7 +195,50 @@ class OnnxInferenceEngine {
   /// catches this to trigger rollback.
   Future<void> smokeTest(Uint8List sampleBytes) async {
     final r = await run(sampleBytes);
+    _assertSmokeTestOutputs(r);
+  }
 
+  /// Runs the ONNX chain against an arbitrary staged bundle directory without
+  /// modifying the active engine or activating the bundle. Throws on any failure.
+  Future<void> smokeTestBundleDir(
+    Directory bundleDir,
+    Uint8List sampleBytes,
+  ) async {
+    final store = await BundleStore.open(bundleDir);
+    final input = store.manifest.input;
+    if (input.layout.toUpperCase() != 'NHWC' ||
+        input.channels.toUpperCase() != 'RGB') {
+      throw StateError(
+        'bundle input is ${input.layout}/${input.channels}; this app only '
+        'feeds NHWC/RGB pixels',
+      );
+    }
+
+    final executor = OrtChainExecutor(
+      store: store,
+      pool: _pool,
+      keepSessionsStandby: false,
+    );
+    await executor.setForceCpu(forceCpu);
+
+    try {
+      final decoded = await decodeForBundle(sampleBytes);
+      final out = await executor.run(decoded.toTensor());
+      final r = InferenceResult.fromChainOutputs(
+        out,
+        manifest: store.manifest,
+        elapsed: Duration.zero,
+        providersUsed: executor.providersUsed,
+        stepTimings: Map.of(executor.stepTimings),
+        rfModel: store.manifest.rfActive,
+      );
+      _assertSmokeTestOutputs(r);
+    } finally {
+      await executor.dispose();
+    }
+  }
+
+  void _assertSmokeTestOutputs(InferenceResult r) {
     void check(bool ok, String why) {
       if (!ok) throw StateError('smoke test failed: $why');
     }
@@ -122,6 +263,12 @@ class OnnxInferenceEngine {
   }
 
   Future<void> dispose() async {
+    _isStandbyReady = false;
+    _standbyFuture = null;
+    _releasePendingAfterRun = false;
     await _executor?.dispose();
+    _executor = null;
+    _store = null;
+    _readyFuture = null;
   }
 }

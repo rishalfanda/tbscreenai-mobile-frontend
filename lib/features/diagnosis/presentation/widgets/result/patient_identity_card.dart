@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/domain/models/diagnosis_draft.dart';
 import 'result_theme.dart';
@@ -38,7 +39,7 @@ class PatientIdentityCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
+          AppText(
             '${kGenderLabels[snapshot.gender] ?? snapshot.gender ?? "-"} · '
             '${snapshot.age != null ? "${snapshot.age} Tahun" : "-"}',
             style: const TextStyle(
@@ -48,7 +49,7 @@ class PatientIdentityCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
-          Text(
+          AppText(
             '${snapshot.weightKg != null ? "${snapshot.weightKg} kg" : "-"} / '
             '${snapshot.heightCm != null ? "${snapshot.heightCm} cm" : "-"} '
             '(BMI: ${snapshot.bmi?.toStringAsFixed(1) ?? "-"})',

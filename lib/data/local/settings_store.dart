@@ -63,6 +63,9 @@ class SettingsStore {
   Future<void> saveInstalledModelVersion(String version) =>
       _db.putSetting(kInstalledModelVersion, version);
 
+  Future<void> clearInstalledModelVersion() =>
+      _db.deleteSetting(kInstalledModelVersion);
+
   /// The last `/models/check` response, cached as JSON so the Sync Center can
   /// restore its Model Update card without re-querying the server on every
   /// open. `null` if no check has ever completed on this device.
@@ -71,6 +74,13 @@ class SettingsStore {
 
   Future<void> saveLastModelCheckJson(String json) =>
       _db.putSetting(kLastModelCheck, json);
+
+  /// Cached JSON of available models catalog from GET /v1/models.
+  Future<String?> readAvailableModelsCache() =>
+      _db.getSetting(kAvailableModelsCache);
+
+  Future<void> saveAvailableModelsCache(String json) =>
+      _db.putSetting(kAvailableModelsCache, json);
 
   // === Section: Sync ===
 

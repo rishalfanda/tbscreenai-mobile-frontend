@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 
@@ -65,7 +66,7 @@ class StatusBadge extends StatelessWidget {
             Icon(icon, size: dense ? 12 : 14, color: color),
             SizedBox(width: dense ? 4 : 6),
           ],
-          Text(
+          AppText(
             label,
             style: TextStyle(
               color: color,

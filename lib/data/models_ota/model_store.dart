@@ -1,25 +1,68 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
+
+import 'package:myapp/domain/models/available_model_bundle.dart';
 
 /// The on-device model-bundle store:
 ///
 /// ```
 /// <appSupport>/models/
-///   ACTIVE          text: the active bundle_version
+///   ACTIVE          text: the active bundle_version or bundleKey
 ///   PREVIOUS        text: the rollback target
 ///   incoming/       in-flight download + staging (wiped on startup)
-///   <version>/      a fully-verified staged bundle
+///   <bundleKey>/    a fully-verified staged bundle (e.g. "stable_2026.09.04")
 /// ```
 ///
 /// Bundles are downloaded, signature-verified and staged by
 /// `lib/data/models_ota/model_update_pipeline.dart`; this type only manages the
 /// on-disk layout. Stateless: every method reads/writes the filesystem.
 class ModelStore {
+  ModelStore({Future<Directory> Function()? rootProvider})
+      : _rootProvider = rootProvider;
+
+  final Future<Directory> Function()? _rootProvider;
+
   static const _dirName = 'models';
   static const _incoming = 'incoming';
+  static const _metaFile = 'meta.json';
+
+  /// Standardized unique bundle key combining channel and version.
+  static String bundleKey(String channel, String version) {
+    final c = channel.toLowerCase().trim();
+    final v = version.trim();
+    if (c.isEmpty) return v;
+    return '${c}_$v';
+  }
 
   Future<Directory> _root() async {
+    final provider = _rootProvider;
+    if (provider != null) {
+      final d = await provider();
+      if (!await d.exists()) await d.create(recursive: true);
+      return d;
+    }
+    // In automated widget / unit test runs where path_provider is not mocked,
+    // guard against hanging method channels by falling back to an isolated test temp directory.
+    // In production, always await getApplicationSupportDirectory() directly with no timeout.
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      try {
+        final base = await getApplicationSupportDirectory().timeout(
+          const Duration(milliseconds: 100),
+        );
+        final d = Directory('${base.path}${Platform.pathSeparator}$_dirName');
+        if (!await d.exists()) await d.create(recursive: true);
+        return d;
+      } catch (_) {
+        final d = Directory(
+          '${Directory.systemTemp.path}${Platform.pathSeparator}tbscreen_test_models',
+        );
+        if (!await d.exists()) await d.create(recursive: true);
+        return d;
+      }
+    }
+
     final base = await getApplicationSupportDirectory();
     final d = Directory('${base.path}${Platform.pathSeparator}$_dirName');
     if (!await d.exists()) await d.create(recursive: true);
@@ -54,14 +97,188 @@ class ModelStore {
   Future<Directory> versionDir(String version) async =>
       Directory('${(await _root()).path}${Platform.pathSeparator}$version');
 
-  /// Directory of the active bundle, or `null` if none / its files are missing.
+  /// Directory of the active bundle, or `null` if none / unverified / its files are missing.
   Future<Directory?> activeBundleDir() async {
     final v = await activeVersion();
     if (v == null) return null;
+
+    final status = await getBundleStatus(v);
+    if (status != ModelBundleStatus.verified) {
+      await clearActive();
+      return null;
+    }
+
     final d = await versionDir(v);
     final manifest = File('${d.path}${Platform.pathSeparator}manifest.json');
-    if (!await d.exists() || !await manifest.exists()) return null;
+    if (!await d.exists() || !await manifest.exists()) {
+      await clearActive();
+      return null;
+    }
     return d;
+  }
+
+  /// Finds the newest verified model bundle key among installed bundles.
+  /// Returns `null` if no verified bundles are installed.
+  Future<String?> findNewestVerifiedBundleKey({
+    String? excludingKey,
+    Set<String>? excludingKeys,
+  }) async {
+    final installed = await listInstalledBundleKeys();
+    final verifiedKeys = <String>[];
+    for (final key in installed) {
+      if (excludingKey != null && key == excludingKey) continue;
+      if (excludingKeys != null && excludingKeys.contains(key)) continue;
+      if (await getBundleStatus(key) == ModelBundleStatus.verified) {
+        verifiedKeys.add(key);
+      }
+    }
+    if (verifiedKeys.isEmpty) return null;
+
+    DateTime? parseDate(Map<String, dynamic>? meta) {
+      final raw = meta?['released_utc'];
+      if (raw is String) return DateTime.tryParse(raw);
+      return null;
+    }
+
+    final metaMap = <String, Map<String, dynamic>?>{};
+    for (final key in verifiedKeys) {
+      metaMap[key] = await readBundleMeta(key);
+    }
+
+    verifiedKeys.sort((a, b) {
+      final dateA = parseDate(metaMap[a]);
+      final dateB = parseDate(metaMap[b]);
+      if (dateA != null && dateB != null) {
+        return dateB.compareTo(dateA); // Newer first
+      }
+      if (dateA != null) return -1;
+      if (dateB != null) return 1;
+      return b.compareTo(a); // Lexical fallback
+    });
+
+    return verifiedKeys.first;
+  }
+
+  /// Lists all valid installed bundle keys (directories containing manifest.json).
+  Future<List<String>> listInstalledBundleKeys() async {
+    final root = await _root();
+    final installed = <String>[];
+    await for (final e in root.list()) {
+      if (e is! Directory) continue;
+      final name = e.path.split(Platform.pathSeparator).last;
+      if (name == _incoming) continue;
+      final manifest = File('${e.path}${Platform.pathSeparator}manifest.json');
+      if (await manifest.exists()) {
+        installed.add(name);
+      }
+    }
+    return installed;
+  }
+
+  /// Checks if a bundle is installed and has a valid manifest.json.
+  Future<bool> isInstalled(String bundleKey) async {
+    final d = await versionDir(bundleKey);
+    if (!await d.exists()) return false;
+    final manifest = File('${d.path}${Platform.pathSeparator}manifest.json');
+    return manifest.exists();
+  }
+
+  /// Determines the local lifecycle status of a model bundle.
+  Future<ModelBundleStatus> getBundleStatus(String bundleKey) async {
+    final d = await versionDir(bundleKey);
+    if (!await d.exists()) return ModelBundleStatus.notDownloaded;
+
+    final verifiedFile = File('${d.path}${Platform.pathSeparator}verified.json');
+    if (await verifiedFile.exists()) {
+      return ModelBundleStatus.verified;
+    }
+
+    final meta = await readBundleMeta(bundleKey);
+    if (meta != null) {
+      final s = meta['status'] as String?;
+      if (s == ModelBundleStatus.verified.name) {
+        return ModelBundleStatus.verified;
+      }
+      if (s == ModelBundleStatus.verificationFailed.name) {
+        return ModelBundleStatus.verificationFailed;
+      }
+      if (s == ModelBundleStatus.downloaded.name) {
+        return ModelBundleStatus.downloaded;
+      }
+    }
+
+    final manifest = File('${d.path}${Platform.pathSeparator}manifest.json');
+    if (await manifest.exists()) {
+      return ModelBundleStatus.downloaded;
+    }
+    return ModelBundleStatus.notDownloaded;
+  }
+
+  /// Updates status and optional error message in bundle metadata.
+  Future<void> setBundleStatus(
+    String bundleKey,
+    ModelBundleStatus status, {
+    String? error,
+  }) async {
+    final meta = await readBundleMeta(bundleKey) ?? <String, dynamic>{};
+    meta['status'] = status.name;
+    if (error != null) {
+      meta['verification_error'] = error;
+    } else {
+      meta.remove('verification_error');
+    }
+
+    if (status != ModelBundleStatus.verified) {
+      final d = await versionDir(bundleKey);
+      final verifiedFile =
+          File('${d.path}${Platform.pathSeparator}verified.json');
+      if (await verifiedFile.exists()) {
+        await verifiedFile.delete();
+      }
+    }
+
+    await writeBundleMeta(bundleKey, meta);
+  }
+
+  /// Deletes a bundle directory completely and resets active pointer if deleted.
+  Future<void> deleteBundle(String bundleKey) async {
+    final d = await versionDir(bundleKey);
+    if (await d.exists()) {
+      await d.delete(recursive: true);
+    }
+
+    final current = await activeVersion();
+    if (current == bundleKey) {
+      await _writePointer('ACTIVE', null);
+    }
+
+    final prev = await previousVersion();
+    if (prev == bundleKey) {
+      await _writePointer('PREVIOUS', null);
+    }
+  }
+
+  /// Saves local metadata alongside the bundle for offline display.
+  Future<void> writeBundleMeta(
+    String bundleKey,
+    Map<String, dynamic> meta,
+  ) async {
+    final d = await versionDir(bundleKey);
+    if (!await d.exists()) return;
+    final f = File('${d.path}${Platform.pathSeparator}$_metaFile');
+    await f.writeAsString(jsonEncode(meta), flush: true);
+  }
+
+  /// Reads cached metadata for an installed bundle.
+  Future<Map<String, dynamic>?> readBundleMeta(String bundleKey) async {
+    final d = await versionDir(bundleKey);
+    final f = File('${d.path}${Platform.pathSeparator}$_metaFile');
+    if (!await f.exists()) return null;
+    try {
+      final decoded = jsonDecode(await f.readAsString());
+      if (decoded is Map<String, dynamic>) return decoded;
+    } catch (_) {}
+    return null;
   }
 
   /// Run once at startup: wipe `incoming/` and drop only *broken* staged dirs
@@ -131,6 +348,11 @@ class ModelStore {
   Future<void> clearAll() async {
     final d = await _root();
     if (await d.exists()) await d.delete(recursive: true);
+  }
+
+  /// Clears the ACTIVE pointer so no bundle is active.
+  Future<void> clearActive() async {
+    await _writePointer('ACTIVE', null);
   }
 
   Future<void> _pruneBroken() async {

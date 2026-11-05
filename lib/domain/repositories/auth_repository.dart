@@ -6,3 +6,10 @@ abstract class AuthRepository {
 
   Future<void> logout();
 }
+
+abstract interface class PasswordChangeRepository {
+  Future<UserProfile> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  });
+}

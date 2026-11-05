@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myapp/features/account/presentation/account_screen.dart';
 import 'package:myapp/features/auth/presentation/login_screen.dart';
+import 'package:myapp/features/auth/presentation/tablet_activation_screen.dart';
+import 'package:myapp/features/sync/presentation/operator_sync_screen.dart';
+import 'package:myapp/features/auth/presentation/change_password_screen.dart';
 import 'package:myapp/features/camera/presentation/camera_screen.dart';
 import 'package:myapp/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:myapp/features/dataset/presentation/dataset_screen.dart';
@@ -10,6 +13,7 @@ import 'package:myapp/features/patients/presentation/patients_screen.dart';
 import 'package:myapp/features/sync/presentation/sync_center_screen.dart';
 import 'package:myapp/features/validation/presentation/validation_screen.dart';
 import 'package:myapp/features/shared/presentation/app_shell.dart';
+import 'package:myapp/features/institution/presentation/institution_screen.dart';
 import 'package:myapp/state/auth_provider.dart';
 
 class AppRouter {
@@ -20,18 +24,40 @@ class AppRouter {
       redirect: (BuildContext context, GoRouterState state) {
         final isLoggedIn = authProvider.isLoggedIn;
         final isLoggingIn = state.matchedLocation == '/login';
+        if (state.uri.path == '/activate-tablet') {
+          return isLoggedIn ? authProvider.mobileRole.home : null;
+        }
 
         if (!isLoggedIn && !isLoggingIn) {
           return '/login';
         }
 
+        if (isLoggedIn && authProvider.mustChangePassword) {
+          return state.uri.path == '/change-password'
+              ? null
+              : '/change-password';
+        }
+        if (isLoggedIn && state.uri.path == '/change-password') return null;
+
         if (isLoggedIn && isLoggingIn) {
-          return '/dashboard';
+          return authProvider.mobileRole.home;
+        }
+
+        if (isLoggedIn && !authProvider.mobileRole.allows(state.uri.path)) {
+          return authProvider.mobileRole.home;
         }
 
         return null;
       },
       routes: [
+        GoRoute(
+          path: '/activate-tablet',
+          builder: (_, _) => const TabletActivationScreen(),
+        ),
+        GoRoute(
+          path: '/change-password',
+          builder: (_, _) => const ChangePasswordScreen(),
+        ),
         GoRoute(
           path: '/login',
           builder: (context, state) => const LoginScreen(),
@@ -41,6 +67,18 @@ class AppRouter {
             return AppShell(location: state.uri.toString(), child: child);
           },
           routes: [
+            GoRoute(
+              path: '/technician',
+              builder: (_, _) => const InstitutionScreen(),
+            ),
+            GoRoute(
+              path: '/users',
+              builder: (_, _) => const InstitutionScreen(section: 'users'),
+            ),
+            GoRoute(
+              path: '/models',
+              builder: (_, _) => const SyncCenterScreen(modelsOnly: true),
+            ),
             GoRoute(
               path: '/dashboard',
               builder: (context, state) => const DashboardScreen(),
@@ -53,6 +91,7 @@ class AppRouter {
               path: '/diagnosis',
               builder: (context, state) => const DiagnosisScreen(),
             ),
+            GoRoute(path: '/result', redirect: (_, _) => '/diagnosis'),
             GoRoute(
               path: '/validation',
               builder: (context, state) => const ValidationScreen(),
@@ -63,7 +102,7 @@ class AppRouter {
             ),
             GoRoute(
               path: '/sync',
-              builder: (context, state) => const SyncCenterScreen(),
+              builder: (context, state) => const OperatorSyncScreen(),
             ),
             GoRoute(
               path: '/account',

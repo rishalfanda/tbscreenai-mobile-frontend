@@ -1,9 +1,12 @@
+import 'package:myapp/core/localization/app_language.dart';
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:myapp/core/config/app_config.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/dataset.dart';
 import 'package:myapp/domain/repositories/dataset_repository.dart';
+import 'live_dataset_screen.dart';
 
 enum DatasetView { list, create, detail, edit }
 
@@ -34,6 +37,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
   @override
   void initState() {
     super.initState();
+    if (AppConfig.useHttp) return;
     // Mock repository resolves synchronously — no loading flash. The local
     // growable copy mirrors the old List.from(mockDatasets) behavior.
     context.read<DatasetRepository>().getDatasets().then((datasets) {
@@ -58,14 +62,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
   @override
   Widget build(BuildContext context) {
     if (!AppConfig.isDemo || AppConfig.useHttp) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'Dataset access and CRUD unavailable: backend contract and role permissions pending.',
-          ),
-        ),
-      );
+      return const LiveDatasetScreen();
     }
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
@@ -103,7 +100,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                AppText(
                   "Datasets",
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.w800,
@@ -111,7 +108,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
+                AppText(
                   "Manage and organize your training datasets",
                   style: Theme.of(
                     context,
@@ -122,7 +119,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
             FilledButton.icon(
               onPressed: () => _navigate(DatasetView.create),
               icon: const Icon(Icons.add),
-              label: const Text("Create Dataset"),
+              label: const AppText("Create Dataset"),
               style: FilledButton.styleFrom(
                 backgroundColor: AppTheme.primary,
                 foregroundColor: Colors.white,
@@ -140,7 +137,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
             controller: _searchController,
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
-              hintText: "Search datasets by name",
+              hintText: localize(context, "Search datasets by name"),
               prefixIcon: const Icon(Icons.search_rounded),
               filled: true,
               fillColor: Colors.white,
@@ -287,7 +284,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                     color: statusColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(
+                  child: AppText(
                     dataset.status,
                     softWrap: false,
                     style: TextStyle(
@@ -418,7 +415,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
           const SizedBox(width: _colGap),
           Expanded(
             flex: _colImages,
-            child: Text(
+            child: AppText(
               "${dataset.totalImages}",
               style: const TextStyle(
                 fontWeight: FontWeight.w600,
@@ -429,7 +426,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
           const SizedBox(width: _colGap),
           Expanded(
             flex: _colSize,
-            child: Text(
+            child: AppText(
               dataset.size,
               style: const TextStyle(
                 fontWeight: FontWeight.w600,
@@ -440,7 +437,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
           const SizedBox(width: _colGap),
           Expanded(
             flex: _colUpdated,
-            child: Text(
+            child: AppText(
               dataset.lastUpdated,
               style: const TextStyle(
                 fontWeight: FontWeight.w500,
@@ -464,7 +461,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                   color: statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: Text(
+                child: AppText(
                   dataset.status,
                   style: TextStyle(
                     color: statusColor,
@@ -536,7 +533,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                   OutlinedButton.icon(
                     onPressed: () => _navigate(DatasetView.list),
                     icon: const Icon(Icons.arrow_back_rounded),
-                    label: const Text("Back to Datasets"),
+                    label: const AppText("Back to Datasets"),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: AppTheme.borderLight),
                       foregroundColor: AppTheme.navy,
@@ -550,7 +547,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                 ],
               ),
               const SizedBox(height: 24),
-              Text(
+              AppText(
                 "Create New Dataset",
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.w800,
@@ -571,7 +568,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                       TextFormField(
                         controller: nameController,
                         decoration: InputDecoration(
-                          labelText: "Dataset Name",
+                          labelText: localize(context, "Dataset Name"),
                           labelStyle: const TextStyle(
                             color: AppTheme.subtitleGrey,
                           ),
@@ -611,7 +608,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                         controller: descController,
                         maxLines: 4,
                         decoration: InputDecoration(
-                          labelText: "Description",
+                          labelText: localize(context, "Description"),
                           alignLabelWithHint: true,
                           labelStyle: const TextStyle(
                             color: AppTheme.subtitleGrey,
@@ -649,7 +646,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                       DropdownButtonFormField<String>(
                         initialValue: selectedStatus,
                         decoration: InputDecoration(
-                          labelText: "Status",
+                          labelText: localize(context, "Status"),
                           labelStyle: const TextStyle(
                             color: AppTheme.subtitleGrey,
                           ),
@@ -683,7 +680,8 @@ class _DatasetScreenState extends State<DatasetScreen> {
                         ),
                         items: const ["ACTIVE", "ARCHIVED"]
                             .map(
-                              (e) => DropdownMenuItem(value: e, child: Text(e)),
+                              (e) =>
+                                  DropdownMenuItem(value: e, child: AppText(e)),
                             )
                             .toList(),
                         onChanged: (value) =>
@@ -706,7 +704,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                                 ),
                               ),
                             ),
-                            child: const Text("Cancel"),
+                            child: const AppText("Cancel"),
                           ),
                           const SizedBox(width: 12),
                           FilledButton(
@@ -739,7 +737,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                                 ),
                               ),
                             ),
-                            child: const Text("Create Dataset"),
+                            child: const AppText("Create Dataset"),
                           ),
                         ],
                       ),
@@ -770,7 +768,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
             OutlinedButton.icon(
               onPressed: () => _navigate(DatasetView.list),
               icon: const Icon(Icons.arrow_back_rounded),
-              label: const Text("Back to Datasets"),
+              label: const AppText("Back to Datasets"),
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: AppTheme.borderLight),
                 foregroundColor: AppTheme.navy,
@@ -784,7 +782,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                 FilledButton.icon(
                   onPressed: () => _showUploadImageDialog(),
                   icon: const Icon(Icons.add),
-                  label: const Text("Add Images"),
+                  label: const AppText("Add Images"),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.primary,
                     foregroundColor: Colors.white,
@@ -797,7 +795,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                 OutlinedButton.icon(
                   onPressed: () => _navigate(DatasetView.edit, dataset),
                   icon: const Icon(Icons.edit_outlined),
-                  label: const Text("Edit Dataset"),
+                  label: const AppText("Edit Dataset"),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: AppTheme.borderLight),
                     foregroundColor: AppTheme.navy,
@@ -865,7 +863,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                                     color: statusColor.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(999),
                                   ),
-                                  child: Text(
+                                  child: AppText(
                                     dataset.status,
                                     style: TextStyle(
                                       color: statusColor,
@@ -897,7 +895,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          AppText(
                             "Total Images",
                             style: TextStyle(
                               fontSize: 12,
@@ -907,7 +905,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Text(
+                          AppText(
                             "${dataset.totalImages}",
                             style: const TextStyle(
                               fontSize: 24,
@@ -922,7 +920,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          AppText(
                             "Size",
                             style: TextStyle(
                               fontSize: 12,
@@ -932,7 +930,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Text(
+                          AppText(
                             dataset.size,
                             style: const TextStyle(
                               fontSize: 24,
@@ -947,7 +945,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          AppText(
                             "Last Updated",
                             style: TextStyle(
                               fontSize: 12,
@@ -957,7 +955,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Text(
+                          AppText(
                             dataset.lastUpdated,
                             style: const TextStyle(
                               fontSize: 24,
@@ -975,7 +973,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
           ),
         ),
         const SizedBox(height: 32),
-        Text(
+        AppText(
           "Dataset Images",
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w700,
@@ -1037,7 +1035,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
+                            AppText(
                               "Added ${image.addedDate}",
                               style: TextStyle(
                                 color: AppTheme.subtitleGrey,
@@ -1061,7 +1059,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                         color: diagColor,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(
+                      child: AppText(
                         image.diagnosis,
                         style: const TextStyle(
                           color: Colors.white,
@@ -1138,7 +1136,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                   OutlinedButton.icon(
                     onPressed: () => _navigate(DatasetView.detail, dataset),
                     icon: const Icon(Icons.arrow_back_rounded),
-                    label: const Text("Back to Detail"),
+                    label: const AppText("Back to Detail"),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: AppTheme.borderLight),
                       foregroundColor: AppTheme.navy,
@@ -1152,7 +1150,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                 ],
               ),
               const SizedBox(height: 24),
-              Text(
+              AppText(
                 "Edit Dataset",
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.w800,
@@ -1173,7 +1171,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                       TextFormField(
                         controller: nameController,
                         decoration: InputDecoration(
-                          labelText: "Dataset Name",
+                          labelText: localize(context, "Dataset Name"),
                           labelStyle: const TextStyle(
                             color: AppTheme.subtitleGrey,
                           ),
@@ -1213,7 +1211,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                         controller: descController,
                         maxLines: 4,
                         decoration: InputDecoration(
-                          labelText: "Description",
+                          labelText: localize(context, "Description"),
                           alignLabelWithHint: true,
                           labelStyle: const TextStyle(
                             color: AppTheme.subtitleGrey,
@@ -1251,7 +1249,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                       DropdownButtonFormField<String>(
                         initialValue: selectedStatus,
                         decoration: InputDecoration(
-                          labelText: "Status",
+                          labelText: localize(context, "Status"),
                           labelStyle: const TextStyle(
                             color: AppTheme.subtitleGrey,
                           ),
@@ -1285,7 +1283,8 @@ class _DatasetScreenState extends State<DatasetScreen> {
                         ),
                         items: const ["ACTIVE", "ARCHIVED"]
                             .map(
-                              (e) => DropdownMenuItem(value: e, child: Text(e)),
+                              (e) =>
+                                  DropdownMenuItem(value: e, child: AppText(e)),
                             )
                             .toList(),
                         onChanged: (value) =>
@@ -1309,7 +1308,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                                 ),
                               ),
                             ),
-                            child: const Text("Cancel"),
+                            child: const AppText("Cancel"),
                           ),
                           const SizedBox(width: 12),
                           FilledButton(
@@ -1350,7 +1349,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                                 ),
                               ),
                             ),
-                            child: const Text("Save Changes"),
+                            child: const AppText("Save Changes"),
                           ),
                         ],
                       ),
@@ -1389,7 +1388,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              Text(
+              AppText(
                 "Hapus Item Ini?",
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
@@ -1398,7 +1397,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
-              Text(
+              AppText(
                 "Apakah Anda yakin ingin menghapus $itemName? Tindakan ini tidak dapat dibatalkan.",
                 style: TextStyle(color: AppTheme.subtitleGrey, fontSize: 14),
                 textAlign: TextAlign.center,
@@ -1418,7 +1417,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                           ),
                         ),
                       ),
-                      child: const Text("Tidak"),
+                      child: const AppText("Tidak"),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -1437,7 +1436,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                           ),
                         ),
                       ),
-                      child: const Text("Ya, Hapus"),
+                      child: const AppText("Ya, Hapus"),
                     ),
                   ),
                 ],
@@ -1462,7 +1461,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Center(child: Text("Upload Image")),
+          title: const Center(child: AppText("Upload Image")),
           content: Padding(
             padding: const EdgeInsets.all(24),
             child: Form(
@@ -1491,7 +1490,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                           color: AppTheme.subtitleGrey,
                         ),
                         const SizedBox(height: 16),
-                        Text(
+                        AppText(
                           "Click to upload or drag and drop",
                           style: TextStyle(
                             color: AppTheme.subtitleGrey,
@@ -1499,7 +1498,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Text(
+                        AppText(
                           "SVG, PNG, JPG or DICOM (max. 50MB)",
                           style: TextStyle(
                             color: AppTheme.subtitleGrey,
@@ -1513,7 +1512,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                   DropdownButtonFormField<String>(
                     initialValue: selectedDiagnosis,
                     decoration: InputDecoration(
-                      labelText: "Screening Result",
+                      labelText: localize(context, "Screening Result"),
                       labelStyle: const TextStyle(color: AppTheme.subtitleGrey),
                       filled: true,
                       fillColor: Colors.white,
@@ -1544,7 +1543,9 @@ class _DatasetScreenState extends State<DatasetScreen> {
                       ),
                     ),
                     items: const ["Positive / TBC", "Negative / Normal"]
-                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                        .map(
+                          (e) => DropdownMenuItem(value: e, child: AppText(e)),
+                        )
                         .toList(),
                     onChanged: (value) =>
                         setDialogState(() => selectedDiagnosis = value!),
@@ -1553,8 +1554,8 @@ class _DatasetScreenState extends State<DatasetScreen> {
                   TextFormField(
                     controller: codeController,
                     decoration: InputDecoration(
-                      labelText: "Image Code",
-                      hintText: "e.g. XRAY-8892",
+                      labelText: localize(context, "Image Code"),
+                      hintText: localize(context, "e.g. XRAY-8892"),
                       labelStyle: const TextStyle(color: AppTheme.subtitleGrey),
                       filled: true,
                       fillColor: Colors.white,
@@ -1602,7 +1603,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                               ),
                             ),
                           ),
-                          child: const Text("Cancel"),
+                          child: const AppText("Cancel"),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -1653,7 +1654,7 @@ class _DatasetScreenState extends State<DatasetScreen> {
                               ),
                             ),
                           ),
-                          child: const Text("Upload Image"),
+                          child: const AppText("Upload Image"),
                         ),
                       ),
                     ],
@@ -1676,7 +1677,7 @@ class _HeaderLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
+    return AppText(
       text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
@@ -1703,12 +1704,12 @@ class _DatasetMeta extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          AppText(
             label,
             style: const TextStyle(color: AppTheme.subtitleGrey, fontSize: 11),
           ),
           const SizedBox(height: 2),
-          Text(
+          AppText(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -1744,7 +1745,7 @@ class _RowAction extends StatelessWidget {
     return IconButton(
       onPressed: onPressed,
       icon: Icon(icon, color: color, size: 20),
-      tooltip: tooltip,
+      tooltip: localize(context, tooltip),
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints.tightFor(width: 48, height: 48),
       visualDensity: VisualDensity.compact,

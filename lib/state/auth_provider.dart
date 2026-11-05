@@ -2,20 +2,39 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:myapp/domain/models/access_scope.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/domain/repositories/auth_repository.dart';
 
 enum AuthStatus { loggedOut, authenticating, authenticated, loggingOut }
 
+/// Thrown when a clinician attempts to log in but no active verified model is
+/// present on the device.
+class NoActiveModelException implements Exception {
+  const NoActiveModelException();
+
+  @override
+  String toString() =>
+      'NoActiveModelException: Active AI model is required for clinician login.';
+}
+
 /// Single source of truth for the active user and session lifecycle.
 class AuthProvider extends ChangeNotifier {
-  AuthProvider(this._authRepository, {UserProfile? initialProfile})
-    : _profile = initialProfile,
-      _status = initialProfile == null
-          ? AuthStatus.loggedOut
-          : AuthStatus.authenticated;
+  AuthProvider(
+    this._authRepository, {
+    UserProfile? initialProfile,
+    Future<bool> Function()? hasActiveModel,
+    Future<void> Function()? onSessionEnded,
+  }) : _profile = initialProfile,
+       _hasActiveModel = hasActiveModel,
+       _onSessionEnded = onSessionEnded,
+       _status = initialProfile == null
+           ? AuthStatus.loggedOut
+           : AuthStatus.authenticated;
 
   final AuthRepository _authRepository;
+  final Future<bool> Function()? _hasActiveModel;
+  final Future<void> Function()? _onSessionEnded;
 
   UserProfile? _profile;
   AuthStatus _status;
@@ -31,8 +50,37 @@ class AuthProvider extends ChangeNotifier {
   String get userId => _profile?.userId ?? '';
   String get tenantId => _profile?.tenantId ?? '';
   String get role => _profile?.role ?? '';
+  MobileRole get mobileRole => _profile?.mobileRole ?? MobileRole.unsupported;
   String get email => _profile?.email ?? '';
   String get displayName => _profile?.displayName ?? '';
+  bool get mustChangePassword => _profile?.mustChangePassword ?? false;
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final repository = _authRepository;
+    if (!isLoggedIn || repository is! PasswordChangeRepository) {
+      throw StateError('Password change unavailable');
+    }
+    final generation = _generation;
+    final previous = _profile!;
+    final updated = await (repository as PasswordChangeRepository)
+        .changePassword(
+          currentPassword: currentPassword,
+          newPassword: newPassword,
+        );
+    _ensureCurrent(generation);
+    if (updated.userId != previous.userId ||
+        updated.tenantId != previous.tenantId ||
+        updated.role != previous.role ||
+        updated.mustChangePassword) {
+      await logout();
+      throw StateError('Password change identity mismatch');
+    }
+    _profile = updated;
+    _notifyIfAlive();
+  }
 
   /// A new login waits for cleanup; a logout invalidates any pending login.
   Future<void> login({required String email, String password = ''}) async {
@@ -49,6 +97,16 @@ class AuthProvider extends ChangeNotifier {
         password: password,
       );
       _ensureCurrent(generation);
+
+      if (profile.mobileRole == MobileRole.clinician && _hasActiveModel != null) {
+        final hasModel = await _hasActiveModel();
+        _ensureCurrent(generation);
+        if (!hasModel) {
+          await _authRepository.logout();
+          throw const NoActiveModelException();
+        }
+      }
+
       _profile = profile;
       _status = AuthStatus.authenticated;
       _notifyIfAlive();
@@ -80,6 +138,7 @@ class AuthProvider extends ChangeNotifier {
       _profile = null;
       _status = AuthStatus.loggedOut;
       _notifyIfAlive();
+      unawaited(_onSessionEnded?.call());
     }
 
     unawaited(

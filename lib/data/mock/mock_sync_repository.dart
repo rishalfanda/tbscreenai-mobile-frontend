@@ -1,39 +1,182 @@
 import 'package:flutter/foundation.dart';
 import 'package:myapp/data/mock/mock_seed_data.dart';
-import 'package:myapp/domain/models/model_version_info.dart';
-import 'package:myapp/domain/models/patient.dart';
-import 'package:myapp/domain/models/sync_summary.dart';
+import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 
-/// Mock Sync Center backend. Timings mirror the old SyncCenterScreen
-/// simulation exactly: 2s update check, 300ms/5% download ticks,
-/// 800ms per uploaded patient.
+/// Mock Sync Center backend.
 class MockSyncRepository implements SyncRepository {
+  MockSyncRepository({String? initialActiveModelKey = 'stable_2026.09.04'})
+      : _activeModelKey = initialActiveModelKey;
+
+  String? _activeModelKey;
+  final Set<String> _installedKeys = {'stable_2026.09.04', 'beta_2026.09.04'};
+  final Map<String, ModelBundleStatus> _modelStatuses = {
+    'stable_2026.09.04': ModelBundleStatus.verified,
+    'beta_2026.09.04': ModelBundleStatus.verificationFailed,
+    'stable_2026.08.15': ModelBundleStatus.notDownloaded,
+  };
+
+  bool _downloadCancelled = false;
+
   @override
-  Future<String> getInstalledModelVersion() =>
-      SynchronousFuture(MockSeedData.modelVersionInfo.currentVersion);
+  Future<String?> getInstalledModelVersion() =>
+      SynchronousFuture(_activeModelKey);
 
   @override
   Future<ModelVersionInfo> checkForUpdate() async {
     await Future<void>.delayed(const Duration(seconds: 2));
-    return MockSeedData.modelVersionInfo;
+    final base = MockSeedData.modelVersionInfo;
+    return ModelVersionInfo(
+      currentVersion: _activeModelKey ?? '',
+      latestVersion: base.latestVersion,
+      fileSize: base.fileSize,
+      releaseDate: base.releaseDate,
+      changelog: base.changelog,
+      downloadUrl: base.downloadUrl,
+      sha256: base.sha256,
+    );
   }
 
   @override
+  void cancelModelDownload() {
+    _downloadCancelled = true;
+  }
+
+  @override
+  @override
   Stream<double> downloadModel() async* {
-    var progress = 0.0;
-    while (progress < 1.0) {
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      progress += 0.05;
-      yield progress.clamp(0.0, 1.0);
+    _downloadCancelled = false;
+    var fraction = 0.0;
+    while (fraction < 1.0) {
+      if (_downloadCancelled) return;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      if (_downloadCancelled) return;
+      fraction = (fraction + 0.1).clamp(0.0, 1.0);
+      yield fraction;
     }
   }
 
-  /// Mock mode never persists anything — it's a stateless, side-effect-free
-  /// simulation, so there is no cached check to restore.
+  @override
+  Stream<ModelDownloadProgress> downloadModelWithProgress({
+    AvailableModelBundle? model,
+  }) async* {
+    _downloadCancelled = false;
+    final total = model?.sizeBytes != null && model!.sizeBytes > 0
+        ? model.sizeBytes
+        : 528571936; // ~504 MB
+    await for (final fraction in downloadModel()) {
+      if (_downloadCancelled) return;
+      final received = (fraction * total).round();
+      yield ModelDownloadProgress(
+        fraction: fraction,
+        receivedBytes: received,
+        totalBytes: total,
+        bytesPerSecond: 2.4 * 1024 * 1024,
+        speedText: '2.4 MB/s',
+        phase: fraction < 1.0
+            ? ModelInstallPhase.downloading
+            : ModelInstallPhase.verifying,
+      );
+    }
+
+    if (_downloadCancelled) return;
+
+    final ver = MockSeedData.modelVersionInfo.latestVersion;
+    final key = model?.id ?? 'stable_$ver';
+    _installedKeys.add(key);
+    _installedKeys.add(ver);
+    _modelStatuses[key] = ModelBundleStatus.verified;
+    _modelStatuses[ver] = ModelBundleStatus.verified;
+    // Verified models are NOT automatically activated; user must select it.
+
+    yield ModelDownloadProgress(
+      fraction: 1.0,
+      receivedBytes: total,
+      totalBytes: total,
+      speedText: '',
+      phase: ModelInstallPhase.completed,
+    );
+  }
+
   @override
   Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo() =>
       SynchronousFuture(null);
+
+  @override
+  Future<List<AvailableModelBundle>> getAvailableModels({
+    String? channel,
+    bool? quantized,
+    bool localOnly = false,
+  }) async {
+    await Future<void>.delayed(
+      Duration(milliseconds: localOnly ? 100 : 600),
+    );
+    return MockSeedData.availableModels.where((m) {
+      if (localOnly && !_installedKeys.contains(m.id)) {
+        return false;
+      }
+      if (channel != null && channel.isNotEmpty && channel != 'all') {
+        if (m.channel.toLowerCase() != channel.toLowerCase()) return false;
+      }
+      if (quantized != null && m.quantized != quantized) {
+        return false;
+      }
+      return true;
+    }).map((m) {
+      final status = _modelStatuses[m.id] ?? ModelBundleStatus.notDownloaded;
+      return m.copyWith(
+        isCurrent: _activeModelKey != null && m.id == _activeModelKey,
+        localStatus: status,
+        verificationError: status == ModelBundleStatus.verificationFailed
+            ? 'Checksum SHA256 atau tanda tangan digital Ed25519 tidak cocok.'
+            : null,
+      );
+    }).toList();
+  }
+
+  @override
+  Future<List<String>> getInstalledModelKeys() =>
+      SynchronousFuture(_installedKeys.toList());
+
+  @override
+  Stream<double> downloadModelBundle(AvailableModelBundle model) =>
+      downloadModelWithProgress(model: model).map((p) => p.fraction);
+
+  @override
+  Future<bool> verifyModelBundle(String bundleKey) async {
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    _modelStatuses[bundleKey] = ModelBundleStatus.verified;
+    _installedKeys.add(bundleKey);
+    return true;
+  }
+
+  @override
+  Future<void> activateModelBundle(String bundleKey) async {
+    final status = _modelStatuses[bundleKey];
+    if (status != ModelBundleStatus.verified) {
+      throw StateError(
+        'Model $bundleKey belum terverifikasi dan tidak dapat digunakan.',
+      );
+    }
+    _installedKeys.add(bundleKey);
+    _activeModelKey = bundleKey;
+  }
+
+  @override
+  Future<void> deleteModelBundle(String bundleKey) async {
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    _installedKeys.remove(bundleKey);
+    _modelStatuses.remove(bundleKey);
+    if (_activeModelKey == bundleKey) {
+      // If the current active model is deleted, choose the newer verified model.
+      // If there are no verified models, default to no model selected.
+      final remainingVerified = _installedKeys
+          .where((k) => _modelStatuses[k] == ModelBundleStatus.verified)
+          .toList();
+      _activeModelKey =
+          remainingVerified.isNotEmpty ? remainingVerified.last : null;
+    }
+  }
 
   @override
   Future<SyncSummary> getSyncSummary() =>

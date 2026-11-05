@@ -1,11 +1,13 @@
 // Barrel file — import this to get every domain model.
 export 'activity_item.dart';
+export 'available_model_bundle.dart';
 export 'clinical_conflict.dart';
 export 'dashboard_metric.dart';
 export 'dataset.dart';
 export 'diagnosis_outcome.dart';
 export 'diagnosis_inference_request.dart';
 export 'installed_bundle_info.dart';
+export 'model_download_progress.dart';
 export 'model_version_info.dart';
 export 'patient.dart';
 export 'segmentation_overlays.dart';

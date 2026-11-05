@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/screening_result.dart';
@@ -61,7 +62,7 @@ class PersistenceBanner extends StatelessWidget {
           Icon(icon, color: color, size: 20),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
+            child: AppText(
               message,
               style: TextStyle(
                 color: color,
@@ -75,4 +76,3 @@ class PersistenceBanner extends StatelessWidget {
     );
   }
 }
-

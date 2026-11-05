@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -35,7 +36,7 @@ class _XrayImageCardState extends State<XrayImageCard> {
       return const SizedBox(
         height: 320,
         child: Center(
-          child: Text(
+          child: AppText(
             'Pratinjau gambar tidak tersedia',
             style: TextStyle(color: kResultTextLoColor),
           ),
@@ -56,7 +57,7 @@ class _XrayImageCardState extends State<XrayImageCard> {
                 image!.bytes,
                 fit: BoxFit.contain,
                 errorBuilder: (_, _, _) => const Center(
-                  child: Text(
+                  child: AppText(
                     'Gambar tidak tersedia',
                     style: TextStyle(color: kResultTextLoColor),
                   ),
@@ -111,7 +112,7 @@ class _XrayImageCardState extends State<XrayImageCard> {
                         fit: BoxFit.contain,
                         gaplessPlayback: true,
                         errorBuilder: (_, _, _) => const Center(
-                          child: Text(
+                          child: AppText(
                             'Gambar tidak tersedia',
                             style: TextStyle(color: kResultTextLoColor),
                           ),
@@ -147,6 +148,7 @@ class _XrayImageCardState extends State<XrayImageCard> {
 
   Widget _buildViewButton(int value, String label, IconData icon) {
     final isSelected = _view == value;
+    final unselectedFg = kResultTextHiColor.withValues(alpha: 0.85);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -159,7 +161,7 @@ class _XrayImageCardState extends State<XrayImageCard> {
             color: isSelected ? AppTheme.primary : kResultSurfaceAltColor,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isSelected ? AppTheme.primary : kResultBorderColor,
+              color: isSelected ? AppTheme.primary : const Color(0x33FFFFFF),
             ),
           ),
           child: Row(
@@ -168,15 +170,15 @@ class _XrayImageCardState extends State<XrayImageCard> {
               Icon(
                 icon,
                 size: 16,
-                color: isSelected ? Colors.white : kResultTextLoColor,
+                color: isSelected ? Colors.white : unselectedFg,
               ),
               const SizedBox(width: 6),
-              Text(
+              AppText(
                 label,
                 style: TextStyle(
                   fontSize: 12.5,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? Colors.white : kResultTextLoColor,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  color: isSelected ? Colors.white : unselectedFg,
                 ),
               ),
             ],
@@ -247,7 +249,7 @@ class LesionLegendChip extends StatelessWidget {
           color: dimmed ? kResultBorderColor : color.withValues(alpha: 0.45),
         ),
       ),
-      child: Text(
+      child: AppText(
         '${kLesionNameLabels[entry.name.toLowerCase()] ?? entry.name} · '
         '${proportion.toStringAsFixed(1)}%',
         style: TextStyle(
@@ -259,4 +261,3 @@ class LesionLegendChip extends StatelessWidget {
     );
   }
 }
-

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
+import 'package:myapp/domain/models/models.dart';
 
 class BundleDownloadException implements Exception {
   BundleDownloadException(this.message);
@@ -10,31 +11,57 @@ class BundleDownloadException implements Exception {
   String toString() => 'BundleDownloadException: $message';
 }
 
-/// Downloads a bundle zip to [dest], reporting 0.0..1.0 progress via
+/// Downloads a bundle zip to [dest], reporting progress and transfer speed via
 /// [onProgress]. If [sha256Hex] is given, the downloaded file's digest is
 /// checked against it — a defense-in-depth pre-check ahead of the bundle's own
 /// Ed25519/SHA256SUMS verification (`bundle_verifier.dart`), which remains the
 /// authoritative gate.
 ///
-/// Uses a bare [dio] instance rather than the app's shared `ApiClient`, since
-/// `downloadUrl` may point at a different host/CDN than the API base URL and
-/// must not carry the `Authorization` header the API client injects on every
-/// request.
+/// Downloads a bundle zip to [dest], reporting progress and transfer speed via
+/// [onProgress]. If [sha256Hex] is given, the downloaded file's digest is
+/// checked against it — a defense-in-depth pre-check ahead of the bundle's own
+/// Ed25519/SHA256SUMS verification (`bundle_verifier.dart`), which remains the
+/// authoritative gate.
 Future<void> downloadBundleZip({
   required Dio dio,
   required String url,
   required File dest,
   String? sha256Hex,
-  required void Function(int received, int total) onProgress,
+    bool followRedirects = true,
+    CancelToken? cancelToken,
+    required void Function(int received, int total, double bytesPerSecond) onProgress,
 }) async {
+  int lastBytes = 0;
+  int lastTimestamp = DateTime.now().millisecondsSinceEpoch;
+  double currentSpeed = 0.0;
+
   try {
     await dio.download(
       url,
       dest.path,
-      onReceiveProgress: (received, total) =>
-          onProgress(received, total > 0 ? total : received),
+        cancelToken: cancelToken,
+        options: Options(
+          followRedirects: followRedirects,
+          receiveTimeout: const Duration(minutes: 15),
+        ),
+        onReceiveProgress: (received, total) {
+          final now = DateTime.now().millisecondsSinceEpoch;
+          final timeDeltaMs = now - lastTimestamp;
+          if (timeDeltaMs >= 400 || (total > 0 && received >= total)) {
+            final bytesDelta = received - lastBytes;
+            if (timeDeltaMs > 0 && bytesDelta >= 0) {
+              currentSpeed = (bytesDelta / (timeDeltaMs / 1000.0));
+            }
+            lastBytes = received;
+            lastTimestamp = now;
+          }
+          onProgress(received, total > 0 ? total : received, currentSpeed);
+        },
     );
   } on DioException catch (e) {
+    if (CancelToken.isCancel(e) || e.type == DioExceptionType.cancel) {
+      throw const ModelInstallCancelledException();
+    }
     throw BundleDownloadException('download failed: ${e.message ?? e.type}');
   }
 

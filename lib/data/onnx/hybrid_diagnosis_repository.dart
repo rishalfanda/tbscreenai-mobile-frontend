@@ -1,5 +1,6 @@
 import 'package:myapp/data/onnx/on_device_diagnosis_repository.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
+import 'package:myapp/domain/models/diagnosis_inference_request.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/domain/repositories/diagnosis_repository.dart';
@@ -12,7 +13,8 @@ import 'package:myapp/domain/repositories/diagnosis_repository.dart';
 /// `app.dart` — enabling on-device inference needs no new build flag: it
 /// activates automatically the moment a doctor installs a verified bundle via
 /// Sync Center.
-class HybridDiagnosisRepository implements DiagnosisRepository {
+class HybridDiagnosisRepository
+    implements DiagnosisRepository, TypedDiagnosisRepository {
   HybridDiagnosisRepository({
     required OnnxInferenceEngine engine,
     required DiagnosisRepository fallback,
@@ -28,9 +30,24 @@ class HybridDiagnosisRepository implements DiagnosisRepository {
   Future<List<String>> getSymptomOptions() => _fallback.getSymptomOptions();
 
   @override
-  Future<DiagnosisOutcome> runInference({required XrayImage image}) {
+  Future<DiagnosisOutcome> runInference({required XrayImage image}) async {
+    await _engine.ready;
     return _engine.hasBundle
         ? _onDevice.runInference(image: image)
         : _fallback.runInference(image: image);
+  }
+
+  @override
+  Future<DiagnosisOutcome> runTypedInference(
+    DiagnosisInferenceRequest request,
+  ) async {
+    await _engine.ready;
+    if (_engine.hasBundle) {
+      return _onDevice.runInference(image: request.image);
+    }
+    if (_fallback is TypedDiagnosisRepository) {
+      return (_fallback as TypedDiagnosisRepository).runTypedInference(request);
+    }
+    return _fallback.runInference(image: request.image);
   }
 }

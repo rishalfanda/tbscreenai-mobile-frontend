@@ -7,12 +7,13 @@ import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/mock/mock_repositories.dart';
 import 'package:myapp/data/http/http_repositories.dart';
+import 'package:myapp/data/http/http_dashboard_repository.dart';
+import 'package:myapp/data/http/http_dataset_repository.dart';
 import 'package:myapp/data/offline/offline_patient_repository.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/offline/offline_validation_repository.dart';
 import 'package:myapp/data/models_ota/hybrid_sync_repository.dart';
 import 'package:myapp/data/onnx/hybrid_diagnosis_repository.dart';
-import 'package:myapp/data/unavailable_repositories.dart';
 import 'package:myapp/domain/repositories/repositories.dart';
 
 void main() {
@@ -40,9 +41,7 @@ void main() {
       );
       expect(
         context.read<DiagnosisRepository>(),
-        live
-            ? isA<HttpDiagnosisRepository>()
-            : isA<HybridDiagnosisRepository>(),
+        isA<HybridDiagnosisRepository>(),
       );
       expect(
         context.read<PatientRepository>(),
@@ -60,15 +59,11 @@ void main() {
       );
       expect(
         context.read<DashboardRepository>(),
-        live
-            ? isA<UnavailableDashboardRepository>()
-            : isA<MockDashboardRepository>(),
+        live ? isA<HttpDashboardRepository>() : isA<MockDashboardRepository>(),
       );
       expect(
         context.read<DatasetRepository>(),
-        live
-            ? isA<UnavailableDatasetRepository>()
-            : isA<MockDatasetRepository>(),
+        live ? isA<HttpDatasetRepository>() : isA<MockDatasetRepository>(),
       );
       await tester.pumpWidget(const SizedBox());
       await db.close();

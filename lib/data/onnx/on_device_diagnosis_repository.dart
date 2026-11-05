@@ -78,6 +78,7 @@ DiagnosisOutcome outcomeFromInferenceResult(
     isPositive: result.decisionIsTb,
     confidence: (result.positiveConfidence * 100).round().clamp(0, 100),
     processingTime: '${(elapsed.inMilliseconds / 1000).toStringAsFixed(1)}s',
+    processingTimeMs: elapsed.inMilliseconds,
     modelVersion: result.bundleVersion,
     createdAt: DateTime.now(),
     isMock: false,

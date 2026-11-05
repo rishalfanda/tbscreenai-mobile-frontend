@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 
@@ -71,7 +72,7 @@ class SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
+    return AppText(
       text,
       style: TextStyle(
         fontSize: fontSize,

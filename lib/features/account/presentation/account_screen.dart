@@ -1,5 +1,9 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
+import 'package:myapp/core/config/app_config.dart';
+import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/state/auth_provider.dart';
 
 class AccountScreen extends StatelessWidget {
@@ -12,21 +16,25 @@ class AccountScreen extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        Text('Account', style: Theme.of(context).textTheme.headlineMedium),
+        AppText('Account', style: Theme.of(context).textTheme.headlineMedium),
         ListTile(title: Text(auth.displayName), subtitle: Text(auth.email)),
-        ListTile(title: const Text('Role'), subtitle: Text(auth.role)),
-        ListTile(title: const Text('Tenant'), subtitle: Text(auth.tenantId)),
-        const Text(
-          'Profile editing and security status unavailable: backend contract pending.',
+        ListTile(title: const AppText('Role'), subtitle: Text(auth.role)),
+        ListTile(title: const AppText('Tenant'), subtitle: Text(auth.tenantId)),
+        Text(
+          context.tr(
+            'Edit profil dan 2FA belum tersedia.',
+            'Profile editing and 2FA are not available yet.',
+          ),
         ),
         const OutlinedButton(
           onPressed: null,
-          child: Text('Edit profile unavailable'),
+          child: AppText('Edit profile unavailable'),
         ),
-        const OutlinedButton(
-          onPressed: null,
-          child: Text('Password / 2FA unavailable'),
-        ),
+        if (AppConfig.useHttp)
+          OutlinedButton(
+            onPressed: () => context.go('/change-password'),
+            child: Text(context.tr('Ganti password', 'Change password')),
+          ),
         FilledButton(
           onPressed: () async {
             try {
@@ -35,13 +43,13 @@ class AccountScreen extends StatelessWidget {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Sign out cleanup failed. Please retry.'),
+                    content: AppText('Sign out cleanup failed. Please retry.'),
                   ),
                 );
               }
             }
           },
-          child: const Text('Sign Out'),
+          child: const AppText('Sign Out'),
         ),
       ],
     );

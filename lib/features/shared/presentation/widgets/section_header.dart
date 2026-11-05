@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 
@@ -21,15 +22,14 @@ class SectionHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(title, style: Theme.of(context).textTheme.headlineMedium),
+        AppText(title, style: Theme.of(context).textTheme.headlineMedium),
         if (subtitle != null) ...[
           const SizedBox(height: 4),
-          Text(
+          AppText(
             subtitle!,
-            style: Theme.of(context)
-                .textTheme
-                .bodyLarge
-                ?.copyWith(color: AppTheme.subtitleGrey),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(color: AppTheme.subtitleGrey),
           ),
         ],
       ],
@@ -42,10 +42,7 @@ class SectionHeader extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       runSpacing: AppTheme.sp16,
       spacing: AppTheme.sp16,
-      children: [
-        text,
-        trailing!,
-      ],
+      children: [text, trailing!],
     );
   }
 }

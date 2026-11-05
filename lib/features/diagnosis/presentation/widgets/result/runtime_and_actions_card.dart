@@ -1,3 +1,5 @@
+import 'package:myapp/core/localization/app_language.dart';
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
@@ -40,7 +42,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Text(
+          AppText(
             result.isMock
                 ? 'MOCK / DEMO - bukan hasil model asli'
                 : result.segmentation != null
@@ -59,11 +61,11 @@ class RuntimeAndActionsCard extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      AppText(
                         kLesionNameLabels[entry.key] ?? entry.key,
                         style: const TextStyle(color: kResultTextLoColor),
                       ),
-                      Text(
+                      AppText(
                         '${entry.value.toStringAsFixed(1)}%',
                         style: const TextStyle(color: kResultTextHiColor),
                       ),
@@ -84,6 +86,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
             children: [
               SizedBox(
                 child: _actionButton(
+                  context,
                   Icons.save_rounded,
                   _saveButtonLabel(diagnosis.saveStatus),
                   onPressed:
@@ -98,6 +101,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _actionButton(
+                context,
                 Icons.picture_as_pdf_rounded,
                 'PDF',
                 tooltip:
@@ -105,6 +109,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _actionButton(
+                context,
                 Icons.print_rounded,
                 'Cetak',
                 tooltip:
@@ -119,7 +124,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
               key: const Key('new-screening-button'),
               onPressed: () => _startNewScreening(context, diagnosis),
               icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('Screening Baru'),
+              label: const AppText('Screening Baru'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primary,
                 foregroundColor: Colors.white,
@@ -136,22 +141,32 @@ class RuntimeAndActionsCard extends StatelessWidget {
   }
 
   Widget _actionButton(
+    BuildContext context,
     IconData icon,
     String label, {
     VoidCallback? onPressed,
     String? tooltip,
   }) {
+    final isEnabled = onPressed != null;
     final button = OutlinedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 18),
-      label: Text(label),
+      label: AppText(label),
       style: OutlinedButton.styleFrom(
         foregroundColor: kResultTextHiColor,
-        side: const BorderSide(color: kResultBorderColor),
-        backgroundColor: kResultSurfaceColor,
+        disabledForegroundColor: kResultTextLoColor,
+        backgroundColor: kResultSurfaceAltColor,
+        disabledBackgroundColor: kResultSurfaceAltColor.withValues(alpha: 0.55),
+        side: BorderSide(
+          color: isEnabled
+              ? const Color(0x40FFFFFF)
+              : const Color(0x24FFFFFF),
+        ),
       ),
     );
-    return tooltip == null ? button : Tooltip(message: tooltip, child: button);
+    return tooltip == null
+        ? button
+        : Tooltip(message: localize(context, tooltip), child: button);
   }
 
   String _saveButtonLabel(ScreeningSaveStatus status) => switch (status) {
@@ -167,7 +182,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
+        content: AppText(
           saved
               ? 'Terenkripsi secara lokal dan dalam antrian sinkronisasi.'
               : diagnosis.persistenceError ??
@@ -195,8 +210,8 @@ class RuntimeAndActionsCard extends StatelessWidget {
     return await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            title: const Text('Mulai screening baru?'),
-            content: Text(
+            title: const AppText('Mulai screening baru?'),
+            content: AppText(
               diagnosis.saveStatus == ScreeningSaveStatus.pendingSync
                   ? 'Hasil ini sudah tersimpan lokal namun masih menunggu sinkronisasi. Memulai screening baru tidak akan menghapusnya.'
                   : 'Hasil ini belum tersimpan dengan aman. Tinjau atau coba simpan ulang sebelum melanjutkan.',
@@ -204,11 +219,11 @@ class RuntimeAndActionsCard extends StatelessWidget {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Batal'),
+                child: const AppText('Batal'),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('Lanjutkan'),
+                child: const AppText('Lanjutkan'),
               ),
             ],
           ),
@@ -221,7 +236,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Text(
+          child: AppText(
             label,
             style: const TextStyle(fontSize: 11, color: kResultTextLoColor),
           ),

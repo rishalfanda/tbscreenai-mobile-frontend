@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/features/diagnosis/presentation/diagnosis_palette.dart';
 
@@ -27,7 +28,7 @@ class DarkRadioGroup extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        AppText(
           label,
           style: const TextStyle(
             color: diagnosisText,
@@ -65,7 +66,7 @@ class DarkRadioGroup extends StatelessWidget {
             visualDensity: VisualDensity.compact,
           ),
           Flexible(
-            child: Text(
+            child: AppText(
               labels?[value] ?? value,
               maxLines: 2,
               style: const TextStyle(color: diagnosisText, fontSize: 14),

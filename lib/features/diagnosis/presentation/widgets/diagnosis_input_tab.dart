@@ -1,8 +1,9 @@
+import 'package:myapp/core/localization/app_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter/services.dart';
 import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/domain/models/xray_image.dart';
@@ -144,22 +145,36 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
   @override
   void initState() {
     super.initState();
-    if (AppConfig.useHttp || widget.hasModelOverride != null) {
+    if (widget.hasModelOverride != null) {
+      _hasModelReady = widget.hasModelOverride!;
       _checkingModel = false;
     } else {
-      context.read<OnnxInferenceEngine>().ready.then((_) {
-        if (!mounted) return;
-        setState(() {
-          _hasModelReady = context.read<OnnxInferenceEngine>().hasBundle;
-          _checkingModel = false;
+      try {
+        final engine = context.read<OnnxInferenceEngine>();
+        engine.ready.then((_) {
+          if (!mounted) return;
+          setState(() {
+            _hasModelReady = engine.hasBundle;
+            _checkingModel = false;
+          });
         });
-      });
+      } catch (_) {
+        _checkingModel = false;
+      }
     }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (widget.hasModelOverride == null) {
+      try {
+        final engine = context.read<OnnxInferenceEngine>();
+        if (engine.hasBundle != _hasModelReady && !_checkingModel) {
+          setState(() => _hasModelReady = engine.hasBundle);
+        }
+      } catch (_) {}
+    }
     if (_initialized) return;
     final draft = context.read<DiagnosisProvider>().draft;
     _nameController.text = draft.patientName;
@@ -183,14 +198,72 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
 
   Future<void> _pickImage() async {
     if (_pickingImage) return;
+
+    // Fast-path for testing: if pickImage callback is injected, use it directly
+    if (widget.pickImage != null) {
+      setState(() {
+        _pickingImage = true;
+        _imageLoadingMessage = 'Sedang memproses citra rontgen...';
+      });
+      try {
+        final image = await widget.pickImage!();
+        if (image != null && mounted) {
+          final normalized = await prepareInferenceImage(image);
+          if (mounted) {
+            context.read<DiagnosisProvider>().attachImage(normalized);
+          }
+        }
+      } on XrayImageValidationException catch (error) {
+        if (mounted) _showMessage(error.message, isError: true);
+      } on PlatformException catch (error) {
+        if (mounted) {
+          _showMessage(
+            error.message ?? 'Berkas citra tidak dapat dibuka.',
+            isError: true,
+          );
+        }
+      } catch (_) {
+        if (mounted) {
+          _showMessage('Citra rontgen tidak dapat dibuka.', isError: true);
+        }
+      } finally {
+        if (mounted) setState(() => _pickingImage = false);
+      }
+      return;
+    }
+
+    final source = await showModalBottomSheet<XrayPickSource>(
+      context: context,
+      backgroundColor: diagnosisPanel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => const _ImageSourceSheet(),
+    );
+
+    if (source == null) return;
+
     setState(() {
       _pickingImage = true;
       _imageLoadingMessage = 'Sedang memproses citra rontgen...';
     });
     try {
-      final image =
-          await (widget.pickImage?.call() ?? _imagePicker.pickFromGallery());
-      if (image != null && mounted) {
+      final XrayImage? image = switch (source) {
+        XrayPickSource.usbFiles => await _imagePicker.pickFromFiles(),
+        XrayPickSource.gallery => await _imagePicker.pickFromGallery(),
+      };
+
+      if (image == null) {
+        if (source == XrayPickSource.usbFiles && mounted) {
+          _showMessage(
+            'Tidak ada citra yang dipilih. Jika menggunakan flashdisk USB, pastikan sudah terpasang dengan baik.',
+            isError: false,
+          );
+        }
+        return;
+      }
+
+      if (mounted) {
         setState(() {
           _imageLoadingMessage = 'Sedang memproses citra rontgen...';
         });
@@ -204,13 +277,20 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     } on PlatformException catch (error) {
       if (mounted) {
         _showMessage(
-          error.message ?? 'Galeri gambar tidak dapat dibuka.',
+          error.message ?? 'Berkas/galeri gambar tidak dapat dibuka.',
           isError: true,
         );
       }
     } catch (_) {
       if (mounted) {
-        _showMessage('Citra rontgen tidak dapat dibuka.', isError: true);
+        if (source == XrayPickSource.usbFiles) {
+          _showMessage(
+            'Gagal membaca berkas dari flashdisk USB. Pastikan flashdisk terpasang dengan baik.',
+            isError: true,
+          );
+        } else {
+          _showMessage('Citra rontgen tidak dapat dibuka.', isError: true);
+        }
       }
     } finally {
       if (mounted) setState(() => _pickingImage = false);
@@ -273,7 +353,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
               children: [
                 CircularProgressIndicator(color: diagnosisAccent),
                 SizedBox(height: 18),
-                Text(
+                AppText(
                   'Menganalisis citra rontgen...',
                   style: TextStyle(
                     color: diagnosisText,
@@ -298,11 +378,11 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
       builder: (context) => AlertDialog(
         key: const Key('reset-confirm-dialog'),
         backgroundColor: diagnosisPanel,
-        title: const Text(
+        title: const AppText(
           'Konfirmasi Atur Ulang',
           style: TextStyle(color: diagnosisText),
         ),
-        content: const Text(
+        content: const AppText(
           'Apakah Anda yakin ingin mengatur ulang data? Seluruh data pasien '
           'yang telah diisi dan hasil analisis (jika ada) akan dihapus dan '
           'tidak dapat dikembalikan.',
@@ -313,7 +393,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
             key: const Key('reset-confirm-cancel-button'),
             onPressed: () => Navigator.of(context).pop(false),
             style: TextButton.styleFrom(foregroundColor: diagnosisMuted),
-            child: const Text('Batal'),
+            child: const AppText('Batal'),
           ),
           FilledButton(
             key: const Key('reset-confirm-confirm-button'),
@@ -321,7 +401,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFB91C1C),
             ),
-            child: const Text('Ya, Atur Ulang'),
+            child: const AppText('Ya, Atur Ulang'),
           ),
         ],
       ),
@@ -348,7 +428,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(message),
+          content: AppText(message),
           backgroundColor: isError ? const Color(0xFFB91C1C) : diagnosisPanel,
         ),
       );
@@ -358,9 +438,9 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
   Widget build(BuildContext context) {
     final diagnosis = context.watch<DiagnosisProvider>();
     final hasModel =
-        AppConfig.useHttp || (widget.hasModelOverride ?? _hasModelReady);
+        widget.hasModelOverride ?? (AppConfig.isDemo ? true : _hasModelReady);
     final checkingModel =
-        !AppConfig.useHttp && widget.hasModelOverride == null && _checkingModel;
+        widget.hasModelOverride == null && !AppConfig.isDemo && _checkingModel;
     final locked = diagnosis.lastOutcome != null;
 
     return ColoredBox(
@@ -730,7 +810,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
           ],
         ),
         const SizedBox(height: 22),
-        const Text(
+        const AppText(
           'A. Bakteriologi',
           style: TextStyle(
             color: diagnosisText,
@@ -776,7 +856,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
           ],
         ),
         const SizedBox(height: 18),
-        const Text(
+        const AppText(
           'B. Lainnya',
           style: TextStyle(
             color: diagnosisText,
@@ -838,7 +918,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (!checkingModel && !hasModel) ...[
-          NoModelBanner(onGoToSync: () => context.go('/sync')),
+          const NoModelBanner(),
           const SizedBox(height: 18),
         ],
         IgnorePointer(
@@ -881,12 +961,13 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
                   onPressed: diagnosis.isRunning ? null : _confirmAndReset,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: diagnosisText,
+                    disabledForegroundColor: diagnosisMuted,
                     side: const BorderSide(color: diagnosisBorder),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: const Text(
+                  child: const AppText(
                     'Atur Ulang',
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
                   ),
@@ -908,11 +989,14 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
                       alpha: 0.55,
                     ),
                     foregroundColor: Colors.white,
+                    disabledForegroundColor: Colors.white.withValues(
+                      alpha: 0.75,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: const Text(
+                  child: const AppText(
                     'Analisis',
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
                   ),
@@ -931,4 +1015,160 @@ String _numberText(double? value) {
   return value == value.roundToDouble()
       ? value.toInt().toString()
       : value.toString();
+}
+
+class _ImageSourceSheet extends StatelessWidget {
+  const _ImageSourceSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Row(
+              children: [
+                SizedBox(width: 8),
+                AppText(
+                  'Pilih Sumber Citra',
+                  style: TextStyle(
+                    color: diagnosisText,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _SourceTile(
+              icon: Icons.usb_rounded,
+              title: 'Flashdisk USB / Berkas',
+              subtitle:
+                  'Buka pengelola berkas untuk memilih citra dari flashdisk USB atau memori',
+              badge: 'Pastikan flashdisk USB sudah terpasang di perangkat',
+              onTap: () => Navigator.of(context).pop(XrayPickSource.usbFiles),
+            ),
+            const SizedBox(height: 12),
+            _SourceTile(
+              icon: Icons.photo_library_outlined,
+              title: 'Galeri Foto',
+              subtitle: 'Pilih citra dari galeri foto perangkat',
+              onTap: () => Navigator.of(context).pop(XrayPickSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceTile extends StatelessWidget {
+  const _SourceTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.badge,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final String? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: diagnosisInput,
+            border: Border.all(color: diagnosisBorder),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                backgroundColor: diagnosisAccent.withValues(alpha: 0.15),
+                radius: 22,
+                child: Icon(icon, color: diagnosisAccent, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AppText(
+                      title,
+                      style: const TextStyle(
+                        color: diagnosisText,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    AppText(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: diagnosisMuted,
+                      ),
+                    ),
+                    if (badge != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade900.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: Colors.amber.shade700.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 13,
+                              color: Colors.amber.shade300,
+                            ),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: AppText(
+                                badge!,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.amber.shade300,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right, color: diagnosisMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

@@ -1,3 +1,6 @@
+import 'package:myapp/core/localization/app_language.dart';
+import 'package:myapp/core/config/app_config.dart';
+import 'package:myapp/core/localization/app_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -112,7 +115,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
                               color: AppTheme.warning.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Text(
+                            child: AppText(
                               _statusMessage ?? 'Offline cache',
                               style: const TextStyle(
                                 color: AppTheme.navy,
@@ -125,8 +128,8 @@ class _PatientsScreenState extends State<PatientsScreen> {
                         ],
                         TextField(
                           controller: _searchController,
-                          decoration: const InputDecoration(
-                            hintText: 'Search patient or ID',
+                          decoration: InputDecoration(
+                            hintText: localize(context, 'Search patient or ID'),
                             prefixIcon: Icon(Icons.search_rounded),
                           ),
                           onChanged: (_) => setState(() {}),
@@ -135,7 +138,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
                         Expanded(
                           child: patients.isEmpty
                               ? const Center(
-                                  child: Text('No matching patients'),
+                                  child: AppText('No matching patients'),
                                 )
                               : ListView.separated(
                                   physics: const ClampingScrollPhysics(),
@@ -195,8 +198,8 @@ class _PatientsScreenState extends State<PatientsScreen> {
                                                   ),
                                                 ),
                                                 const SizedBox(height: 4),
-                                                Text(
-                                                  '${patient.age} yrs • ${patient.gender}',
+                                                AppText(
+                                                  '${localize(context, '${patient.age} yrs')} • ${localize(context, patient.gender)}',
                                                   style: const TextStyle(
                                                     color:
                                                         AppTheme.subtitleGrey,
@@ -295,7 +298,9 @@ class _PatientsScreenState extends State<PatientsScreen> {
                                               Icons.biotech_rounded,
                                               size: 18,
                                             ),
-                                            label: const Text('Screen patient'),
+                                            label: const AppText(
+                                              'Screen patient',
+                                            ),
                                           ),
                                           const SizedBox(height: 8),
                                           StatusBadge.forStatus(
@@ -338,7 +343,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
+                                    AppText(
                                       'X-ray Card',
                                       style: Theme.of(context)
                                           .textTheme
@@ -363,7 +368,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
+                                    AppText(
                                       'History Timeline',
                                       style: Theme.of(context)
                                           .textTheme
@@ -380,7 +385,9 @@ class _PatientsScreenState extends State<PatientsScreen> {
                                           Icons.timeline_rounded,
                                           color: AppTheme.primaryDark,
                                         ),
-                                        title: Text(entry),
+                                        title: AppConfig.isDemo
+                                            ? AppText(entry)
+                                            : Text(entry),
                                       ),
                                     ),
                                   ],
@@ -418,9 +425,9 @@ class _InfoBox extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Colors.black54)),
+          AppText(label, style: const TextStyle(color: Colors.black54)),
           const SizedBox(height: 6),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+          AppText(value, style: const TextStyle(fontWeight: FontWeight.w700)),
         ],
       ),
     );
