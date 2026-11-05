@@ -25,6 +25,10 @@ bool endsTabletSession(String? code) =>
 
 String? refusalMessage(String? code, {required bool english}) {
   final messages = <String, (String, String)>{
+    'no_active_model': (
+      'Model AI belum aktif. Minta teknisi mengaktifkan model terlebih dahulu.',
+      'No active AI model. Ask a technician to activate a model first.',
+    ),
     'invalid_credentials': (
       'Email atau password salah.',
       'Incorrect email or password.',

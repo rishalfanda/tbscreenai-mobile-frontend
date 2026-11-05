@@ -1,11 +1,12 @@
 import 'package:myapp/data/secure/doctor_session_store.dart';
+import 'package:myapp/data/models_ota/model_store.dart';
+import 'package:dio/dio.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:async';
 import 'package:myapp/core/connectivity/connectivity_service.dart';
 import 'package:myapp/data/http/online_session_check.dart';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -46,6 +47,7 @@ class TBScreenApp extends StatelessWidget {
     this.database,
     this.secureTokenStorage,
     this.useHttpOverride,
+    this.hasActiveModelOverride,
   });
 
   /// Injected so tests (and future flavors) can supply an in-memory database.
@@ -57,6 +59,10 @@ class TBScreenApp extends StatelessWidget {
 
   @visibleForTesting
   final bool? useHttpOverride;
+
+  /// Injected so tests can simulate presence or absence of an active model.
+  @visibleForTesting
+  final Future<bool> Function()? hasActiveModelOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -114,15 +120,12 @@ class TBScreenApp extends StatelessWidget {
           ),
         // === Section: On-device inference ===
         Provider<OnnxInferenceEngine>(
-          create: (_) {
-            final engine = OnnxInferenceEngine();
-            engine
-                .ready; // fire-and-forget kick-off; await this to read hasBundle reliably
-            return engine;
-          },
+          create: (_) => OnnxInferenceEngine(),
+          dispose: (_, engine) => unawaited(engine.dispose()),
         ),
         Provider<ModelUpdatePipeline>(
           create: (c) => ModelUpdatePipeline(
+            // External bundle URLs must never inherit account/device headers.
             downloadDio: Dio(),
             authenticatedDio: c.read<ApiClient>().dio,
             apiBase: useHttp ? Uri.parse(AppConfig.apiBaseUrl) : null,
@@ -200,7 +203,27 @@ class TBScreenApp extends StatelessWidget {
         ),
         // === Section: State providers (depend on interfaces only) ===
         ChangeNotifierProvider(
-          create: (context) => AuthProvider(context.read<AuthRepository>()),
+          create: (context) {
+            final engine = context.read<OnnxInferenceEngine>();
+            return AuthProvider(
+              context.read<AuthRepository>(),
+              hasActiveModel:
+                  hasActiveModelOverride ??
+                  () async {
+                    if (!useHttp) return true;
+                    try {
+                      final store = ModelStore();
+                      final dir = await store.activeBundleDir();
+                      return dir != null;
+                    } catch (_) {
+                      return false;
+                    }
+                  },
+              onSessionEnded: () async {
+                await engine.releaseStandby();
+              },
+            );
+          },
         ),
         if (useHttp)
           Provider<OperatorSyncService>(
@@ -367,11 +390,17 @@ class _RouterViewState extends State<_RouterView> with WidgetsBindingObserver {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       routerConfig: _router,
-      builder: (context, child) => Banner(
-        message: AppConfig.isDemo ? 'DEMO - SYNTHETIC' : 'STAGING',
-        location: BannerLocation.topEnd,
-        child: child!,
-      ),
+      builder: (context, child) {
+        if (!AppConfig.isDemo) {
+          return child!;
+        }
+
+        return Banner(
+          message: 'DEMO - SYNTHETIC',
+          location: BannerLocation.topEnd,
+          child: child!,
+        );
+      },
       scrollBehavior: AppScrollBehavior(),
     );
   }

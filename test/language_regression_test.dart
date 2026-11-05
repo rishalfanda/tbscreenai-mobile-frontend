@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/localization/app_language.dart';
+import 'package:myapp/core/localization/app_text.dart';
 import 'package:myapp/core/localization/language_toggle.dart';
 import 'package:myapp/data/mock/mock_diagnosis_repository.dart';
 import 'package:myapp/data/mock/mock_validation_repository.dart';
@@ -151,17 +152,133 @@ void main() {
     updatePage(() => showResult = true);
     await tester.pumpAndSettle();
     expect(find.text('Identitas Pasien'), findsOneWidget);
+    expect(find.text('Level Indikasi TB: Low'), findsOneWidget);
+    expect(
+      find.text(
+        'Kemungkinan TB rendah, namun belum dapat sepenuhnya dikesampingkan.',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Normal'), findsOneWidget);
     expect(find.text('Dashboard'), findsOneWidget);
+    expect(find.text('27%'), findsOneWidget);
     await tester.tap(find.text('ENG'));
     await tester.pumpAndSettle();
     expect(find.text('Patient Identity'), findsOneWidget);
     expect(find.text('Female · 36 years'), findsOneWidget);
+    expect(find.text('TB Indication Level: Low'), findsOneWidget);
+    expect(
+      find.text('TB likelihood is low, but cannot be ruled out completely.'),
+      findsOneWidget,
+    );
     expect(find.text('Normal'), findsOneWidget);
     expect(find.text('Dashboard'), findsOneWidget);
-    expect(find.text('73%'), findsOneWidget);
+    expect(find.text('27%'), findsOneWidget);
     expect(identical(diagnosis.lastResult, result), isTrue);
     expect(diagnosis.lastResult!.draft.comorbidity, 'Diabetes');
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('newly added UI strings translate correctly in both languages', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final language = AppLanguage();
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: language,
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) {
+              return ListView(
+                children: [
+                  AppText('Pilih Sumber Citra'),
+                  AppText('Flashdisk USB / Berkas'),
+                  AppText('Galeri Foto'),
+                  AppText('Hapus Rontgen'),
+                  AppText('Close camera'),
+                  AppText('Turn flash off'),
+                  AppText('Turn flash on'),
+                  AppText('Switch camera'),
+                  AppText('Tenant'),
+                  AppText('Doctor Review'),
+                  AppText('Validate AI screening results'),
+                  AppText('The server changed after this device loaded the diagnosis.'),
+                  AppText('Screening volume, last 14 days'),
+                  AppText('Added 2026-11-04'),
+                  AppText(
+                    'Apakah Anda yakin ingin menghapus DS-1? Tindakan ini tidak dapat dibatalkan.',
+                  ),
+                  AppText('Validation was not saved: timeout'),
+                  AppText('Conflict was not resolved: 409'),
+                  AppText('Verdict: agreed'),
+                  AppText('Note: cough'),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Default English assertions
+    expect(find.text('Select Image Source'), findsOneWidget);
+    expect(find.text('USB Flash Drive / Files'), findsOneWidget);
+    expect(find.text('Photo Gallery'), findsOneWidget);
+    expect(find.text('Remove X-Ray'), findsOneWidget);
+    expect(find.text('Close camera'), findsOneWidget);
+    expect(find.text('Turn flash off'), findsOneWidget);
+    expect(find.text('Turn flash on'), findsOneWidget);
+    expect(find.text('Switch camera'), findsOneWidget);
+    expect(find.text('Tenant'), findsOneWidget);
+    expect(find.text('Doctor Review'), findsOneWidget);
+    expect(find.text('Validate AI screening results'), findsOneWidget);
+    expect(
+      find.text('The server changed after this device loaded the diagnosis.'),
+      findsOneWidget,
+    );
+    expect(find.text('Screening volume, last 14 days'), findsOneWidget);
+    expect(find.text('Added 2026-11-04'), findsOneWidget);
+    expect(
+      find.text('Are you sure you want to delete DS-1? This action cannot be undone.'),
+      findsOneWidget,
+    );
+    expect(find.text('Validation was not saved: timeout'), findsOneWidget);
+    expect(find.text('Conflict was not resolved: 409'), findsOneWidget);
+    expect(find.text('Verdict: agreed'), findsOneWidget);
+    expect(find.text('Note: cough'), findsOneWidget);
+
+    // Switch to Indonesian
+    language.select('id');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pilih Sumber Citra'), findsOneWidget);
+    expect(find.text('Flashdisk USB / Berkas'), findsOneWidget);
+    expect(find.text('Galeri Foto'), findsOneWidget);
+    expect(find.text('Hapus Rontgen'), findsOneWidget);
+    expect(find.text('Tutup kamera'), findsOneWidget);
+    expect(find.text('Matikan lampu kilat'), findsOneWidget);
+    expect(find.text('Nyalakan lampu kilat'), findsOneWidget);
+    expect(find.text('Ganti kamera'), findsOneWidget);
+    expect(find.text('Instansi / Tenant'), findsOneWidget);
+    expect(find.text('Tinjauan Dokter'), findsOneWidget);
+    expect(find.text('Validasi hasil skrining AI'), findsOneWidget);
+    expect(
+      find.text('Data di server telah berubah setelah perangkat ini memuat diagnosis.'),
+      findsOneWidget,
+    );
+    expect(find.text('Jumlah skrining, 14 hari terakhir'), findsOneWidget);
+    expect(find.text('Ditambahkan 2026-11-04'), findsOneWidget);
+    expect(
+      find.text('Apakah Anda yakin ingin menghapus DS-1? Tindakan ini tidak dapat dibatalkan.'),
+      findsOneWidget,
+    );
+    expect(find.text('Validasi gagal disimpan: timeout'), findsOneWidget);
+    expect(find.text('Konflik gagal diselesaikan: 409'), findsOneWidget);
+    expect(find.text('Keputusan: Disetujui'), findsOneWidget);
+    expect(find.text('Catatan: cough'), findsOneWidget);
   });
 }

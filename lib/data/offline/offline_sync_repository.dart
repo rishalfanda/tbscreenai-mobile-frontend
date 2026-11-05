@@ -5,18 +5,10 @@ import 'package:myapp/data/local/mappers.dart';
 import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/models_ota/model_update_service.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
-import 'package:myapp/domain/models/model_version_info.dart';
-import 'package:myapp/domain/models/patient.dart';
-import 'package:myapp/domain/models/sync_summary.dart';
+import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
 
 /// Sync Center backed by the local database and the real sync endpoints.
-///
-/// Replaces the FASE 3 stub: the installed model version is now persisted per
-/// device, the backup summary counts real cached rows, and uploading pushes
-/// the sync queue instead of ticking a fake progress bar. Model-update logic
-/// itself lives in `ModelUpdateService` (shared with `HybridSyncRepository`
-/// for mock/demo mode) — this class only owns the data-backup half.
 class OfflineSyncRepository implements SyncRepository {
   OfflineSyncRepository({
     required AppDatabase db,
@@ -47,8 +39,50 @@ class OfflineSyncRepository implements SyncRepository {
   Stream<double> downloadModel() => _modelUpdate.downloadModel();
 
   @override
+  Stream<ModelDownloadProgress> downloadModelWithProgress({
+    AvailableModelBundle? model,
+  }) =>
+      _modelUpdate.downloadModelWithProgress(model: model);
+
+  @override
+  void cancelModelDownload() => _modelUpdate.cancelModelDownload();
+
+  @override
   Future<(ModelVersionInfo, DateTime)?> lastKnownUpdateInfo() =>
       _modelUpdate.readCachedCheck();
+
+  @override
+  Future<List<AvailableModelBundle>> getAvailableModels({
+    String? channel,
+    bool? quantized,
+    bool localOnly = false,
+  }) =>
+      _modelUpdate.fetchAvailableModels(
+        channel: channel,
+        quantized: quantized,
+        localOnly: localOnly,
+      );
+
+  @override
+  Future<List<String>> getInstalledModelKeys() =>
+      _modelUpdate.getInstalledModelKeys();
+
+  @override
+  Stream<double> downloadModelBundle(AvailableModelBundle model) =>
+      _modelUpdate.downloadModelBundle(model);
+
+  @override
+  Future<void> activateModelBundle(String bundleKey) =>
+      _modelUpdate.activateModelBundle(bundleKey);
+
+  @override
+  Future<bool> verifyModelBundle(String bundleKey) =>
+      _modelUpdate.verifyModelBundle(bundleKey);
+
+  @override
+  Future<void> deleteModelBundle(String bundleKey) async {
+    await _modelUpdate.deleteModelBundle(bundleKey);
+  }
 
   @override
   Future<SyncSummary> getSyncSummary() async {
@@ -72,9 +106,6 @@ class OfflineSyncRepository implements SyncRepository {
   }
 
   /// Queues the selected patients, then flushes the queue to /sync/push.
-  ///
-  /// The count emitted is queue progress; the authoritative per-record verdict
-  /// (applied / skipped / conflict / failed) lands in [lastReport].
   @override
   Stream<int> uploadPatients(List<String> patientCodes) async* {
     final session = _db.sessionGeneration;

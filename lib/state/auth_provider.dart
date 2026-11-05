@@ -9,15 +9,33 @@ import 'package:myapp/domain/repositories/auth_repository.dart';
 
 enum AuthStatus { loggedOut, authenticating, authenticated, loggingOut }
 
+/// Thrown when a clinician attempts to log in but no active verified model is
+/// present on the device.
+class NoActiveModelException implements Exception {
+  const NoActiveModelException();
+
+  @override
+  String toString() =>
+      'NoActiveModelException: Active AI model is required for clinician login.';
+}
+
 /// Single source of truth for the active user and session lifecycle.
 class AuthProvider extends ChangeNotifier {
-  AuthProvider(this._authRepository, {UserProfile? initialProfile})
-    : _profile = initialProfile,
-      _status = initialProfile == null
-          ? AuthStatus.loggedOut
-          : AuthStatus.authenticated;
+  AuthProvider(
+    this._authRepository, {
+    UserProfile? initialProfile,
+    Future<bool> Function()? hasActiveModel,
+    Future<void> Function()? onSessionEnded,
+  }) : _profile = initialProfile,
+       _hasActiveModel = hasActiveModel,
+       _onSessionEnded = onSessionEnded,
+       _status = initialProfile == null
+           ? AuthStatus.loggedOut
+           : AuthStatus.authenticated;
 
   final AuthRepository _authRepository;
+  final Future<bool> Function()? _hasActiveModel;
+  final Future<void> Function()? _onSessionEnded;
 
   UserProfile? _profile;
   AuthStatus _status;
@@ -54,6 +72,19 @@ class AuthProvider extends ChangeNotifier {
     final profile = await (repo as PersistentDoctorAuthRepository)
         .restoreDoctorSession();
     _ensureCurrent(generation);
+    if (profile != null && _hasActiveModel != null) {
+      final hasModel = await _hasActiveModel();
+      _ensureCurrent(generation);
+      if (!hasModel) {
+        await _authRepository.logout();
+        _ensureCurrent(generation);
+        _profile = null;
+        _status = AuthStatus.loggedOut;
+        sessionRefusalCode = 'no_active_model';
+        _notifyIfAlive();
+        return;
+      }
+    }
     _profile = profile;
     _status = profile == null ? AuthStatus.loggedOut : AuthStatus.authenticated;
     _notifyIfAlive();
@@ -102,6 +133,17 @@ class AuthProvider extends ChangeNotifier {
         password: password,
       );
       _ensureCurrent(generation);
+
+      if (profile.mobileRole == MobileRole.clinician &&
+          _hasActiveModel != null) {
+        final hasModel = await _hasActiveModel();
+        _ensureCurrent(generation);
+        if (!hasModel) {
+          await _authRepository.logout();
+          throw const NoActiveModelException();
+        }
+      }
+
       _profile = profile;
       sessionRefusalCode = null;
       _status = AuthStatus.authenticated;
@@ -138,6 +180,7 @@ class AuthProvider extends ChangeNotifier {
       _profile = null;
       _status = AuthStatus.loggedOut;
       _notifyIfAlive();
+      unawaited(_onSessionEnded?.call());
     }
 
     unawaited(

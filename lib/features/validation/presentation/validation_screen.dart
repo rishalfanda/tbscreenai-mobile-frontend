@@ -874,7 +874,7 @@ class _ConflictResolutionCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Text(
+          AppText(
             value.detail ??
                 'The server changed after this device loaded the diagnosis.',
           ),

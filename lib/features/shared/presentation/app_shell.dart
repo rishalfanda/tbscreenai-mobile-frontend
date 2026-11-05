@@ -10,6 +10,8 @@ import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
+import 'package:myapp/data/onnx/onnx_inference_engine.dart';
+import 'package:myapp/features/shared/presentation/model_initiation_dialog.dart';
 import 'package:myapp/state/auth_provider.dart';
 import 'package:myapp/domain/models/access_scope.dart';
 
@@ -44,7 +46,7 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _pendingCount = 0;
   bool _railVisible = true;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -52,36 +54,98 @@ class _AppShellState extends State<AppShell> {
   String? _pendingOwner;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      _releaseModelStandby();
+    } else if (state == AppLifecycleState.resumed) {
+      _checkModelStandby();
+    }
+  }
+
+  void _releaseModelStandby() {
+    try {
+      final engine = context.read<OnnxInferenceEngine>();
+      unawaited(engine.releaseStandby());
+    } catch (_) {}
+  }
+
+  AuthProvider? _getAuth(BuildContext context, {bool listen = true}) {
+    try {
+      return Provider.of<AuthProvider>(context, listen: listen);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final auth = context.watch<AuthProvider>();
-    final owner = auth.isLoggedIn && auth.mobileRole == MobileRole.clinician
+    final auth = _getAuth(context, listen: true);
+    final owner = auth != null && auth.isLoggedIn && auth.mobileRole == MobileRole.clinician
         ? '${auth.userId}:${auth.tenantId}'
         : null;
-    if (owner == _pendingOwner) return;
-    unawaited(_pendingSubscription?.cancel());
-    _pendingSubscription = null;
-    _pendingOwner = owner;
-    _pendingCount = 0;
-    if (owner == null) return;
-    _pendingSubscription = context
-        .read<ValidationRepository>()
-        .watchPendingCount()
-        .listen((count) {
-          if (!mounted || _pendingOwner != owner) return;
-          setState(() => _pendingCount = count);
-        }, onError: (Object _) {});
+    if (owner != _pendingOwner) {
+      unawaited(_pendingSubscription?.cancel());
+      _pendingSubscription = null;
+      _pendingOwner = owner;
+      _pendingCount = 0;
+      if (owner != null) {
+        try {
+          _pendingSubscription = context
+              .read<ValidationRepository>()
+              .watchPendingCount()
+              .listen((count) {
+                if (!mounted || _pendingOwner != owner) return;
+                setState(() => _pendingCount = count);
+              }, onError: (Object _) {});
+        } catch (_) {}
+      }
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkModelStandby();
+    });
+  }
+
+  void _checkModelStandby() {
+    if (!mounted) return;
+    try {
+      final auth = _getAuth(context, listen: false);
+      if (auth == null ||
+          !auth.isLoggedIn ||
+          auth.mustChangePassword ||
+          auth.mobileRole != MobileRole.clinician) {
+        _releaseModelStandby();
+        return;
+      }
+
+      final engine = context.read<OnnxInferenceEngine>();
+      if (!engine.isStandbyReady) {
+        initiateModelStandbyWithDialog(context, engine);
+      }
+    } catch (_) {
+      return;
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     unawaited(_pendingSubscription?.cancel());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final role = context.watch<AuthProvider>().mobileRole;
+    final auth = _getAuth(context, listen: true);
+    final role = auth?.mobileRole ?? MobileRole.clinician;
     final items = AppShell._items
         .where((item) => role.allows(item.route))
         .toList();

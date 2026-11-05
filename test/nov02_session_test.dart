@@ -57,67 +57,78 @@ class _Adapter implements HttpClientAdapter {
 
 void main() {
   for (final role in ['doctor', 'technician']) {
-    test('$role session restores offline only for the doctor', () async {
-      final db = AppDatabase(NativeDatabase.memory());
-      final secrets = MemorySecureTokenStorage();
-      final session = DoctorSessionStore(secrets);
-      final settings = SettingsStore(db);
-      ApiClient makeClient() => ApiClient(
-        baseUrl: 'https://synthetic.invalid/api/v1',
-        settings: settings,
-        secureStorage: secrets,
+    for (final modelReady in [false, true]) {
+      test(
+        '$role session restores offline only for a doctor with modelReady=$modelReady',
+        () async {
+          final db = AppDatabase(NativeDatabase.memory());
+          final secrets = MemorySecureTokenStorage();
+          final session = DoctorSessionStore(secrets);
+          final settings = SettingsStore(db);
+          ApiClient makeClient() => ApiClient(
+            baseUrl: 'https://synthetic.invalid/api/v1',
+            settings: settings,
+            secureStorage: secrets,
+          );
+          final first = makeClient();
+          final adapter = _Adapter(role);
+          first.dio.httpClientAdapter = adapter;
+          await first.deviceIdentity.saveActivation({
+            'device_id': 'synthetic-device',
+            'tenant_id': 'synthetic-tenant',
+            'credential': 'synthetic-credential',
+            'label': 'Synthetic tablet',
+            'status': 'active',
+          });
+          final repo = HttpAuthRepository(
+            first,
+            settings: settings,
+            db: db,
+            doctorSession: session,
+          );
+          await repo.login(
+            email: 'test@example.invalid',
+            password: 'synthetic-password',
+          );
+          expect(adapter.calls, 1);
+          final second = makeClient();
+          final secondAdapter = _Adapter(role);
+          second.dio.httpClientAdapter = secondAdapter;
+          final restoredRepo = HttpAuthRepository(
+            second,
+            settings: settings,
+            db: db,
+            doctorSession: session,
+          );
+          final auth = AuthProvider(
+            restoredRepo,
+            hasActiveModel: () async => modelReady,
+          );
+          await auth.restoreSession();
+          expect(auth.isLoggedIn, role == 'doctor' && modelReady);
+          expect(
+            secondAdapter.calls,
+            0,
+            reason:
+                'Offline restore must not call the server or expire on local token time',
+          );
+          if (role == 'doctor' && modelReady) {
+            expect(auth.role, 'doctor');
+            expect(db.activeOwner!.userId, 'synthetic-user');
+            await auth.logout();
+            expect(
+              await session.read('synthetic-device', first.baseUrl),
+              isNull,
+            );
+            expect(await restoredRepo.restoreDoctorSession(), isNull);
+          }
+          auth.dispose();
+          await first.close();
+          await second.close();
+          await db.close();
+        },
       );
-      final first = makeClient();
-      final adapter = _Adapter(role);
-      first.dio.httpClientAdapter = adapter;
-      await first.deviceIdentity.saveActivation({
-        'device_id': 'synthetic-device',
-        'tenant_id': 'synthetic-tenant',
-        'credential': 'synthetic-credential',
-        'label': 'Synthetic tablet',
-        'status': 'active',
-      });
-      final repo = HttpAuthRepository(
-        first,
-        settings: settings,
-        db: db,
-        doctorSession: session,
-      );
-      await repo.login(
-        email: 'test@example.invalid',
-        password: 'synthetic-password',
-      );
-      expect(adapter.calls, 1);
-      final second = makeClient();
-      final secondAdapter = _Adapter(role);
-      second.dio.httpClientAdapter = secondAdapter;
-      final restoredRepo = HttpAuthRepository(
-        second,
-        settings: settings,
-        db: db,
-        doctorSession: session,
-      );
-      final auth = AuthProvider(restoredRepo);
-      await auth.restoreSession();
-      expect(auth.isLoggedIn, role == 'doctor');
-      expect(
-        secondAdapter.calls,
-        0,
-        reason:
-            'Offline restore must not call the server or expire on local token time',
-      );
-      if (role == 'doctor') {
-        expect(auth.role, 'doctor');
-        expect(db.activeOwner!.userId, 'synthetic-user');
-        await auth.logout();
-        expect(await session.read('synthetic-device', first.baseUrl), isNull);
-        expect(await restoredRepo.restoreDoctorSession(), isNull);
-      }
-      auth.dispose();
-      await first.close();
-      await second.close();
-      await db.close();
-    });
+    }
   }
   test('doctor session is bound to device and API environment', () async {
     final db = AppDatabase(NativeDatabase.memory());

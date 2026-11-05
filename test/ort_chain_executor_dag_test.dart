@@ -409,6 +409,60 @@ void main() {
         throwsA(isA<StateError>().having((e) => e.message, 'message', contains('Simulated CNN execution failure'))),
       );
     });
+    test('keepSessionsStandby preloads and retains all sessions across execution', () async {
+      final loadedSessions = <String>[];
+      final closedSessions = <String>[];
+
+      final pool = OrtSessionPool(
+        sessionFactory: (filePath, {label, required preferredProviders}) async {
+          loadedSessions.add(label ?? filePath);
+          return OrtSessionHandle.mock(
+            activeProvider: 'cpu',
+            onRun: (feeds) async {
+              switch (label) {
+                case 'preprocess.onnx':
+                  return [_tensor1d(1), _tensor1d(2), _tensor1d(3), _tensor1d(4)];
+                case 'seg_lung.onnx':
+                  return [_tensor1d(0.9)];
+                case 'seg_lesion.onnx':
+                  return [_tensor1d(0.8)];
+                case 'cnn.onnx':
+                  return [_tensor1d(0.7)];
+                case 'features.onnx':
+                  return [_tensor1d(0.5), _tensor1d(1.0), _tensor1d(0.0), _tensor1d(0.85)];
+                case 'rf_default.onnx':
+                  return [_tensor1d(1), _tensor1d(0.75)];
+                case 'fuse.onnx':
+                  return [_tensor1d(0.8), _tensor1d(1)];
+                default:
+                  return [_tensor1d(0)];
+              }
+            },
+            onClose: () async {
+              closedSessions.add(label ?? filePath);
+            },
+          );
+        },
+      );
+
+      final executor = OrtChainExecutor(
+        store: store,
+        pool: pool,
+        keepSessionsStandby: true,
+      );
+
+      await executor.preloadSessions();
+      expect(loadedSessions, containsAll(['preprocess.onnx', 'seg_lung.onnx', 'seg_lesion.onnx', 'cnn.onnx', 'features.onnx', 'rf_default.onnx', 'fuse.onnx']));
+
+      final input = Tensor(
+        data: Uint8List.fromList([1, 2, 3]),
+        shape: const [1, 1, 1, 3],
+      );
+
+      await executor.run(input);
+
+      expect(closedSessions, isEmpty);
+    });
   });
 }
 

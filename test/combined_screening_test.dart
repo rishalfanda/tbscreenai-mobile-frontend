@@ -18,7 +18,7 @@ DiagnosisProvider seeded({bool result = false}) {
     ..attachPlaceholderImage('synthetic.png');
   if (result) {
     provider.lastOutcome = DiagnosisOutcome(
-      isPositive: false,
+      isPositive: true,
       confidence: 72,
       processingTime: '1.2s',
       modelVersion: 'test-model',

@@ -1,5 +1,9 @@
 # Integrasi tablet backend 537dc90 — 4 November 2026
 
+**Pembaruan 5 November:** penggabungan PR #7 dijelaskan pada
+[APK gabungan PR #7 dan backend 537dc90](combined-pr7-backend537.md).
+Pernyataan basis/PR terpisah di bawah adalah snapshot APK 4 November.
+
 Target: backend `537dc904b2c2099ebab97a10fb41df35b0c9a09d` (merge PR #39).
 Basis frontend: `9a80a53`, branch revisi alur 2 November. PR frontend #7
 masih terpisah; integrasi ini tidak menggabungkan branch `mlops`.

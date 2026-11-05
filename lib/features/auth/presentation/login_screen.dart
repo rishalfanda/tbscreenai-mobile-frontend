@@ -45,6 +45,20 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (failure) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
+      if (failure is NoActiveModelException) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.trRead(
+                'Login gagal — belum ada model AI yang aktif. Silakan aktifkan model terlebih dahulu atau hubungi teknisi.',
+                'Login failed — no active AI model found. Please activate a model first or contact a technician.',
+              ),
+            ),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+        return;
+      }
       final code = refusalFromError(failure);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

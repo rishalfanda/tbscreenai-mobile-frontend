@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/domain/models/xray_image.dart';
@@ -33,7 +34,7 @@ class DashedUploadPanel extends StatelessWidget {
               ? _scrollableContent(_loadingState())
               : (image == null
                     ? _scrollableContent(_emptyState())
-                    : _preview()),
+                    : _preview(context)),
         ),
       ),
     );
@@ -157,7 +158,7 @@ class DashedUploadPanel extends StatelessWidget {
     );
   }
 
-  Widget _preview() {
+  Widget _preview(BuildContext context) {
     final current = image!;
     return Stack(
       fit: StackFit.expand,
@@ -193,7 +194,7 @@ class DashedUploadPanel extends StatelessWidget {
           top: 10,
           right: 10,
           child: IconButton(
-            tooltip: 'Hapus Rontgen',
+            tooltip: localize(context, 'Hapus Rontgen'),
             onPressed: onRemove,
             style: IconButton.styleFrom(
               backgroundColor: Colors.black.withValues(alpha: 0.72),

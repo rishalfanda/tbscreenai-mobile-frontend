@@ -293,7 +293,15 @@ class ApiClient {
         options.path != '/auth/login' &&
         options.path != '/auth/refresh' &&
         options.path != '/devices/activation') {
-      options.headers['Authorization'] = 'Bearer $token';
+      final isExternal =
+          options.uri.hasAuthority &&
+          baseUrl.isNotEmpty &&
+          Uri.tryParse(baseUrl)?.host.isNotEmpty == true &&
+          options.uri.host.toLowerCase() !=
+              Uri.tryParse(baseUrl)!.host.toLowerCase();
+      if (!isExternal) {
+        options.headers['Authorization'] = 'Bearer $token';
+      }
     }
     handler.next(options);
   }
@@ -331,7 +339,9 @@ class ApiClient {
     }
     if (generation != tokens.generation ||
         error.response?.statusCode != 401 ||
-        _isAuthPath(options.path)) {
+        options.path == '/auth/login' ||
+        options.path == '/auth/refresh' ||
+        options.path == '/devices/activation') {
       return handler.next(error);
     }
 
@@ -445,9 +455,6 @@ class ApiClient {
       if (identical(_expiryInFlight, future)) _expiryInFlight = null;
     });
   }
-
-  bool _isAuthPath(String path) =>
-      path == '/auth/login' || path == '/auth/refresh';
 
   DioException _sessionChanged(RequestOptions options) => DioException(
     requestOptions: options,

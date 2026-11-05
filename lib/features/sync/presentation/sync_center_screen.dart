@@ -1,16 +1,20 @@
+import 'package:myapp/data/models_ota/model_update_pipeline.dart';
+import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/localization/app_text.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import 'package:myapp/core/connectivity/connectivity_service.dart';
 import 'package:myapp/core/theme/app_theme.dart';
-import 'package:myapp/data/models_ota/model_update_pipeline.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
-import 'package:myapp/domain/models/model_version_info.dart';
-import 'package:myapp/domain/models/patient.dart';
-import 'package:myapp/domain/models/sync_summary.dart';
+import 'package:myapp/domain/models/access_scope.dart';
+import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/domain/repositories/sync_repository.dart';
+import 'package:myapp/data/onnx/onnx_inference_engine.dart';
+import 'package:myapp/features/shared/presentation/model_initiation_dialog.dart';
+import 'package:myapp/state/auth_provider.dart';
 
 class SyncCenterScreen extends StatelessWidget {
   const SyncCenterScreen({super.key, this.modelsOnly = false});
@@ -42,32 +46,32 @@ class SyncCenterScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppTheme.sp24),
-          if (modelsOnly)
-            const _ModelUpdateCard()
-          else
-            // === Section: Cards ===
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final stacked = constraints.maxWidth < 880;
-                if (stacked) {
-                  return const Column(
+            if (modelsOnly)
+              const _ModelUpdateCard()
+            else
+              // === Section: Cards (Side by side on wide, stacked on narrow) ===
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final stacked = constraints.maxWidth < 880;
+                  if (stacked) {
+                    return const Column(
+                      children: [
+                        _ModelUpdateCard(),
+                        SizedBox(height: AppTheme.sp24),
+                        _DataBackupCard(),
+                      ],
+                    );
+                  }
+                  return const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _ModelUpdateCard(),
-                      SizedBox(height: AppTheme.sp24),
-                      _DataBackupCard(),
+                      Expanded(child: _ModelUpdateCard()),
+                      SizedBox(width: AppTheme.sp24),
+                      Expanded(child: _DataBackupCard()),
                     ],
                   );
-                }
-                return const Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: _ModelUpdateCard()),
-                    SizedBox(width: AppTheme.sp24),
-                    Expanded(child: _DataBackupCard()),
-                  ],
-                );
-              },
-            ),
+                },
+              ),
         ],
       ),
     );
@@ -141,10 +145,14 @@ class _ConnectionChipState extends State<_ConnectionChip> {
 enum _ModelSyncState {
   idle,
   checking,
+  noModelAvailable,
   upToDate,
+  readyToActivate,
   updateAvailable,
   downloading,
-  installing,
+  verifying,
+  verificationFailed,
+  activating,
   done,
   error,
 }
@@ -159,11 +167,16 @@ class _ModelUpdateCard extends StatefulWidget {
 class _ModelUpdateCardState extends State<_ModelUpdateCard> {
   _ModelSyncState _state = _ModelSyncState.idle;
   double _progress = 0.0;
+  String _downloadSpeed = '';
   String _currentVersion = '';
   ModelVersionInfo? _updateInfo;
+  AvailableModelBundle? _matchedLocalBundle;
   DateTime? _lastChecked;
   String? _errorMessage;
-  StreamSubscription<double>? _downloadSub;
+  StreamSubscription<dynamic>? _downloadSub;
+
+  List<AvailableModelBundle> _storedModels = [];
+  bool _showStoredModels = false;
 
   final _connectivity = ConnectivityService();
   bool _isOnline = true;
@@ -172,24 +185,8 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
   @override
   void initState() {
     super.initState();
-    final repository = context.read<SyncRepository>();
-    repository.getInstalledModelVersion().then((version) {
-      if (!mounted) return;
-      setState(() => _currentVersion = version ?? '');
-    });
-    // Restore the last completed check (if any) so reopening this page
-    // doesn't reset back to a blank "no info yet" idle state.
-    repository.lastKnownUpdateInfo().then((cached) {
-      if (!mounted || cached == null) return;
-      final (info, checkedAt) = cached;
-      setState(() {
-        _updateInfo = info;
-        _lastChecked = checkedAt;
-        _state = info.hasUpdate
-            ? _ModelSyncState.updateAvailable
-            : _ModelSyncState.upToDate;
-      });
-    });
+    _refreshInstalledState();
+
     _connectivity.checkNow().then((online) {
       if (!mounted) return;
       setState(() => _isOnline = online);
@@ -200,6 +197,73 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
     });
   }
 
+  Future<void> _refreshInstalledState() async {
+    final repository = context.read<SyncRepository>();
+    final version = await repository.getInstalledModelVersion();
+    final localModels = await repository.getAvailableModels(localOnly: true);
+    if (!mounted) return;
+    setState(() {
+      _currentVersion = version ?? '';
+      _storedModels = localModels;
+    });
+
+    final cached = await repository.lastKnownUpdateInfo();
+    if (!mounted) return;
+    if (cached != null) {
+      final (info, checkedAt) = cached;
+      _updateInfo = info;
+      _lastChecked = checkedAt;
+      _evaluateModelStatus(info, localModels, version);
+    }
+  }
+
+  void _evaluateModelStatus(
+    ModelVersionInfo info,
+    List<AvailableModelBundle> localModels,
+    String? currentVersion,
+  ) {
+    AvailableModelBundle? match;
+    if (info.latestVersion.isNotEmpty) {
+      for (final m in localModels) {
+        if (m.version.toLowerCase().trim() == info.latestVersion.toLowerCase().trim() ||
+            m.id.toLowerCase().trim() == info.latestVersion.toLowerCase().trim() ||
+            m.id.toLowerCase().trim().endsWith('_${info.latestVersion.toLowerCase().trim()}')) {
+          match = m;
+          break;
+        }
+      }
+    }
+
+    _matchedLocalBundle = match;
+
+    if (match != null) {
+      final isActive = currentVersion != null &&
+          (currentVersion.toLowerCase().trim() == match.id.toLowerCase().trim() ||
+           currentVersion.toLowerCase().trim() == match.version.toLowerCase().trim());
+
+      if (isActive && match.isVerified) {
+        _state = _ModelSyncState.upToDate;
+      } else if (match.isVerificationFailed) {
+        _state = _ModelSyncState.verificationFailed;
+      } else if (match.isVerified) {
+        _state = _ModelSyncState.readyToActivate;
+      } else {
+        _state = _ModelSyncState.updateAvailable;
+      }
+    } else {
+      if (info.latestVersion.isEmpty) {
+        if (currentVersion == null || currentVersion.isEmpty) {
+          _state = _ModelSyncState.noModelAvailable;
+        } else {
+          _state = _ModelSyncState.upToDate;
+        }
+      } else {
+        final hasNew = info.latestVersion != currentVersion;
+        _state = hasNew ? _ModelSyncState.updateAvailable : _ModelSyncState.upToDate;
+      }
+    }
+  }
+
   @override
   void dispose() {
     _downloadSub?.cancel();
@@ -208,78 +272,163 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
   }
 
   Future<void> _checkForUpdate() async {
-    final repository = context.read<SyncRepository>();
+    if (!_isOnline) {
+      setState(() {
+        _state = _ModelSyncState.error;
+        _errorMessage = 'Tidak ada koneksi internet. Hubungkan perangkat dan coba lagi.';
+      });
+      return;
+    }
+
     setState(() {
       _state = _ModelSyncState.checking;
-      _lastChecked = DateTime.now();
+      _errorMessage = null;
     });
+
+    final repository = context.read<SyncRepository>();
     try {
       final info = await repository.checkForUpdate();
+      final allModels = await repository.getAvailableModels(localOnly: false);
+      final currentVersion = await repository.getInstalledModelVersion();
       if (!mounted) return;
       setState(() {
         _updateInfo = info;
-        _state = info.hasUpdate
-            ? _ModelSyncState.updateAvailable
-            : _ModelSyncState.upToDate;
+        _lastChecked = DateTime.now();
+        _currentVersion = currentVersion ?? '';
+        _storedModels = allModels;
+        _evaluateModelStatus(info, allModels, currentVersion);
       });
-    } catch (err) {
+    } catch (e) {
       if (!mounted) return;
+      final msg = _formatErrorMessage(e);
       setState(() {
         _state = _ModelSyncState.error;
-        _errorMessage =
-            'Gagal memeriksa pembaruan model. Periksa koneksi dan ketersediaan model untuk versi aplikasi ini.';
+        _errorMessage = msg;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: AppText(msg),
+          backgroundColor: AppTheme.error,
+        ),
+      );
     }
   }
 
-  void _startDownload() {
+  String _formatErrorMessage(dynamic error) {
+    try {
+      final dyn = error as dynamic;
+      final response = dyn?.response;
+      if (response != null && response.data != null) {
+        final data = response.data;
+        if (data is Map) {
+          final detail = data['detail'];
+          if (detail is Map && detail['message'] is String) {
+            return detail['message'] as String;
+          } else if (detail is String) {
+            return detail;
+          }
+          if (data['message'] is String) {
+            return data['message'] as String;
+          }
+        }
+      }
+      final statusCode = response?.statusCode;
+      if (statusCode != null) {
+        return 'Gagal menghubungi server (HTTP $statusCode).';
+      }
+    } catch (_) {}
+    return 'Gagal memeriksa pembaruan model: $error';
+  }
+
+  void _startDownload({AvailableModelBundle? model}) {
+    if (!_isOnline) {
+      setState(() {
+        _state = _ModelSyncState.error;
+        _errorMessage =
+            'Tidak ada koneksi internet. Hubungkan perangkat dan coba lagi.';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: AppText('Tidak ada koneksi internet. Periksa koneksi Anda.'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      return;
+    }
+
+    final repository = context.read<SyncRepository>();
     setState(() {
       _state = _ModelSyncState.downloading;
       _progress = 0.0;
+      _downloadSpeed = '';
+      _errorMessage = null;
     });
-    _downloadSub = context.read<SyncRepository>().downloadModel().listen(
-      (progress) {
-        if (!mounted) return;
-        setState(() {
-          _progress = progress;
-          if (progress >= 1.0 && _state == _ModelSyncState.downloading) {
-            _state = _ModelSyncState.installing;
-          }
-        });
-      },
-      onDone: _onDownloadDone,
-      onError: _onDownloadError,
-      cancelOnError: true,
-    );
+
+    _downloadSub?.cancel();
+    bool hasError = false;
+    _downloadSub = repository
+        .downloadModelWithProgress(model: model)
+        .listen(
+          (progress) {
+            if (!mounted || hasError) return;
+            setState(() {
+              _progress = progress.fraction;
+              _downloadSpeed = progress.speedText;
+              if (progress.phase == ModelInstallPhase.verifying) {
+                _state = _ModelSyncState.verifying;
+              } else if (progress.phase == ModelInstallPhase.activating) {
+                _state = _ModelSyncState.activating;
+              }
+            });
+          },
+          onError: (Object error) {
+            hasError = true;
+            if (!mounted) return;
+            if (error is ModelInstallCancelledException) {
+              setState(() {
+                _state = _ModelSyncState.updateAvailable;
+                _progress = 0.0;
+                _downloadSpeed = '';
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: AppText('Unduhan model dibatalkan.')),
+              );
+              return;
+            }
+            _onDownloadError(error);
+          },
+          cancelOnError: true,
+          onDone: _onDownloadDone,
+        );
   }
 
   void _onDownloadDone() async {
     if (!mounted) return;
-    final newVersion = _updateInfo?.latestVersion ?? _currentVersion;
-    final String? installed;
-    try {
-      installed = await context
-          .read<SyncRepository>()
-          .getInstalledModelVersion();
-    } catch (_) {
-      if (mounted) {
-        _onDownloadError(StateError('Installed model could not be confirmed'));
-      }
-      return;
-    }
+    final repository = context.read<SyncRepository>();
+    final allModels = await repository.getAvailableModels(localOnly: false);
     if (!mounted) return;
-    if (installed != newVersion || newVersion.isEmpty) {
-      _onDownloadError(StateError('Model activation was not confirmed'));
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: AppText('Model berhasil diperbarui ke $newVersion')),
-    );
+    final currentVersion = await repository.getInstalledModelVersion();
+    if (!mounted) return;
     setState(() {
-      _state = _ModelSyncState.idle;
-      _currentVersion = newVersion;
-      _progress = 0.0;
+      _currentVersion = currentVersion ?? '';
+      _storedModels = allModels;
+      _state = _ModelSyncState.readyToActivate;
+      _progress = 1.0;
+      _downloadSpeed = '';
+      if (_updateInfo != null) {
+        _evaluateModelStatus(_updateInfo!, allModels, currentVersion);
+        if (_state != _ModelSyncState.upToDate && _state != _ModelSyncState.error) {
+          _state = _ModelSyncState.readyToActivate;
+        }
+      }
     });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: AppText(
+          'Model berhasil diunduh dan diverifikasi. Silakan pilih model untuk menggunakannya.',
+        ),
+      ),
+    );
   }
 
   void _onDownloadError(Object error) {
@@ -293,7 +442,9 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
         ModelInstallPhase.activating =>
           'Model tidak kompatibel dengan aplikasi ini.',
         ModelInstallPhase.smokeTesting =>
-          'Model baru gagal diuji — sistem kembali ke versi sebelumnya secara otomatis.',
+          'Model gagal uji inferensi (smoke test) — periksa format input/output.',
+        ModelInstallPhase.completed =>
+          'Instalasi model gagal.',
       },
       _ => 'Gagal menghubungi server',
     };
@@ -301,112 +452,438 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       _state = _ModelSyncState.error;
       _errorMessage = message;
       _progress = 0.0;
+      _downloadSpeed = '';
     });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: AppText(message),
+        backgroundColor: AppTheme.error,
+      ),
+    );
   }
 
-  String _formatLastChecked() {
-    if (_lastChecked == null) return '—';
-    final h = _lastChecked!.hour.toString().padLeft(2, '0');
-    final m = _lastChecked!.minute.toString().padLeft(2, '0');
-    return '$h:$m';
+    void _cancelDownload() {
+      final repository = context.read<SyncRepository>();
+      repository.cancelModelDownload();
+      _downloadSub?.cancel();
+    setState(() {
+      _state = _ModelSyncState.updateAvailable;
+      _progress = 0.0;
+      _downloadSpeed = '';
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: AppText('Unduhan model dibatalkan.')),
+    );
+  }
+
+  Future<void> _activateBundle(String bundleKey) async {
+    final repository = context.read<SyncRepository>();
+    setState(() => _state = _ModelSyncState.activating);
+    try {
+      await repository.activateModelBundle(bundleKey);
+      await _refreshInstalledState();
+      if (!mounted) return;
+      setState(() => _state = _ModelSyncState.done);
+
+      AuthProvider? auth;
+      try {
+        auth = Provider.of<AuthProvider>(context, listen: false);
+      } catch (_) {}
+      if (auth?.mobileRole == MobileRole.clinician) {
+        OnnxInferenceEngine? engine;
+        try {
+          engine = context.read<OnnxInferenceEngine>();
+        } catch (_) {}
+        if (engine != null && mounted) {
+          await initiateModelStandbyWithDialog(
+            context,
+            engine,
+            message: 'Model berhasil diaktifkan. Menyiapkan model agar siap digunakan...',
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: AppText(
+              'Model $bundleKey berhasil diaktifkan.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _state = _ModelSyncState.error;
+        _errorMessage = 'Gagal mengaktifkan model: $e';
+      });
+    }
+  }
+
+  Future<void> _verifyBundle(String bundleKey) async {
+    final repository = context.read<SyncRepository>();
+    setState(() => _state = _ModelSyncState.verifying);
+    try {
+      final success = await repository.verifyModelBundle(bundleKey);
+      await _refreshInstalledState();
+      if (!mounted) return;
+      setState(() => _state = _ModelSyncState.idle);
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: AppText('Verifikasi integritas model berhasil.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _state = _ModelSyncState.verificationFailed;
+        _errorMessage = 'Verifikasi ulang gagal: $e';
+      });
+    }
+  }
+
+  Future<void> _confirmDelete(AvailableModelBundle model) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: AppText('Hapus Model v${model.version}?'),
+        content: AppText(
+          'Model ${model.channel.toUpperCase()} v${model.version} akan dihapus dari penyimpanan perangkat. '
+          '${model.isCurrent ? "PERINGATAN: Model ini sedang aktif digunakan untuk inferensi." : "Tindakan ini akan membebaskan ruang memori."}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const AppText('Batal'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const AppText('Hapus'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final repository = context.read<SyncRepository>();
+      final wasActive = model.isCurrent ||
+          _currentVersion == model.id ||
+          _currentVersion == model.version;
+      await repository.deleteModelBundle(model.id);
+      await _refreshInstalledState();
+      if (!mounted) return;
+      if (wasActive) {
+        if (_currentVersion.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: AppText(
+                'Model v${model.version} berhasil dihapus. Model $_currentVersion sekarang menjadi model aktif.',
+              ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: AppText(
+                'Model v${model.version} berhasil dihapus. Tidak ada model aktif.',
+              ),
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: AppText('Model v${model.version} berhasil dihapus.')),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 2,
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppTheme.borderLight),
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppTheme.sp24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AppText(
-              'Pembaruan Model AI',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: AppTheme.navy,
-              ),
+            // Header
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.system_update_rounded,
+                    color: AppTheme.primary,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: AppTheme.sp12),
+                Expanded(
+                  child: AppText(
+                    'Pembaruan Model AI',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.navy,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: AppTheme.sp16),
-            _buildBody(context),
+
+            // Active Model Banner
+            _buildActiveModelBanner(),
+            const SizedBox(height: AppTheme.sp16),
+
+            // State View
+            switch (_state) {
+              _ModelSyncState.idle => _buildIdle(context),
+              _ModelSyncState.checking => _buildChecking(),
+              _ModelSyncState.noModelAvailable => _buildNoModelAvailable(context),
+              _ModelSyncState.upToDate => _buildUpToDate(context),
+              _ModelSyncState.readyToActivate => _buildReadyToActivate(context),
+              _ModelSyncState.updateAvailable => _buildUpdateAvailable(context),
+              _ModelSyncState.downloading => _buildDownloading(),
+              _ModelSyncState.verifying => _buildVerifying(),
+              _ModelSyncState.verificationFailed => _buildVerificationFailed(context),
+              _ModelSyncState.activating => _buildActivating(),
+              _ModelSyncState.done => _buildDone(context),
+              _ModelSyncState.error => _buildError(context),
+            },
+
+            // Stored Models Expandable Section
+            const SizedBox(height: AppTheme.sp24),
+            const Divider(color: AppTheme.borderLight),
+            const SizedBox(height: AppTheme.sp8),
+            _buildStoredModelsSection(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBody(BuildContext context) {
-    switch (_state) {
-      case _ModelSyncState.idle:
-        return _buildIdle(context);
-      case _ModelSyncState.checking:
-        return _buildChecking();
-      case _ModelSyncState.upToDate:
-        return _buildUpToDate(context);
-      case _ModelSyncState.updateAvailable:
-        return _buildUpdateAvailable(context);
-      case _ModelSyncState.downloading:
-        return _buildDownloading();
-      case _ModelSyncState.installing:
-        return _buildInstalling();
-      case _ModelSyncState.done:
-        return _buildIdle(context);
-      case _ModelSyncState.error:
-        return _buildError(context);
-    }
+  Widget _buildActiveModelBanner() {
+    final hasActive = _currentVersion.isNotEmpty;
+    return Container(
+      padding: const EdgeInsets.all(AppTheme.sp12),
+      decoration: BoxDecoration(
+        color: hasActive
+            ? AppTheme.primary.withValues(alpha: 0.05)
+            : AppTheme.borderLight.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: hasActive
+              ? AppTheme.primary.withValues(alpha: 0.2)
+              : AppTheme.borderLight,
+        ),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 280;
+          final statusBadge = hasActive
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.success.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppTheme.success.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: const AppText(
+                    'SIAP INFERENSI',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.success,
+                    ),
+                  ),
+                )
+              : null;
+
+          if (isNarrow) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      hasActive
+                          ? Icons.check_circle_rounded
+                          : Icons.info_outline_rounded,
+                      size: 20,
+                      color: hasActive ? AppTheme.primary : AppTheme.textSecondary,
+                    ),
+                    const SizedBox(width: AppTheme.sp8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          AppText(
+                            hasActive ? 'Model AI Aktif' : 'Belum Ada Model Aktif',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: hasActive
+                                  ? AppTheme.primary
+                                  : AppTheme.textSecondary,
+                            ),
+                          ),
+                          AppText(
+                            hasActive ? _currentVersion : 'TIDAK ADA MODEL AKTIF',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.navy,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (statusBadge != null) ...[
+                  const SizedBox(height: AppTheme.sp8),
+                  statusBadge,
+                ],
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Icon(
+                hasActive
+                    ? Icons.check_circle_rounded
+                    : Icons.info_outline_rounded,
+                size: 20,
+                color: hasActive ? AppTheme.primary : AppTheme.textSecondary,
+              ),
+              const SizedBox(width: AppTheme.sp8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AppText(
+                      hasActive ? 'Model AI Aktif' : 'Belum Ada Model Aktif',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: hasActive
+                            ? AppTheme.primary
+                            : AppTheme.textSecondary,
+                      ),
+                    ),
+                    AppText(
+                      hasActive ? _currentVersion : 'TIDAK ADA MODEL AKTIF',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.navy,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ?statusBadge,
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Widget _buildIdle(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AppText(
-          _currentVersion.isEmpty
-              ? 'Belum ada model terpasang'
-              : 'Versi Saat Ini: $_currentVersion',
-          style: const TextStyle(color: AppTheme.textSecondary),
-        ),
-        const SizedBox(height: AppTheme.sp4),
-        AppText(
-          'Terakhir diperiksa: ${_formatLastChecked()}',
-          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-        ),
-        const SizedBox(height: AppTheme.sp16),
+        if (_lastChecked != null) ...[
+          AppText(
+            'Terakhir diperiksa: ${_formatDate(_lastChecked!)}',
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+          ),
+          const SizedBox(height: AppTheme.sp16),
+        ],
         ElevatedButton.icon(
-          onPressed: _isOnline ? _checkForUpdate : null,
-          icon: const Icon(Icons.search_rounded, size: 18),
+          onPressed: _checkForUpdate,
+          icon: const Icon(Icons.sync_rounded, size: 18),
           label: const AppText('Periksa Pembaruan Model'),
         ),
-        if (!_isOnline) ...[
-          const SizedBox(height: AppTheme.sp8),
-          const AppText(
-            'Tidak ada koneksi internet',
-            style: TextStyle(fontSize: 12, color: AppTheme.error),
-          ),
-        ],
       ],
     );
   }
 
   Widget _buildChecking() {
-    return const Column(
-      children: [
-        SizedBox(height: AppTheme.sp8),
-        Row(
-          children: [
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2.5),
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: AppTheme.sp16),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: AppTheme.sp12),
+          AppText(
+            'Memeriksa server...',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: AppTheme.navy,
             ),
-            SizedBox(width: AppTheme.sp12),
-            AppText('Memeriksa server...'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoModelAvailable(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.cloud_off_rounded, color: AppTheme.warning, size: 24),
+            SizedBox(width: AppTheme.sp8),
+            Expanded(
+              child: AppText(
+                'Belum Ada Model AI di Server',
+                style: TextStyle(
+                  color: AppTheme.navy,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
+            ),
           ],
         ),
-        SizedBox(height: AppTheme.sp8),
+        const SizedBox(height: AppTheme.sp8),
+        const AppText(
+          'Server belum memiliki berkas model AI yang dirilis untuk channel ini. '
+          'Hubungi administrator sistem untuk mengunggah bundle model AI ke server.',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+        ),
+        if (_lastChecked != null) ...[
+          const SizedBox(height: AppTheme.sp8),
+          AppText(
+            'Terakhir diperiksa: ${_formatDate(_lastChecked!)}',
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
+        ],
+        const SizedBox(height: AppTheme.sp16),
+        OutlinedButton.icon(
+          onPressed: _checkForUpdate,
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: const AppText('Periksa Lagi'),
+        ),
       ],
     );
   }
@@ -415,162 +892,364 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        const Row(
           children: [
-            const Icon(
-              Icons.check_circle_rounded,
-              color: AppTheme.success,
-              size: 32,
-            ),
-            const SizedBox(width: AppTheme.sp12),
+            Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 24),
+            SizedBox(width: AppTheme.sp8),
             AppText(
-              _currentVersion.isEmpty
-                  ? 'Tidak ada pembaruan model tersedia'
-                  : 'Model sudah versi terbaru ($_currentVersion)',
-              style: const TextStyle(
+              'Model versi terbaru terpasang',
+              style: TextStyle(
                 color: AppTheme.success,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
               ),
             ),
           ],
         ),
-        const SizedBox(height: AppTheme.sp16),
-        TextButton(
-          onPressed: _isOnline ? _checkForUpdate : null,
-          child: const AppText('Periksa Ulang'),
-        ),
-        if (!_isOnline)
-          const AppText(
-            'Tidak ada koneksi internet',
-            style: TextStyle(fontSize: 12, color: AppTheme.error),
+        if (_lastChecked != null) ...[
+          const SizedBox(height: AppTheme.sp4),
+          AppText(
+            'Terakhir diperiksa: ${_formatDate(_lastChecked!)}',
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
           ),
+        ],
+        const SizedBox(height: AppTheme.sp16),
+        OutlinedButton.icon(
+          onPressed: _checkForUpdate,
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: const AppText('Periksa Lagi'),
+        ),
       ],
+    );
+  }
+
+  Widget _buildReadyToActivate(BuildContext context) {
+    final bundle = _matchedLocalBundle;
+    final ver = bundle?.version ?? _updateInfo?.latestVersion ?? '';
+    final id = bundle?.id ?? ver;
+
+    return Container(
+      padding: const EdgeInsets.all(AppTheme.sp16),
+      decoration: BoxDecoration(
+        color: AppTheme.primary.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.download_done_rounded, color: AppTheme.primary, size: 24),
+              SizedBox(width: AppTheme.sp8),
+              Expanded(
+                child: AppText(
+                  'Model Terbaru Sudah Tersimpan di Perangkat',
+                  style: TextStyle(
+                    color: AppTheme.navy,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppTheme.sp8),
+          AppText(
+            'Versi $ver telah diverifikasi dan siap digunakan tanpa perlu mengunduh ulang.',
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+          ),
+          const SizedBox(height: AppTheme.sp16),
+          FilledButton.icon(
+            onPressed: () => _activateBundle(id),
+            icon: const Icon(Icons.play_arrow_rounded, size: 18),
+            label: const AppText('Aktifkan Model'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVerificationFailed(BuildContext context) {
+    final bundle = _matchedLocalBundle;
+    final ver = bundle?.version ?? _updateInfo?.latestVersion ?? '';
+    final id = bundle?.id ?? ver;
+
+    return Container(
+      padding: const EdgeInsets.all(AppTheme.sp16),
+      decoration: BoxDecoration(
+        color: AppTheme.error.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: AppTheme.error, size: 24),
+              SizedBox(width: AppTheme.sp8),
+              Expanded(
+                child: AppText(
+                  'Verifikasi Integritas Model Gagal',
+                  style: TextStyle(
+                    color: AppTheme.error,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppTheme.sp8),
+          AppText(
+            bundle?.verificationError ??
+                'Checksum atau tanda tangan digital model v$ver tidak cocok.',
+            style: const TextStyle(color: AppTheme.navy, fontSize: 13),
+          ),
+          const SizedBox(height: AppTheme.sp16),
+          Row(
+            children: [
+              FilledButton.icon(
+                onPressed: () => _verifyBundle(id),
+                icon: const Icon(Icons.verified_user_outlined, size: 18),
+                label: const AppText('Verify Ulang'),
+              ),
+              const SizedBox(width: AppTheme.sp12),
+              OutlinedButton.icon(
+                onPressed: _startDownload,
+                icon: const Icon(Icons.download_rounded, size: 18),
+                label: const AppText('Unduh Ulang'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildUpdateAvailable(BuildContext context) {
     final info = _updateInfo;
-    if (info == null) return const SizedBox.shrink();
-    final changelog = info.changelog;
+    if (info == null) return _buildIdle(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Chip(
-          label: const AppText(
-            'Versi Baru Tersedia',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-              color: AppTheme.warning,
-            ),
-          ),
-          backgroundColor: AppTheme.warning.withValues(alpha: 0.15),
-          side: BorderSide(color: AppTheme.warning.withValues(alpha: 0.5)),
-        ),
-        const SizedBox(height: AppTheme.sp16),
-        // Info table
-        _InfoRow('Versi Saat Ini', _currentVersion),
-        _InfoRow('Versi Baru', info.latestVersion),
-        _InfoRow('Ukuran File', info.fileSize),
-        _InfoRow('Tanggal Rilis', info.releaseDate),
-        const SizedBox(height: AppTheme.sp8),
-        ExpansionTile(
-          tilePadding: EdgeInsets.zero,
-          title: const AppText(
-            'Lihat Changelog',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-          ),
-          children: changelog
-              .map(
-                (c) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const AppText(
-                        '• ',
-                        style: TextStyle(color: AppTheme.textSecondary),
-                      ),
-                      Expanded(
-                        child: AppText(c, style: const TextStyle(fontSize: 13)),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-              .toList(),
-        ),
-        const SizedBox(height: AppTheme.sp16),
         Row(
           children: [
-            Expanded(
-              child: ElevatedButton(
-                onPressed: _isOnline ? _startDownload : null,
-                child: const AppText('Perbarui Sekarang'),
-              ),
-            ),
-            const SizedBox(width: AppTheme.sp12),
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () => setState(() => _state = _ModelSyncState.idle),
-                child: const AppText('Lewati'),
+            const Icon(Icons.new_releases_rounded, color: AppTheme.primary, size: 22),
+            const SizedBox(width: AppTheme.sp8),
+            AppText(
+              'Versi Baru Tersedia',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppTheme.navy,
               ),
             ),
           ],
         ),
-        if (!_isOnline) ...[
+        const SizedBox(height: AppTheme.sp12),
+        _InfoRow('Versi Baru', info.latestVersion.startsWith('v') ? info.latestVersion : 'v${info.latestVersion}'),
+        _InfoRow('Ukuran', info.fileSize),
+        _InfoRow('Tanggal Rilis', info.releaseDate),
+        if (info.changelog.isNotEmpty) ...[
           const SizedBox(height: AppTheme.sp8),
           const AppText(
-            'Tidak ada koneksi internet',
-            style: TextStyle(fontSize: 12, color: AppTheme.error),
+            'Catatan Pembaruan:',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+          const SizedBox(height: AppTheme.sp4),
+          ...info.changelog.map(
+            (item) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('• ', style: TextStyle(color: AppTheme.textSecondary)),
+                  Expanded(
+                    child: AppText(
+                      item,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
+        const SizedBox(height: AppTheme.sp16),
+        ElevatedButton(
+          onPressed: _startDownload,
+          child: const AppText('Perbarui Sekarang'),
+        ),
       ],
     );
   }
 
   Widget _buildDownloading() {
-    final fileSizeLabel = _updateInfo?.fileSize ?? '';
-    final fileSizeMB =
-        double.tryParse(fileSizeLabel.replaceAll(' MB', '')) ?? 47.2;
-    final downloaded = (_progress * fileSizeMB).toStringAsFixed(1);
-    final percent = (_progress * 100).toInt();
-
+    final pct = (_progress * 100).toStringAsFixed(0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const AppText('Mengunduh pembaruan model...'),
+        Row(
+          children: [
+            const AppText(
+              'Mengunduh model AI...',
+              style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.navy),
+            ),
+            const Spacer(),
+            if (_downloadSpeed.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  _downloadSpeed,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.primary,
+                  ),
+                ),
+              ),
+          ],
+        ),
         const SizedBox(height: AppTheme.sp12),
-        LinearProgressIndicator(value: _progress),
+        LinearProgressIndicator(
+          value: _progress > 0 ? _progress : null,
+          minHeight: 6,
+          borderRadius: BorderRadius.circular(4),
+        ),
         const SizedBox(height: AppTheme.sp8),
-        AppText(
-          '$percent% · $downloaded MB / $fileSizeLabel',
-          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            AppText(
+              '$pct% selesai',
+              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.error,
+                side: const BorderSide(color: AppTheme.error),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: _cancelDownload,
+              icon: const Icon(Icons.stop_circle_outlined, size: 16),
+              label: const AppText('Batal'),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _buildInstalling() {
-    return const Column(
+  Widget _buildVerifying() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: AppTheme.sp16),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: AppTheme.sp12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppText(
+                  'Memverifikasi integritas model...',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.navy,
+                  ),
+                ),
+                SizedBox(height: 2),
+                AppText(
+                  'Memeriksa checksum SHA256 & tanda tangan digital Ed25519.',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActivating() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: AppTheme.sp16),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: AppTheme.sp12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppText(
+                  'Mengaktifkan model & inisialisasi mesin inferensi...',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.navy,
+                  ),
+                ),
+                SizedBox(height: 2),
+                AppText(
+                  'Memuat session ONNX Runtime dan menjalankan smoke test.',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDone(BuildContext context) {
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        const Row(
           children: [
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2.5),
+            Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 28),
+            SizedBox(width: AppTheme.sp8),
+            Expanded(
+              child: AppText(
+                'Pembaruan Selesai',
+                style: TextStyle(
+                  color: AppTheme.success,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
             ),
-            SizedBox(width: AppTheme.sp12),
-            Expanded(child: AppText('Memverifikasi dan memasang model...')),
           ],
         ),
-        SizedBox(height: AppTheme.sp8),
+        const SizedBox(height: AppTheme.sp8),
         AppText(
-          'Model sedang diverifikasi keasliannya dan diuji sebelum diaktifkan.',
-          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+          'Model AI versi $_currentVersion berhasil diaktifkan dan siap digunakan.',
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+        ),
+        const SizedBox(height: AppTheme.sp16),
+        TextButton(
+          onPressed: () => setState(() => _state = _ModelSyncState.idle),
+          child: const AppText('Selesai'),
         ),
       ],
     );
@@ -606,6 +1285,238 @@ class _ModelUpdateCardState extends State<_ModelUpdateCard> {
       ],
     );
   }
+
+  // === Section: Stored Models List (Expandable Container) ===
+
+  Widget _buildStoredModelsSection() {
+    final count = _storedModels.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => setState(() => _showStoredModels = !_showStoredModels),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.inventory_2_outlined,
+                  size: 18,
+                  color: AppTheme.navy,
+                ),
+                const SizedBox(width: AppTheme.sp8),
+                Expanded(
+                  child: AppText(
+                    'Model Tersimpan di Perangkat ($count)',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: AppTheme.navy,
+                    ),
+                  ),
+                ),
+                Icon(
+                  _showStoredModels
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  color: AppTheme.textSecondary,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_showStoredModels) ...[
+          const SizedBox(height: AppTheme.sp12),
+          if (_storedModels.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: AppText(
+                'Belum ada model tersimpan di perangkat.',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+            )
+          else
+            ..._storedModels.map(_buildStoredModelItem),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildStoredModelItem(AvailableModelBundle model) {
+    final isActive = model.isCurrent;
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppTheme.sp8),
+      padding: const EdgeInsets.all(AppTheme.sp12),
+      decoration: BoxDecoration(
+        color: isActive
+            ? AppTheme.primary.withValues(alpha: 0.04)
+            : AppTheme.background,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isActive
+              ? AppTheme.primary.withValues(alpha: 0.3)
+              : AppTheme.borderLight,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'v${model.version}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: AppTheme.navy,
+                      ),
+                    ),
+                    const SizedBox(width: AppTheme.sp8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppTheme.navy.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        model.channel.toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.navy,
+                        ),
+                      ),
+                    ),
+                    if (isActive) ...[
+                      const SizedBox(width: AppTheme.sp8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.success.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const AppText(
+                          'Aktif',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.success,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      model.formattedSize,
+                      style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      '•',
+                      style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                    ),
+                    const SizedBox(width: 8),
+                    _statusBadge(model),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Actions
+          if (model.localStatus == ModelBundleStatus.notDownloaded)
+            TextButton.icon(
+              onPressed: () => _startDownload(model: model),
+              icon: const Icon(Icons.download_rounded, size: 16),
+              label: const AppText('Unduh', style: TextStyle(fontSize: 12)),
+            )
+          else if (!isActive && model.isVerified)
+            TextButton(
+              onPressed: () => _activateBundle(model.id),
+              child: const AppText('Gunakan', style: TextStyle(fontSize: 12)),
+            )
+          else if (!isActive &&
+              (model.localStatus == ModelBundleStatus.downloaded ||
+                  model.isVerificationFailed))
+            TextButton(
+              onPressed: () => _verifyBundle(model.id),
+              child: AppText(
+                model.isVerificationFailed ? 'Verify Ulang' : 'Verifikasi',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          if (model.isDownloaded)
+            IconButton(
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                color: AppTheme.textSecondary,
+                size: 20,
+              ),
+              tooltip: localize(context, 'Hapus model'),
+              onPressed: () => _confirmDelete(model),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusBadge(AvailableModelBundle model) {
+    if (model.isVerified) {
+      return const AppText(
+        'Terverifikasi',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.success,
+        ),
+      );
+    }
+    if (model.isVerificationFailed) {
+      return const AppText(
+        'Gagal Verifikasi',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.error,
+        ),
+      );
+    }
+    if (model.localStatus == ModelBundleStatus.downloaded) {
+      return const AppText(
+        'Diunduh',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.warning,
+        ),
+      );
+    }
+    return const AppText(
+      'Belum Diunduh',
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        color: AppTheme.textSecondary,
+      ),
+    );
+  }
+
+  String _formatDate(DateTime dt) {
+    final y = dt.year.toString().padLeft(4, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    return '$y-$m-$d $hh:$mm';
+  }
 }
 
 class _InfoRow extends StatelessWidget {
@@ -618,26 +1529,56 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 130,
-            child: AppText(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppTheme.textSecondary,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 260;
+          if (isNarrow) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppText(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                AppText(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 130,
+                child: AppText(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
               ),
-            ),
-          ),
-          Expanded(
-            child: AppText(
-              value,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
+              Expanded(
+                child: AppText(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -658,289 +1599,286 @@ class _DataBackupCardState extends State<_DataBackupCard> {
   _DataSyncState _state = _DataSyncState.idle;
   final Set<String> _selectedIds = {};
   int _uploadedCount = 0;
-  DateTime? _lastSyncDate;
   SyncSummary? _summary;
-  List<Patient> _backupCandidates = const [];
+  List<Patient> _candidates = const [];
   SyncReport? _report;
-  StreamSubscription<int>? _uploadSub;
+
+  final _connectivity = ConnectivityService();
+  bool _isOnline = true;
+  StreamSubscription<bool>? _connectivitySub;
 
   @override
   void initState() {
     super.initState();
-    // Mock repository resolves synchronously — summary & candidate list are
-    // ready before the first frame.
     final repository = context.read<SyncRepository>();
     repository.getSyncSummary().then((summary) {
       if (!mounted) return;
       setState(() => _summary = summary);
     });
-    repository.getBackupCandidates().then((patients) {
+
+    _connectivity.checkNow().then((online) {
       if (!mounted) return;
-      setState(() => _backupCandidates = patients);
+      setState(() => _isOnline = online);
+    });
+    _connectivitySub = _connectivity.onStatusChange.listen((online) {
+      if (!mounted) return;
+      setState(() => _isOnline = online);
     });
   }
 
   @override
   void dispose() {
-    _uploadSub?.cancel();
+    _connectivitySub?.cancel();
     super.dispose();
   }
 
-  Future<void> _showConsentDialog() async {
-    bool consentChecked = false;
-
+  Future<void> _openConsent() async {
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setDialogState) {
-            return AlertDialog(
-              title: const AppText('Konfirmasi Pengiriman Data'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const AppText(
-                    'Data pasien akan dikirimkan ke server menggunakan enkripsi end-to-end. '
-                    'Pastikan Anda memiliki wewenang untuk mengirim data medis ini.',
-                  ),
-                  const SizedBox(height: AppTheme.sp16),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: consentChecked,
-                    onChanged: (v) =>
-                        setDialogState(() => consentChecked = v ?? false),
-                    title: const AppText(
-                      'Saya menyetujui pengiriman data medis ini ke server',
-                      style: TextStyle(fontSize: 13),
-                    ),
-                    controlAffinity: ListTileControlAffinity.leading,
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const AppText('Batal'),
-                ),
-                ElevatedButton(
-                  onPressed: consentChecked
-                      ? () => Navigator.pop(ctx, true)
-                      : null,
-                  child: const AppText('Lanjutkan'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (_) => const _ConsentDialog(),
     );
-
-    if (!mounted) return;
-    if (confirmed == true) {
+    if (confirmed == true && mounted) {
+      final repository = context.read<SyncRepository>();
+      final candidates = await repository.getBackupCandidates();
+      if (!mounted) return;
       setState(() {
+        _candidates = candidates;
+        _selectedIds
+          ..clear()
+          ..addAll(candidates.map((p) => p.id));
         _state = _DataSyncState.selection;
-        _selectedIds.clear();
       });
     }
   }
 
   void _startUpload() {
+    if (!_isOnline) {
+      setState(() => _state = _DataSyncState.error);
+      return;
+    }
+
     final repository = context.read<SyncRepository>();
     setState(() {
       _state = _DataSyncState.uploading;
       _uploadedCount = 0;
     });
-    _uploadSub = repository
+
+    repository
         .uploadPatients(_selectedIds.toList())
         .listen(
           (count) {
             if (!mounted) return;
             setState(() => _uploadedCount = count);
           },
+          onError: (_) {
+            if (!mounted) return;
+            setState(() => _state = _DataSyncState.error);
+          },
           onDone: () {
             if (!mounted) return;
-            // Offline repository reports the per-record verdict from the server;
-            // the mock has none, so the UI falls back to "all uploaded".
             final report = repository is OfflineSyncRepository
                 ? repository.lastReport
                 : null;
-            setState(() {
-              _state = _DataSyncState.done;
-              _report = report;
-              _lastSyncDate = DateTime.now();
+            repository.getSyncSummary().then((updated) {
+              if (!mounted) return;
+              setState(() {
+                _summary = updated;
+                _report = report;
+                _state = _DataSyncState.done;
+              });
             });
           },
         );
   }
 
-  String _formatDate(DateTime? dt) {
-    if (dt == null) return 'Belum pernah disinkronkan';
-    return '${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 2,
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppTheme.borderLight),
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppTheme.sp24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AppText(
-              'Cadangan Data Medis',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: AppTheme.navy,
-              ),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.cloud_upload_rounded,
+                    color: AppTheme.primary,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: AppTheme.sp12),
+                Expanded(
+                  child: AppText(
+                    'Cadangan Data Medis',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.navy,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: AppTheme.sp16),
-            _buildBody(context),
+            switch (_state) {
+              _DataSyncState.idle => _buildIdle(context),
+              _DataSyncState.selection => _buildSelection(context),
+              _DataSyncState.uploading => _buildUploading(),
+              _DataSyncState.done => _buildDone(context),
+              _DataSyncState.error => _buildError(context),
+            },
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBody(BuildContext context) {
-    switch (_state) {
-      case _DataSyncState.idle:
-        return _buildIdle(context);
-      case _DataSyncState.selection:
-        return _buildSelection(context);
-      case _DataSyncState.uploading:
-        return _buildUploading();
-      case _DataSyncState.done:
-        return _buildDone(context);
-      case _DataSyncState.error:
-        return _buildError(context);
-    }
-  }
-
   Widget _buildIdle(BuildContext context) {
-    final summary =
-        _summary ??
-        const SyncSummary(totalPatients: 0, totalDiagnoses: 0, totalSizeMB: 0);
+    final summary = _summary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Chip(
-          avatar: const Icon(
-            Icons.warning_amber_rounded,
-            size: 14,
-            color: AppTheme.error,
-          ),
-          label: const AppText(
-            'Data Medis Sensitif',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.error,
-            ),
-          ),
-          backgroundColor: AppTheme.error.withValues(alpha: 0.08),
-          side: BorderSide(color: AppTheme.error.withValues(alpha: 0.4)),
+        _InfoRow(
+          'Total Pasien',
+          summary != null ? '${summary.totalPatients} pasien' : '...',
         ),
-        const SizedBox(height: AppTheme.sp12),
-        AppText(
-          '${summary.totalPatients} Pasien · ${summary.totalDiagnoses} Screening · ~${summary.totalSizeMB} MB',
-          style: const TextStyle(color: AppTheme.textSecondary),
+        _InfoRow(
+          'Total Diagnosis',
+          summary != null ? '${summary.totalDiagnoses} data' : '...',
         ),
-        const SizedBox(height: AppTheme.sp4),
-        AppText(
-          _formatDate(_lastSyncDate),
-          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+        _InfoRow(
+          'Estimasi Ukuran',
+          summary != null ? '~${summary.totalSizeMB} MB' : '...',
+        ),
+        _InfoRow(
+          'Terakhir Cadang',
+          summary?.lastSyncDate != null
+              ? _formatDate(summary!.lastSyncDate!)
+              : 'Belum pernah',
         ),
         const SizedBox(height: AppTheme.sp16),
         ElevatedButton.icon(
-          onPressed: _showConsentDialog,
-          icon: const Icon(Icons.cloud_upload_rounded, size: 18),
+          onPressed: _openConsent,
+          icon: const Icon(Icons.backup_rounded, size: 18),
           label: const AppText('Pilih Data & Unggah'),
         ),
       ],
     );
   }
 
+  String _formatDate(DateTime dt) {
+    final y = dt.year.toString().padLeft(4, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    return '$y-$m-$d $hh:$mm';
+  }
+
   Widget _buildSelection(BuildContext context) {
-    final patients = _backupCandidates;
+    final allSelected =
+        _selectedIds.length == _candidates.length && _candidates.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AppText(
-          'Pilih Pasien untuk Dicadangkan',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: AppTheme.navy,
-          ),
-        ),
-        const SizedBox(height: AppTheme.sp8),
         Row(
           children: [
-            TextButton(
-              onPressed: () => setState(
-                () => _selectedIds.addAll(patients.map((p) => p.id)),
-              ),
-              child: const AppText('Pilih Semua'),
+            const AppText(
+              'Pilih Pasien untuk Dicadangkan',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
             ),
+            const Spacer(),
             TextButton(
-              onPressed: () => setState(() => _selectedIds.clear()),
-              child: const AppText('Batal Pilih'),
+              onPressed: () {
+                setState(() {
+                  if (allSelected) {
+                    _selectedIds.clear();
+                  } else {
+                    _selectedIds
+                      ..clear()
+                      ..addAll(_candidates.map((p) => p.id));
+                  }
+                });
+              },
+              child: AppText(allSelected ? 'Batal Semua' : 'Pilih Semua'),
             ),
           ],
         ),
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: patients.length,
-          itemBuilder: (_, i) {
-            final p = patients[i];
-            final initials = p.name.split(' ').take(2).map((w) => w[0]).join();
-            return CheckboxListTile(
-              value: _selectedIds.contains(p.id),
-              onChanged: (v) => setState(() {
-                if (v == true) {
-                  _selectedIds.add(p.id);
-                } else {
-                  _selectedIds.remove(p.id);
-                }
-              }),
-              secondary: CircleAvatar(
-                backgroundColor: AppTheme.primary.withValues(alpha: 0.15),
-                child: AppText(
-                  initials,
-                  style: const TextStyle(
-                    color: AppTheme.primaryDark,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
+        const SizedBox(height: AppTheme.sp8),
+        Container(
+          constraints: const BoxConstraints(maxHeight: 220),
+          decoration: BoxDecoration(
+            border: Border.all(color: AppTheme.borderLight),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: _candidates.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(AppTheme.sp16),
+                    child: AppText(
+                      'Tidak ada data pasien untuk dicadangkan.',
+                      style: TextStyle(color: AppTheme.textSecondary),
+                    ),
                   ),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _candidates.length,
+                  separatorBuilder: (_, _) =>
+                      const Divider(height: 1, color: AppTheme.borderLight),
+                  itemBuilder: (context, index) {
+                    final patient = _candidates[index];
+                    final checked = _selectedIds.contains(patient.id);
+                    return CheckboxListTile(
+                      dense: true,
+                      value: checked,
+                      title: Text(
+                        '${patient.name} (${patient.id})',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: AppText(
+                        '${patient.age} th • ${patient.gender == 'M' ? 'Laki-laki' : 'Perempuan'}',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      onChanged: (val) {
+                        setState(() {
+                          if (val == true) {
+                            _selectedIds.add(patient.id);
+                          } else {
+                            _selectedIds.remove(patient.id);
+                          }
+                        });
+                      },
+                    );
+                  },
                 ),
-              ),
-              title: AppText(
-                p.name,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-              ),
-              subtitle: AppText(
-                'Kunjungan terakhir: ${p.lastVisit}',
-                style: const TextStyle(fontSize: 12),
-              ),
-              controlAffinity: ListTileControlAffinity.trailing,
-            );
-          },
         ),
         const SizedBox(height: AppTheme.sp16),
         Row(
           children: [
+            TextButton(
+              onPressed: () => setState(() => _state = _DataSyncState.idle),
+              child: const AppText('Batal'),
+            ),
+            const SizedBox(width: AppTheme.sp8),
             AppText(
-              '${_selectedIds.length} pasien dipilih',
+              '${_selectedIds.length} dipilih',
               style: const TextStyle(
                 color: AppTheme.textSecondary,
                 fontSize: 13,
@@ -962,9 +1900,9 @@ class _DataBackupCardState extends State<_DataBackupCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AppText(
+        const AppText(
           'Mengunggah data pasien...',
-          style: const TextStyle(fontWeight: FontWeight.w600),
+          style: TextStyle(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: AppTheme.sp12),
         LinearProgressIndicator(
@@ -1018,8 +1956,6 @@ class _DataBackupCardState extends State<_DataBackupCard> {
         ),
         if (report != null && report.conflicts > 0) ...[
           const SizedBox(height: AppTheme.sp12),
-          // Conflicts are never auto-resolved: the server holds a newer version
-          // of medical data, so a doctor must decide which one is correct.
           Container(
             padding: const EdgeInsets.all(AppTheme.sp12),
             decoration: BoxDecoration(
@@ -1079,9 +2015,11 @@ class _DataBackupCardState extends State<_DataBackupCard> {
           children: [
             Icon(Icons.error_rounded, color: AppTheme.error, size: 28),
             SizedBox(width: AppTheme.sp8),
-            AppText(
-              'Tidak ada koneksi internet. Hubungkan perangkat dan coba lagi.',
-              style: TextStyle(color: AppTheme.error),
+            Expanded(
+              child: AppText(
+                'Tidak ada koneksi internet. Hubungkan perangkat dan coba lagi.',
+                style: TextStyle(color: AppTheme.error),
+              ),
             ),
           ],
         ),
@@ -1089,6 +2027,98 @@ class _DataBackupCardState extends State<_DataBackupCard> {
         TextButton(
           onPressed: () => setState(() => _state = _DataSyncState.idle),
           child: const AppText('Coba Lagi'),
+        ),
+      ],
+    );
+  }
+}
+
+// === Section: Consent Dialog ===
+
+class _ConsentDialog extends StatefulWidget {
+  const _ConsentDialog();
+
+  @override
+  State<_ConsentDialog> createState() => _ConsentDialogState();
+}
+
+class _ConsentDialogState extends State<_ConsentDialog> {
+  bool _agreed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Row(
+        children: [
+          Icon(Icons.security_rounded, color: AppTheme.primary),
+          SizedBox(width: AppTheme.sp8),
+          Expanded(
+            child: AppText(
+              'Konfirmasi Pengiriman Data',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const AppText(
+              'Data medis pasien (rekam medis dan citra X-Ray) akan diunggah ke server '
+              'pusat TB Screen AI melalui koneksi terenkripsi (TLS 1.3).',
+              style: TextStyle(fontSize: 13, height: 1.5),
+            ),
+            const SizedBox(height: AppTheme.sp12),
+            Container(
+              padding: const EdgeInsets.all(AppTheme.sp12),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.lock_rounded, size: 16, color: AppTheme.primary),
+                  SizedBox(width: AppTheme.sp8),
+                  Expanded(
+                    child: AppText(
+                      'Data dide-identifikasi sesuai standar privasi data medis sebelum dikirim.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppTheme.sp16),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _agreed,
+              onChanged: (val) => setState(() => _agreed = val ?? false),
+              title: const AppText(
+                'Saya mengonfirmasi bahwa data ini siap dicadangkan ke server pusat '
+                'dan persetujuan pasien telah diperoleh.',
+                style: TextStyle(fontSize: 12),
+              ),
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const AppText('Batal'),
+        ),
+        ElevatedButton(
+          onPressed: _agreed ? () => Navigator.pop(context, true) : null,
+          child: const AppText('Lanjutkan'),
         ),
       ],
     );

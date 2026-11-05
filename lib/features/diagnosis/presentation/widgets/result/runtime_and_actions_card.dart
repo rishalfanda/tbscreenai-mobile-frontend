@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -86,6 +87,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
             children: [
               SizedBox(
                 child: _actionButton(
+                  context,
                   Icons.save_rounded,
                   _saveButtonLabel(diagnosis.saveStatus),
                   onPressed:
@@ -100,17 +102,17 @@ class RuntimeAndActionsCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _actionButton(
+                context,
                 Icons.picture_as_pdf_rounded,
                 'PDF',
-                tooltip:
-                    'Fitur ini belum tersedia.',
+                tooltip: 'Fitur ini belum tersedia.',
               ),
               const SizedBox(width: 8),
               _actionButton(
+                context,
                 Icons.print_rounded,
                 'Cetak',
-                tooltip:
-                    'Fitur ini belum tersedia.',
+                tooltip: 'Fitur ini belum tersedia.',
               ),
             ],
           ),
@@ -168,23 +170,30 @@ class RuntimeAndActionsCard extends StatelessWidget {
   }
 
   Widget _actionButton(
+    BuildContext context,
     IconData icon,
     String label, {
     VoidCallback? onPressed,
     String? tooltip,
   }) {
+    final isEnabled = onPressed != null;
     final button = OutlinedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 18),
       label: AppText(label),
       style: OutlinedButton.styleFrom(
         foregroundColor: kResultTextHiColor,
-        disabledForegroundColor: const Color(0xFF94A3B8),
-        side: const BorderSide(color: kResultBorderColor),
-        backgroundColor: kResultSurfaceColor,
+        disabledForegroundColor: kResultTextLoColor,
+        backgroundColor: kResultSurfaceAltColor,
+        disabledBackgroundColor: kResultSurfaceAltColor.withValues(alpha: 0.55),
+        side: BorderSide(
+          color: isEnabled ? const Color(0x40FFFFFF) : const Color(0x24FFFFFF),
+        ),
       ),
     );
-    return tooltip == null ? button : Tooltip(message: tooltip, child: button);
+    return tooltip == null
+        ? button
+        : Tooltip(message: localize(context, tooltip), child: button);
   }
 
   String _saveButtonLabel(ScreeningSaveStatus status) => switch (status) {

@@ -85,6 +85,7 @@ void main() {
         TBScreenApp(
           database: database,
           secureTokenStorage: await activatedStorage(),
+          hasActiveModelOverride: () async => true,
         ),
       );
       await pumpApp(tester);

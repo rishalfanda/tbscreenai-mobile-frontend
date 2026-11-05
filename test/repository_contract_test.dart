@@ -5,6 +5,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:myapp/data/mock/mock_repositories.dart';
+import 'package:myapp/domain/models/available_model_bundle.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/domain/repositories/auth_repository.dart';
 import 'package:myapp/domain/repositories/dataset_repository.dart';
@@ -141,6 +142,36 @@ void main() {
 
       expect(summary.totalPatients, greaterThanOrEqualTo(0));
       expect(summary.totalDiagnoses, greaterThanOrEqualTo(0));
+    });
+
+    test('verifyModelBundle transitions bundle to verified state', () async {
+      final freshRepo = MockSyncRepository();
+      final modelsBefore = await freshRepo.getAvailableModels();
+      final betaBefore =
+          modelsBefore.firstWhere((m) => m.id == 'beta_2026.09.04');
+      expect(betaBefore.localStatus, ModelBundleStatus.verificationFailed);
+
+      final verified = await freshRepo.verifyModelBundle('beta_2026.09.04');
+      expect(verified, isTrue);
+
+      final modelsAfter = await freshRepo.getAvailableModels();
+      final betaAfter =
+          modelsAfter.firstWhere((m) => m.id == 'beta_2026.09.04');
+      expect(betaAfter.localStatus, ModelBundleStatus.verified);
+    });
+
+    test('deleteModelBundle removes bundle and clears active version if active',
+        () async {
+      final freshRepo = MockSyncRepository();
+      expect(await freshRepo.getInstalledModelVersion(), 'stable_2026.09.04');
+
+      // Delete non-active model first
+      await freshRepo.deleteModelBundle('beta_2026.09.04');
+      expect(await freshRepo.getInstalledModelVersion(), 'stable_2026.09.04');
+
+      // Delete active model
+      await freshRepo.deleteModelBundle('stable_2026.09.04');
+      expect(await freshRepo.getInstalledModelVersion(), isNull);
     });
   });
 }
