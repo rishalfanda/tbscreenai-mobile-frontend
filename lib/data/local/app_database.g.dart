@@ -1021,6 +1021,39 @@ class $LocalDiagnosesTable extends LocalDiagnoses
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _lesionRatingMeta = const VerificationMeta(
+    'lesionRating',
+  );
+  @override
+  late final GeneratedColumn<int> lesionRating = GeneratedColumn<int>(
+    'lesion_rating',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _validationDeletedAtMeta =
+      const VerificationMeta('validationDeletedAt');
+  @override
+  late final GeneratedColumn<DateTime> validationDeletedAt =
+      GeneratedColumn<DateTime>(
+        'validation_deleted_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _validationDeletedByMeta =
+      const VerificationMeta('validationDeletedBy');
+  @override
+  late final GeneratedColumn<String> validationDeletedBy =
+      GeneratedColumn<String>(
+        'validation_deleted_by',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _validationScoreMeta = const VerificationMeta(
     'validationScore',
   );
@@ -1242,6 +1275,9 @@ class $LocalDiagnosesTable extends LocalDiagnoses
     findings,
     status,
     doctorNote,
+    lesionRating,
+    validationDeletedAt,
+    validationDeletedBy,
     validationScore,
     validatedBy,
     validatedAt,
@@ -1338,6 +1374,33 @@ class $LocalDiagnosesTable extends LocalDiagnoses
       context.handle(
         _doctorNoteMeta,
         doctorNote.isAcceptableOrUnknown(data['doctor_note']!, _doctorNoteMeta),
+      );
+    }
+    if (data.containsKey('lesion_rating')) {
+      context.handle(
+        _lesionRatingMeta,
+        lesionRating.isAcceptableOrUnknown(
+          data['lesion_rating']!,
+          _lesionRatingMeta,
+        ),
+      );
+    }
+    if (data.containsKey('validation_deleted_at')) {
+      context.handle(
+        _validationDeletedAtMeta,
+        validationDeletedAt.isAcceptableOrUnknown(
+          data['validation_deleted_at']!,
+          _validationDeletedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('validation_deleted_by')) {
+      context.handle(
+        _validationDeletedByMeta,
+        validationDeletedBy.isAcceptableOrUnknown(
+          data['validation_deleted_by']!,
+          _validationDeletedByMeta,
+        ),
       );
     }
     if (data.containsKey('validation_score')) {
@@ -1525,6 +1588,18 @@ class $LocalDiagnosesTable extends LocalDiagnoses
         DriftSqlType.string,
         data['${effectivePrefix}doctor_note'],
       ),
+      lesionRating: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}lesion_rating'],
+      ),
+      validationDeletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}validation_deleted_at'],
+      ),
+      validationDeletedBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}validation_deleted_by'],
+      ),
       validationScore: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}validation_score'],
@@ -1618,6 +1693,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
   final String findings;
   final String status;
   final String? doctorNote;
+  final int? lesionRating;
+  final DateTime? validationDeletedAt;
+  final String? validationDeletedBy;
   final int? validationScore;
   final String? validatedBy;
   final DateTime? validatedAt;
@@ -1651,6 +1729,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     required this.findings,
     required this.status,
     this.doctorNote,
+    this.lesionRating,
+    this.validationDeletedAt,
+    this.validationDeletedBy,
     this.validationScore,
     this.validatedBy,
     this.validatedAt,
@@ -1685,6 +1766,15 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     map['status'] = Variable<String>(status);
     if (!nullToAbsent || doctorNote != null) {
       map['doctor_note'] = Variable<String>(doctorNote);
+    }
+    if (!nullToAbsent || lesionRating != null) {
+      map['lesion_rating'] = Variable<int>(lesionRating);
+    }
+    if (!nullToAbsent || validationDeletedAt != null) {
+      map['validation_deleted_at'] = Variable<DateTime>(validationDeletedAt);
+    }
+    if (!nullToAbsent || validationDeletedBy != null) {
+      map['validation_deleted_by'] = Variable<String>(validationDeletedBy);
     }
     if (!nullToAbsent || validationScore != null) {
       map['validation_score'] = Variable<int>(validationScore);
@@ -1742,6 +1832,15 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       doctorNote: doctorNote == null && nullToAbsent
           ? const Value.absent()
           : Value(doctorNote),
+      lesionRating: lesionRating == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lesionRating),
+      validationDeletedAt: validationDeletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validationDeletedAt),
+      validationDeletedBy: validationDeletedBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validationDeletedBy),
       validationScore: validationScore == null && nullToAbsent
           ? const Value.absent()
           : Value(validationScore),
@@ -1798,6 +1897,13 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       findings: serializer.fromJson<String>(json['findings']),
       status: serializer.fromJson<String>(json['status']),
       doctorNote: serializer.fromJson<String?>(json['doctorNote']),
+      lesionRating: serializer.fromJson<int?>(json['lesionRating']),
+      validationDeletedAt: serializer.fromJson<DateTime?>(
+        json['validationDeletedAt'],
+      ),
+      validationDeletedBy: serializer.fromJson<String?>(
+        json['validationDeletedBy'],
+      ),
       validationScore: serializer.fromJson<int?>(json['validationScore']),
       validatedBy: serializer.fromJson<String?>(json['validatedBy']),
       validatedAt: serializer.fromJson<DateTime?>(json['validatedAt']),
@@ -1831,6 +1937,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       'findings': serializer.toJson<String>(findings),
       'status': serializer.toJson<String>(status),
       'doctorNote': serializer.toJson<String?>(doctorNote),
+      'lesionRating': serializer.toJson<int?>(lesionRating),
+      'validationDeletedAt': serializer.toJson<DateTime?>(validationDeletedAt),
+      'validationDeletedBy': serializer.toJson<String?>(validationDeletedBy),
       'validationScore': serializer.toJson<int?>(validationScore),
       'validatedBy': serializer.toJson<String?>(validatedBy),
       'validatedAt': serializer.toJson<DateTime?>(validatedAt),
@@ -1862,6 +1971,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     String? findings,
     String? status,
     Value<String?> doctorNote = const Value.absent(),
+    Value<int?> lesionRating = const Value.absent(),
+    Value<DateTime?> validationDeletedAt = const Value.absent(),
+    Value<String?> validationDeletedBy = const Value.absent(),
     Value<int?> validationScore = const Value.absent(),
     Value<String?> validatedBy = const Value.absent(),
     Value<DateTime?> validatedAt = const Value.absent(),
@@ -1892,6 +2004,13 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     findings: findings ?? this.findings,
     status: status ?? this.status,
     doctorNote: doctorNote.present ? doctorNote.value : this.doctorNote,
+    lesionRating: lesionRating.present ? lesionRating.value : this.lesionRating,
+    validationDeletedAt: validationDeletedAt.present
+        ? validationDeletedAt.value
+        : this.validationDeletedAt,
+    validationDeletedBy: validationDeletedBy.present
+        ? validationDeletedBy.value
+        : this.validationDeletedBy,
     validationScore: validationScore.present
         ? validationScore.value
         : this.validationScore,
@@ -1940,6 +2059,15 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       doctorNote: data.doctorNote.present
           ? data.doctorNote.value
           : this.doctorNote,
+      lesionRating: data.lesionRating.present
+          ? data.lesionRating.value
+          : this.lesionRating,
+      validationDeletedAt: data.validationDeletedAt.present
+          ? data.validationDeletedAt.value
+          : this.validationDeletedAt,
+      validationDeletedBy: data.validationDeletedBy.present
+          ? data.validationDeletedBy.value
+          : this.validationDeletedBy,
       validationScore: data.validationScore.present
           ? data.validationScore.value
           : this.validationScore,
@@ -1997,6 +2125,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
           ..write('findings: $findings, ')
           ..write('status: $status, ')
           ..write('doctorNote: $doctorNote, ')
+          ..write('lesionRating: $lesionRating, ')
+          ..write('validationDeletedAt: $validationDeletedAt, ')
+          ..write('validationDeletedBy: $validationDeletedBy, ')
           ..write('validationScore: $validationScore, ')
           ..write('validatedBy: $validatedBy, ')
           ..write('validatedAt: $validatedAt, ')
@@ -2030,6 +2161,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     findings,
     status,
     doctorNote,
+    lesionRating,
+    validationDeletedAt,
+    validationDeletedBy,
     validationScore,
     validatedBy,
     validatedAt,
@@ -2062,6 +2196,9 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
           other.findings == this.findings &&
           other.status == this.status &&
           other.doctorNote == this.doctorNote &&
+          other.lesionRating == this.lesionRating &&
+          other.validationDeletedAt == this.validationDeletedAt &&
+          other.validationDeletedBy == this.validationDeletedBy &&
           other.validationScore == this.validationScore &&
           other.validatedBy == this.validatedBy &&
           other.validatedAt == this.validatedAt &&
@@ -2092,6 +2229,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
   final Value<String> findings;
   final Value<String> status;
   final Value<String?> doctorNote;
+  final Value<int?> lesionRating;
+  final Value<DateTime?> validationDeletedAt;
+  final Value<String?> validationDeletedBy;
   final Value<int?> validationScore;
   final Value<String?> validatedBy;
   final Value<DateTime?> validatedAt;
@@ -2121,6 +2261,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     this.findings = const Value.absent(),
     this.status = const Value.absent(),
     this.doctorNote = const Value.absent(),
+    this.lesionRating = const Value.absent(),
+    this.validationDeletedAt = const Value.absent(),
+    this.validationDeletedBy = const Value.absent(),
     this.validationScore = const Value.absent(),
     this.validatedBy = const Value.absent(),
     this.validatedAt = const Value.absent(),
@@ -2151,6 +2294,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     this.findings = const Value.absent(),
     this.status = const Value.absent(),
     this.doctorNote = const Value.absent(),
+    this.lesionRating = const Value.absent(),
+    this.validationDeletedAt = const Value.absent(),
+    this.validationDeletedBy = const Value.absent(),
     this.validationScore = const Value.absent(),
     this.validatedBy = const Value.absent(),
     this.validatedAt = const Value.absent(),
@@ -2186,6 +2332,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     Expression<String>? findings,
     Expression<String>? status,
     Expression<String>? doctorNote,
+    Expression<int>? lesionRating,
+    Expression<DateTime>? validationDeletedAt,
+    Expression<String>? validationDeletedBy,
     Expression<int>? validationScore,
     Expression<String>? validatedBy,
     Expression<DateTime>? validatedAt,
@@ -2216,6 +2365,11 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
       if (findings != null) 'findings': findings,
       if (status != null) 'status': status,
       if (doctorNote != null) 'doctor_note': doctorNote,
+      if (lesionRating != null) 'lesion_rating': lesionRating,
+      if (validationDeletedAt != null)
+        'validation_deleted_at': validationDeletedAt,
+      if (validationDeletedBy != null)
+        'validation_deleted_by': validationDeletedBy,
       if (validationScore != null) 'validation_score': validationScore,
       if (validatedBy != null) 'validated_by': validatedBy,
       if (validatedAt != null) 'validated_at': validatedAt,
@@ -2248,6 +2402,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     Value<String>? findings,
     Value<String>? status,
     Value<String?>? doctorNote,
+    Value<int?>? lesionRating,
+    Value<DateTime?>? validationDeletedAt,
+    Value<String?>? validationDeletedBy,
     Value<int?>? validationScore,
     Value<String?>? validatedBy,
     Value<DateTime?>? validatedAt,
@@ -2278,6 +2435,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
       findings: findings ?? this.findings,
       status: status ?? this.status,
       doctorNote: doctorNote ?? this.doctorNote,
+      lesionRating: lesionRating ?? this.lesionRating,
+      validationDeletedAt: validationDeletedAt ?? this.validationDeletedAt,
+      validationDeletedBy: validationDeletedBy ?? this.validationDeletedBy,
       validationScore: validationScore ?? this.validationScore,
       validatedBy: validatedBy ?? this.validatedBy,
       validatedAt: validatedAt ?? this.validatedAt,
@@ -2329,6 +2489,19 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     }
     if (doctorNote.present) {
       map['doctor_note'] = Variable<String>(doctorNote.value);
+    }
+    if (lesionRating.present) {
+      map['lesion_rating'] = Variable<int>(lesionRating.value);
+    }
+    if (validationDeletedAt.present) {
+      map['validation_deleted_at'] = Variable<DateTime>(
+        validationDeletedAt.value,
+      );
+    }
+    if (validationDeletedBy.present) {
+      map['validation_deleted_by'] = Variable<String>(
+        validationDeletedBy.value,
+      );
     }
     if (validationScore.present) {
       map['validation_score'] = Variable<int>(validationScore.value);
@@ -2402,6 +2575,9 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
           ..write('findings: $findings, ')
           ..write('status: $status, ')
           ..write('doctorNote: $doctorNote, ')
+          ..write('lesionRating: $lesionRating, ')
+          ..write('validationDeletedAt: $validationDeletedAt, ')
+          ..write('validationDeletedBy: $validationDeletedBy, ')
           ..write('validationScore: $validationScore, ')
           ..write('validatedBy: $validatedBy, ')
           ..write('validatedAt: $validatedAt, ')
@@ -5410,6 +5586,9 @@ typedef $$LocalDiagnosesTableCreateCompanionBuilder =
       Value<String> findings,
       Value<String> status,
       Value<String?> doctorNote,
+      Value<int?> lesionRating,
+      Value<DateTime?> validationDeletedAt,
+      Value<String?> validationDeletedBy,
       Value<int?> validationScore,
       Value<String?> validatedBy,
       Value<DateTime?> validatedAt,
@@ -5441,6 +5620,9 @@ typedef $$LocalDiagnosesTableUpdateCompanionBuilder =
       Value<String> findings,
       Value<String> status,
       Value<String?> doctorNote,
+      Value<int?> lesionRating,
+      Value<DateTime?> validationDeletedAt,
+      Value<String?> validationDeletedBy,
       Value<int?> validationScore,
       Value<String?> validatedBy,
       Value<DateTime?> validatedAt,
@@ -5513,6 +5695,21 @@ class $$LocalDiagnosesTableFilterComposer
 
   ColumnFilters<String> get doctorNote => $composableBuilder(
     column: $table.doctorNote,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get lesionRating => $composableBuilder(
+    column: $table.lesionRating,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get validationDeletedAt => $composableBuilder(
+    column: $table.validationDeletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get validationDeletedBy => $composableBuilder(
+    column: $table.validationDeletedBy,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5661,6 +5858,21 @@ class $$LocalDiagnosesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get lesionRating => $composableBuilder(
+    column: $table.lesionRating,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get validationDeletedAt => $composableBuilder(
+    column: $table.validationDeletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get validationDeletedBy => $composableBuilder(
+    column: $table.validationDeletedBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get validationScore => $composableBuilder(
     column: $table.validationScore,
     builder: (column) => ColumnOrderings(column),
@@ -5798,6 +6010,21 @@ class $$LocalDiagnosesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get lesionRating => $composableBuilder(
+    column: $table.lesionRating,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get validationDeletedAt => $composableBuilder(
+    column: $table.validationDeletedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get validationDeletedBy => $composableBuilder(
+    column: $table.validationDeletedBy,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get validationScore => $composableBuilder(
     column: $table.validationScore,
     builder: (column) => column,
@@ -5919,6 +6146,9 @@ class $$LocalDiagnosesTableTableManager
                 Value<String> findings = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> doctorNote = const Value.absent(),
+                Value<int?> lesionRating = const Value.absent(),
+                Value<DateTime?> validationDeletedAt = const Value.absent(),
+                Value<String?> validationDeletedBy = const Value.absent(),
                 Value<int?> validationScore = const Value.absent(),
                 Value<String?> validatedBy = const Value.absent(),
                 Value<DateTime?> validatedAt = const Value.absent(),
@@ -5948,6 +6178,9 @@ class $$LocalDiagnosesTableTableManager
                 findings: findings,
                 status: status,
                 doctorNote: doctorNote,
+                lesionRating: lesionRating,
+                validationDeletedAt: validationDeletedAt,
+                validationDeletedBy: validationDeletedBy,
                 validationScore: validationScore,
                 validatedBy: validatedBy,
                 validatedAt: validatedAt,
@@ -5979,6 +6212,9 @@ class $$LocalDiagnosesTableTableManager
                 Value<String> findings = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> doctorNote = const Value.absent(),
+                Value<int?> lesionRating = const Value.absent(),
+                Value<DateTime?> validationDeletedAt = const Value.absent(),
+                Value<String?> validationDeletedBy = const Value.absent(),
                 Value<int?> validationScore = const Value.absent(),
                 Value<String?> validatedBy = const Value.absent(),
                 Value<DateTime?> validatedAt = const Value.absent(),
@@ -6008,6 +6244,9 @@ class $$LocalDiagnosesTableTableManager
                 findings: findings,
                 status: status,
                 doctorNote: doctorNote,
+                lesionRating: lesionRating,
+                validationDeletedAt: validationDeletedAt,
+                validationDeletedBy: validationDeletedBy,
                 validationScore: validationScore,
                 validatedBy: validatedBy,
                 validatedAt: validatedAt,

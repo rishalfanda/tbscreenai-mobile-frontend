@@ -80,7 +80,7 @@ class AppDatabase extends _$AppDatabase {
       );
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   int _sessionGeneration = 0;
   DataOwner? _activeOwner;
@@ -96,6 +96,11 @@ class AppDatabase extends _$AppDatabase {
     onUpgrade: (m, from, to) async {
       if (from < 2) await _migrateV1ToV2(m);
       if (from < 3) await _migrateV2ToV3(m);
+      if (from < 5) {
+        await m.addColumn(localDiagnoses, localDiagnoses.lesionRating);
+        await m.addColumn(localDiagnoses, localDiagnoses.validationDeletedAt);
+        await m.addColumn(localDiagnoses, localDiagnoses.validationDeletedBy);
+      }
       if (from < 4) {
         await m.addColumn(localDiagnoses, localDiagnoses.validationScore);
         await m.addColumn(localDiagnoses, localDiagnoses.validatedBy);

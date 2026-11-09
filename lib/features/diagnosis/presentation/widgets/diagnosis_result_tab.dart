@@ -74,19 +74,17 @@ class DiagnosisResultTab extends StatelessWidget {
                               flex: 4,
                               child: Column(
                                 children: [
-                                  // B. Identitas Pasien
-                                  Expanded(
-                                    child: PatientIdentityCard(
-                                      snapshot: snapshot,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  // C. Hasil Screening/Presentase (Screening AI)
                                   Expanded(
                                     child: DiagnosisAiCard(
                                       isPositive: isPositive,
                                       displayedConfidence: displayedConfidence,
                                       category: category,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Expanded(
+                                    child: PatientIdentityCard(
+                                      snapshot: snapshot,
                                     ),
                                   ),
                                   const SizedBox(height: 10),
@@ -141,13 +139,13 @@ class DiagnosisResultTab extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    PatientIdentityCard(snapshot: snapshot),
-                    const SizedBox(height: 10),
                     DiagnosisAiCard(
                       isPositive: isPositive,
                       displayedConfidence: displayedConfidence,
                       category: category,
                     ),
+                    const SizedBox(height: 10),
+                    PatientIdentityCard(snapshot: snapshot),
                     const SizedBox(height: 10),
                     RecommendationCard(
                       isPositive: isPositive,

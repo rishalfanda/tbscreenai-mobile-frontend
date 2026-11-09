@@ -205,6 +205,15 @@ class DeviceOperatorOutbox {
               status: diagnosis['status'] as String,
               doctorNote: Value(diagnosis['doctor_note'] as String?),
               validationScore: Value(diagnosis['validation_score'] as int?),
+              lesionRating: Value(diagnosis['lesion_rating'] as int?),
+              validationDeletedAt: Value(
+                DateTime.tryParse(
+                  diagnosis['validation_deleted_at'] as String? ?? '',
+                ),
+              ),
+              validationDeletedBy: Value(
+                diagnosis['validation_deleted_by'] as String?,
+              ),
               validatedBy: Value(diagnosis['validated_by'] as String?),
               validatedAt: Value(
                 DateTime.tryParse(diagnosis['validated_at'] as String? ?? ''),

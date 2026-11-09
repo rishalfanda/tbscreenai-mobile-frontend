@@ -50,3 +50,18 @@ abstract interface class NumericValidationRepository {
 abstract interface class SegmentationValidationRepository {
   Future<SegmentationOverlays?> loadCaseSegmentation(String id);
 }
+
+/// Removes a doctor's review from the list while retaining screening and image.
+abstract interface class ValidationResetRepository {
+  Future<void> resetValidation(String id);
+}
+
+/// PR40 lesion ratings are never inferred from the legacy trust score.
+abstract interface class LesionRatingValidationRepository {
+  Future<void> submitLesionRating({
+    required String id,
+    required int rating,
+    required String status,
+    String? note,
+  });
+}

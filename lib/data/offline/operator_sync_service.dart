@@ -102,11 +102,24 @@ class OperatorSyncService {
           failed = 0,
           blocked = 0,
           done = 0;
-      bool? scoreSupported;
+      bool? scoreSupported, ratingSupported;
       for (final entry in entries) {
         current();
         final op = SyncQueueData.fromJson(entry['op'] as Map<String, dynamic>);
         final payload = jsonDecode(op.payload);
+        if (op.operation == 'delete_validation' ||
+            (payload is Map && payload.containsKey('lesion_rating'))) {
+          ratingSupported ??= await supportsValidationScore(
+            client,
+            lesion: true,
+          );
+          current();
+          if (!ratingSupported) {
+            blocked++;
+            onProgress?.call(++done, entries.length);
+            continue;
+          }
+        }
         if (op.operation == 'update' &&
             payload is Map &&
             payload.containsKey('validation_score')) {
@@ -369,6 +382,18 @@ class OperatorSyncService {
                 raw['model_version'] is! String ||
                 raw['status'] is! String ||
                 raw['findings'] is! Map ||
+                (raw['lesion_rating'] != null &&
+                    (raw['lesion_rating'] is! int ||
+                        (raw['lesion_rating'] as int) < 0 ||
+                        (raw['lesion_rating'] as int) > 10)) ||
+                (raw['validation_deleted_at'] != null &&
+                    (raw['validation_deleted_at'] is! String ||
+                        DateTime.tryParse(
+                              raw['validation_deleted_at'] as String,
+                            ) ==
+                            null)) ||
+                (raw['validation_deleted_by'] != null &&
+                    raw['validation_deleted_by'] is! String) ||
                 (raw['validation_score'] != null &&
                     (raw['validation_score'] is! int ||
                         (raw['validation_score'] as int) < 0 ||

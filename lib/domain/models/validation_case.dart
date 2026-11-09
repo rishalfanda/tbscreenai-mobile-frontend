@@ -32,6 +32,9 @@ class ValidationCase {
     this.symptoms = const [],
     this.isPositive,
     this.validationScore,
+    this.lesionRating,
+    this.validationDeletedAt,
+    this.validationDeletedBy,
     this.validationNote,
     this.patientId,
     this.serverVersion,
@@ -49,6 +52,9 @@ class ValidationCase {
   final List<String> symptoms;
   final bool? isPositive;
   final int? validationScore;
+  final int? lesionRating;
+  final DateTime? validationDeletedAt;
+  final String? validationDeletedBy;
   final String? validationNote;
   final String id;
   final String name;
@@ -92,6 +98,9 @@ class ValidationCase {
       symptoms: symptoms,
       isPositive: isPositive,
       validationScore: validationScore,
+      lesionRating: lesionRating,
+      validationDeletedAt: validationDeletedAt,
+      validationDeletedBy: validationDeletedBy,
       validationNote: validationNote,
       patientId: patientId,
       serverVersion: serverVersion ?? this.serverVersion,

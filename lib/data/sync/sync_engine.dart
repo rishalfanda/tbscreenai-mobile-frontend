@@ -179,24 +179,41 @@ class SyncEngine {
     }
 
     var report = const SyncReport.empty();
-    final scored = pending
-        .where(
-          (op) =>
-              op.entityType == 'diagnosis' &&
-              op.operation == 'update' &&
-              (jsonDecode(op.payload) as Map).containsKey('validation_score'),
-        )
-        .toSet();
-    if (scored.isNotEmpty && !await supportsValidationScore(_client)) {
-      pending = pending.where((op) => !scored.contains(op)).toList();
-      report = SyncReport(
-        applied: 0,
-        skipped: 0,
-        conflicts: 0,
-        failed: 0,
-        blocked: scored.length,
-      );
+    bool? legacySupported, ratingSupported;
+    final ready = <SyncQueueData>[];
+    var blocked = 0;
+    for (final op in pending) {
+      final body = jsonDecode(op.payload) as Map;
+      if (op.entityType == 'diagnosis' &&
+          (op.operation == 'delete_validation' ||
+              body.containsKey('lesion_rating'))) {
+        ratingSupported ??= await supportsValidationScore(
+          _client,
+          lesion: true,
+        );
+        if (!ratingSupported) {
+          blocked++;
+          continue;
+        }
+      } else if (op.entityType == 'diagnosis' &&
+          op.operation == 'update' &&
+          body.containsKey('validation_score')) {
+        legacySupported ??= await supportsValidationScore(_client);
+        if (!legacySupported) {
+          blocked++;
+          continue;
+        }
+      }
+      ready.add(op);
     }
+    pending = ready;
+    report = SyncReport(
+      applied: 0,
+      skipped: 0,
+      conflicts: 0,
+      failed: 0,
+      blocked: blocked,
+    );
     for (var offset = 0; offset < pending.length; offset += _batchSize) {
       if (session != _db.sessionGeneration) return report;
       final end = min(offset + _batchSize, pending.length);

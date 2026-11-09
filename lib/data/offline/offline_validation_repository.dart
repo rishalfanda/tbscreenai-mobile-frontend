@@ -27,7 +27,11 @@ class ValidationContractException implements Exception {
 /// Owner-scoped doctor validation backed by Drift and the idempotent sync
 /// protocol. Every verdict is committed locally before network I/O begins.
 class OfflineValidationRepository extends ValidationRepository
-    implements NumericValidationRepository, SegmentationValidationRepository {
+    implements
+        NumericValidationRepository,
+        SegmentationValidationRepository,
+        ValidationResetRepository,
+        LesionRatingValidationRepository {
   OfflineValidationRepository({
     required AppDatabase db,
     required ApiClient client,
@@ -47,18 +51,89 @@ class OfflineValidationRepository extends ValidationRepository
   Future<void>? _refreshInFlight;
 
   @override
-  Stream<int> watchPendingCount() => _db.watchDiagnoses().map(
-    (rows) => rows
-        .where(
-          (row) =>
-              row.status == 'pending' && !row.isMock && _score(row) == null,
-        )
-        .length,
-  );
+  Stream<int> watchPendingCount() =>
+      _db.watchDiagnoses().asyncMap((rows) async {
+        final generation = _db.sessionGeneration;
+        final hidden = await _hiddenReviews();
+        if (generation != _db.sessionGeneration) return 0;
+        return rows
+            .where(
+              (row) =>
+                  row.validationDeletedAt == null &&
+                  !hidden.contains(row.id) &&
+                  row.status == 'pending' &&
+                  !row.isMock &&
+                  row.lesionRating == null,
+            )
+            .length;
+      });
+
+  String _hiddenKey(DataOwner owner) =>
+      'deleted_validation_v1:${base64Url.encode(utf8.encode(jsonEncode([owner.tenantId, owner.userId, owner.deviceId])))}';
+
+  Future<Set<String>> _hiddenReviews() async {
+    final owner = _db.activeOwner;
+    if (owner == null) return {};
+    final raw = await _db.getSetting(_hiddenKey(owner));
+    return raw == null ? {} : (jsonDecode(raw) as List).cast<String>().toSet();
+  }
+
+  Future<void> _upgradeLegacyArchives() async {
+    final owner = _db.activeOwner;
+    final generation = _db.sessionGeneration;
+    if (owner == null || await _db.getSetting(kUserRole) != 'doctor') return;
+    final hidden = await _hiddenReviews();
+    for (final id in hidden.toList()) {
+      await _db.transaction(() async {
+        if (generation != _db.sessionGeneration ||
+            !identical(owner, _db.activeOwner)) {
+          return;
+        }
+        final row = await _db.findDiagnosis(id);
+        if (row == null ||
+            row.serverVersion == null ||
+            row.isMock ||
+            row.hasConflict) {
+          return;
+        }
+        final ops = (await _db.select(_db.syncQueue).get())
+            .where(
+              (op) =>
+                  op.entityId == id &&
+                  op.userId == owner.userId &&
+                  op.status != syncSynced &&
+                  op.operation != 'create',
+            )
+            .toList();
+        bool legacyReset(SyncQueueData op) {
+          final body = _map(op.payload);
+          return op.operation == 'update' &&
+              body['status'] == 'pending' &&
+              body.containsKey('validation_score') &&
+              body['validation_score'] == null &&
+              op.retryCount == 0 &&
+              (op.status == syncPending || op.status == syncBlockedContract);
+        }
+
+        if (ops.any((op) => !legacyReset(op))) return;
+        for (final op in ops) {
+          await _db.markOp(
+            op.clientOpId,
+            syncSynced,
+            detail: 'Superseded local archive by PR40 delete_validation',
+          );
+        }
+        await resetValidation(id);
+        hidden.remove(id);
+        await _db.putSetting(_hiddenKey(owner), jsonEncode(hidden.toList()));
+      });
+    }
+  }
 
   @override
   Future<List<ValidationCase>> getCases() async {
     if (localOnly && _db.activeOwner == null) return const [];
+    await _upgradeLegacyArchives();
     var rows = await _db.allDiagnoses();
     if (!localOnly && rows.isEmpty) {
       try {
@@ -72,10 +147,14 @@ class OfflineValidationRepository extends ValidationRepository
       unawaited(_refresh().catchError((_) {}));
     }
 
+    final hidden = await _hiddenReviews();
     final patients = {
       for (final patient in await _db.allPatients()) patient.id: patient,
     };
     return rows
+        .where(
+          (row) => row.validationDeletedAt == null && !hidden.contains(row.id),
+        )
         .map((row) {
           final patient = _map(row.patientSnapshot);
           final cachedPatient = patients[row.patientId];
@@ -93,6 +172,9 @@ class OfflineValidationRepository extends ValidationRepository
           return ValidationCase(
             id: row.id,
             validationScore: _score(row),
+            lesionRating: row.lesionRating,
+            validationDeletedAt: row.validationDeletedAt,
+            validationDeletedBy: row.validationDeletedBy,
             validationNote: row.status != 'pending'
                 ? row.doctorNote
                 : (_map(row.clinicalSnapshot)['local_validation_v1']
@@ -188,20 +270,110 @@ class OfflineValidationRepository extends ValidationRepository
     required int score,
     String? status,
     String? note,
+  }) => _saveReview(id: id, score: score, status: status, note: note);
+
+  @override
+  Future<void> submitLesionRating({
+    required String id,
+    required int rating,
+    required String status,
+    String? note,
+  }) => _saveReview(
+    id: id,
+    score: rating,
+    status: status,
+    note: note,
+    lesion: true,
+  );
+
+  @override
+  Future<void> resetValidation(String id) async {
+    final owner = _db.activeOwner;
+    final generation = _db.sessionGeneration;
+    if (owner == null || await _db.getSetting(kUserRole) != 'doctor') {
+      throw const ValidationContractException('Sesi dokter diperlukan.');
+    }
+    await _db.transaction(() async {
+      if (generation != _db.sessionGeneration ||
+          !identical(owner, _db.activeOwner)) {
+        throw const ValidationContractException('Sesi berubah.');
+      }
+      final row = await _db.findDiagnosis(id);
+      if (row == null || row.isMock || row.tombstone || row.hasConflict) {
+        throw const ValidationContractException(
+          'Screening tidak tersedia atau memiliki konflik.',
+        );
+      }
+      if (row.validationDeletedAt != null) return;
+      final pending = (await _db.select(_db.syncQueue).get()).where(
+        (op) =>
+            op.entityId == id &&
+            op.entityType == 'diagnosis' &&
+            op.status != syncSynced &&
+            op.operation != 'create',
+      );
+      if (pending.isNotEmpty) {
+        throw const ValidationContractException(
+          'Sinkronkan perubahan sebelumnya sebelum menghapus validasi.',
+        );
+      }
+      if (row.serverVersion == null) {
+        throw const ValidationContractException(
+          'Sinkronkan screening sebelum menghapus validasi.',
+        );
+      }
+      final now = DateTime.now().toUtc();
+      final opId = uuidV4();
+      await _db.upsertDiagnosis(
+        row
+            .toCompanion(false)
+            .copyWith(
+              validationDeletedAt: Value(now),
+              validationDeletedBy: Value(owner.userId),
+            ),
+      );
+      await _db.enqueue(
+        SyncQueueCompanion.insert(
+          clientOpId: opId,
+          entityType: 'diagnosis',
+          entityId: id,
+          operation: 'delete_validation',
+          payload: jsonEncode({'deleted_at': now.toIso8601String()}),
+          baseVersion: Value(row.serverVersion),
+          createdAt: now,
+        ),
+      );
+      await _db.appendClinicalAudit(
+        ClinicalAuditEventsCompanion.insert(
+          id: uuidV4(),
+          entityType: 'diagnosis',
+          entityId: id,
+          action: 'validation_deleted',
+          details: Value(jsonEncode({'client_op_id': opId})),
+          createdAt: now,
+        ),
+      );
+    });
+  }
+
+  Future<void> _saveReview({
+    required String id,
+    int? score,
+    String? status,
+    String? note,
+    bool lesion = false,
   }) async {
-    if (score < 0 || score > 10 || (note?.trim().length ?? 0) > 500) {
+    final resetting = status == 'pending';
+    if ((!resetting && (score == null || score < 0 || score > 10)) ||
+        (note?.trim().length ?? 0) > 500) {
       throw const ValidationContractException(
         'Skor harus 0-10 dan catatan maksimal 500 karakter.',
       );
     }
-    if (status != null && !const {'agreed', 'disagreed'}.contains(status)) {
+    if (status != null &&
+        !const {'pending', 'agreed', 'disagreed'}.contains(status)) {
       throw const ValidationContractException(
         'Keputusan validasi tidak valid.',
-      );
-    }
-    if (status == 'disagreed' && (note?.trim().isEmpty ?? true)) {
-      throw const ValidationContractException(
-        'Catatan wajib jika hasil dokter berbeda dari AI.',
       );
     }
     final owner = _db.activeOwner;
@@ -217,19 +389,42 @@ class OfflineValidationRepository extends ValidationRepository
         );
       }
       final row = await _db.findDiagnosis(id);
-      if (row == null || row.isMock || row.hasConflict || row.tombstone) {
+      if (row == null ||
+          row.isMock ||
+          row.hasConflict ||
+          row.tombstone ||
+          row.validationDeletedAt != null) {
         throw const ValidationContractException(
           'Screening tidak tersedia atau memiliki konflik.',
         );
       }
       if (status != null) {
-        final outstanding = (await _db.select(_db.syncQueue).get()).where(
-          (op) =>
-              op.entityId == id &&
-              op.operation == 'update' &&
-              op.status != syncSynced &&
-              op.userId == owner.userId,
-        );
+        final outstanding = (await _db.select(_db.syncQueue).get())
+            .where(
+              (op) =>
+                  op.entityId == id &&
+                  op.operation == 'update' &&
+                  op.status != syncSynced &&
+                  op.userId == owner.userId,
+            )
+            .toList();
+        if (lesion) {
+          for (final op in outstanding.toList()) {
+            final old = _map(op.payload);
+            if (old.containsKey('validation_score') &&
+                !old.containsKey('lesion_rating') &&
+                op.retryCount == 0 &&
+                (op.status == syncPending ||
+                    op.status == syncBlockedContract)) {
+              await _db.markOp(
+                op.clientOpId,
+                syncSynced,
+                detail: 'Replaced by explicit PR40 lesion rating',
+              );
+              outstanding.remove(op);
+            }
+          }
+        }
         if (outstanding.isNotEmpty) {
           throw const ValidationContractException(
             'Validasi sebelumnya belum selesai disinkronkan. Tunggu hasil sync sebelum mengubahnya.',
@@ -238,16 +433,22 @@ class OfflineValidationRepository extends ValidationRepository
       }
       final review = <String, dynamic>{
         'schema_version': 1,
-        'score': score,
+        if (lesion) 'lesion_rating': score else 'score': score,
         'confirmed': true,
         'confirmed_at': DateTime.now().toUtc().toIso8601String(),
-        'note': note?.trim(),
+        'note': note?.trim().isEmpty == true ? null : note?.trim(),
         'state': status == null ? syncBlockedContract : syncPending,
         'status': ?status,
         'validated_by': owner.userId,
       };
-      final snapshot = _map(row.clinicalSnapshot)
-        ..['local_validation_v1'] = review;
+      final snapshot = _map(row.clinicalSnapshot);
+      if (resetting) {
+        snapshot.remove('local_validation_v1');
+        final hidden = (await _hiddenReviews())..add(id);
+        await _db.putSetting(_hiddenKey(owner), jsonEncode(hidden.toList()));
+      } else {
+        snapshot['local_validation_v1'] = review;
+      }
       await _db.upsertDiagnosis(
         row
             .toCompanion(false)
@@ -256,16 +457,21 @@ class OfflineValidationRepository extends ValidationRepository
               status: status == null ? const Value.absent() : Value(status),
               doctorNote: status == null
                   ? const Value.absent()
-                  : Value(note?.trim()),
-              validationScore: status == null
+                  : Value(note?.trim().isEmpty == true ? null : note?.trim()),
+              lesionRating: lesion ? Value(score) : const Value.absent(),
+              validationScore: status == null || lesion
                   ? const Value.absent()
                   : Value(score),
               validatedBy: status == null
                   ? const Value.absent()
-                  : Value(owner.userId),
+                  : Value(resetting ? null : owner.userId),
               validatedAt: status == null
                   ? const Value.absent()
-                  : Value(DateTime.parse(review['confirmed_at'] as String)),
+                  : Value(
+                      resetting
+                          ? null
+                          : DateTime.parse(review['confirmed_at'] as String),
+                    ),
             ),
       );
       final held = (await _db.opsWithStatus(
@@ -309,9 +515,14 @@ class OfflineValidationRepository extends ValidationRepository
                 ? review
                 : {
                     'status': status,
-                    'validation_score': score,
-                    'validated_at': review['confirmed_at'],
-                    'doctor_note': note?.trim(),
+                    if (lesion)
+                      'lesion_rating': score
+                    else
+                      'validation_score': score,
+                    'validated_at': resetting ? null : review['confirmed_at'],
+                    'doctor_note': note?.trim().isEmpty == true
+                        ? null
+                        : note?.trim(),
                   },
           ),
           baseVersion: Value(baseVersion),
@@ -324,7 +535,7 @@ class OfflineValidationRepository extends ValidationRepository
           id: uuidV4(),
           entityType: 'diagnosis',
           entityId: id,
-          action: 'validation_score_confirmed',
+          action: resetting ? 'validation_reset' : 'validation_score_confirmed',
           details: Value(jsonEncode({'client_op_id': opId, 'score': score})),
           createdAt: DateTime.now().toUtc(),
         ),

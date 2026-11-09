@@ -3,7 +3,10 @@ import 'package:myapp/data/http/api_client.dart';
 
 /// Older servers silently ignore unknown score fields. Never send numeric
 /// reviews unless the deployed write AND read schemas advertise PR38 fields.
-Future<bool> supportsValidationScore(ApiClient client) async {
+Future<bool> supportsValidationScore(
+  ApiClient client, {
+  bool lesion = false,
+}) async {
   try {
     final uri = Uri.parse(
       client.baseUrl,
@@ -15,13 +18,13 @@ Future<bool> supportsValidationScore(ApiClient client) async {
         receiveTimeout: const Duration(seconds: 10),
       ),
     );
-    return hasValidationScoreContract(response.data);
+    return hasValidationScoreContract(response.data, lesion: lesion);
   } catch (_) {
     return false;
   }
 }
 
-bool hasValidationScoreContract(Object? document) {
+bool hasValidationScoreContract(Object? document, {bool lesion = false}) {
   if (document is! Map) return false;
   final components = document['components'];
   if (components is! Map || components['schemas'] is! Map) return false;
@@ -52,7 +55,9 @@ bool hasValidationScoreContract(Object? document) {
   if (paths is! Map) return false;
   for (final entry in paths.entries) {
     if (entry.key is! String ||
-        !RegExp(r'/diagnoses/\{[^/]+\}/status$').hasMatch(entry.key as String)) {
+        !RegExp(
+          r'/diagnoses/\{[^/]+\}/status$',
+        ).hasMatch(entry.key as String)) {
       continue;
     }
     final path = entry.value;
@@ -69,18 +74,31 @@ bool hasValidationScoreContract(Object? document) {
     final read = properties(
       schemaAt(responses is Map ? responses['200'] : null),
     );
+    if (!lesion && write?.containsKey('lesion_rating') == true) return false;
+    final hasDelete = paths.entries.any(
+      (entry) =>
+          entry.key is String &&
+          RegExp(
+            r'/diagnoses/\{[^/]+\}/validation$',
+          ).hasMatch(entry.key as String) &&
+          entry.value is Map &&
+          (entry.value as Map).containsKey('delete'),
+    );
     if (write != null &&
         read != null &&
+        (!lesion || hasDelete) &&
         [
           'status',
           'base_version',
-          'validation_score',
+          lesion ? 'lesion_rating' : 'validation_score',
           'validated_at',
         ].every(write.containsKey) &&
         [
-          'validation_score',
+          lesion ? 'lesion_rating' : 'validation_score',
           'validated_at',
           'validated_by',
+          if (lesion) 'validation_deleted_at',
+          if (lesion) 'validation_deleted_by',
         ].every(read.containsKey)) {
       return true;
     }

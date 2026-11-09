@@ -859,6 +859,353 @@ void main() {
     );
   }
 
+  test(
+    'PR40 delete preserves verdict, rating, note and image and queues delete_validation',
+    () async {
+      await seed(image: true);
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        xrayStore: xray,
+        localOnly: true,
+      );
+      await repo.submitLesionRating(
+        id: diagnosis,
+        rating: 7,
+        status: 'agreed',
+        note: 'Synthetic note',
+      );
+      await expectLater(
+        repo.resetValidation(diagnosis),
+        throwsA(isA<ValidationContractException>()),
+      );
+      expect((await repo.getCases()).single.lesionRating, 7);
+      final update = (await db.pendingOps()).singleWhere(
+        (op) => op.operation == 'update',
+      );
+      await db.markOp(update.clientOpId, syncSynced);
+      await db.upsertDiagnosis(
+        (await db.findDiagnosis(
+          diagnosis,
+        ))!.toCompanion(false).copyWith(serverVersion: const Value(1)),
+      );
+      final before = (await db.findDiagnosis(diagnosis))!;
+      final picture = (await repo.loadCaseImage(diagnosis))!;
+      await repo.resetValidation(diagnosis);
+      final after = (await db.findDiagnosis(diagnosis))!;
+      expect(after.status, 'agreed');
+      expect(after.lesionRating, 7);
+      expect(after.validationDeletedAt, isNotNull);
+      expect(after.validationDeletedBy, doctor);
+      expect(after.validatedBy, doctor);
+      expect(after.validatedAt, before.validatedAt);
+      expect(after.doctorNote, 'Synthetic note');
+      expect(after.patientId, before.patientId);
+      expect(after.confidence, before.confidence);
+      expect(after.isPositive, before.isPositive);
+      expect(after.imageReference, before.imageReference);
+      expect(after.tombstone, isFalse);
+      expect(
+        (jsonDecode(after.clinicalSnapshot) as Map).containsKey(
+          'local_validation_v1',
+        ),
+        isTrue,
+      );
+      expect(
+        (await repo.loadCaseImage(diagnosis))!.checksumSha256,
+        picture.checksumSha256,
+      );
+      final reset = (await db.pendingOps()).singleWhere(
+        (op) => op.operation == 'delete_validation',
+      );
+      expect((jsonDecode(reset.payload) as Map).keys, ['deleted_at']);
+      expect(reset.baseVersion, 1);
+      expect(await repo.getCases(), isEmpty);
+      expect(await repo.watchPendingCount().first, 0);
+      final restarted = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        xrayStore: xray,
+        localOnly: true,
+      );
+      expect(await restarted.getCases(), isEmpty);
+      await owner(technician, role: 'technician');
+      await expectLater(
+        repo.resetValidation(diagnosis),
+        throwsA(isA<ValidationContractException>()),
+      );
+    },
+  );
+
+  test(
+    'PR40 lesion rating never replaces legacy trust score and explicitly rerates an unsent legacy verdict',
+    () async {
+      await seed(image: true);
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        localOnly: true,
+      );
+      await repo.submitScore(id: diagnosis, score: 8, status: 'agreed');
+      await repo.submitLesionRating(
+        id: diagnosis,
+        rating: 0,
+        status: 'disagreed',
+        note: '  ',
+      );
+      final row = (await db.findDiagnosis(diagnosis))!;
+      expect(row.validationScore, 8);
+      expect(row.lesionRating, 0);
+      expect(row.doctorNote, isNull);
+      final op = (await db.pendingOps()).singleWhere(
+        (op) => op.operation == 'update',
+      );
+      final body = jsonDecode(op.payload) as Map;
+      expect(body['lesion_rating'], 0);
+      expect(body.containsKey('validation_score'), false);
+      expect(body['doctor_note'], isNull);
+      await expectLater(
+        repo.submitLesionRating(id: diagnosis, rating: 11, status: 'agreed'),
+        throwsA(isA<ValidationContractException>()),
+      );
+    },
+  );
+
+  for (final outcome in ['applied', 'skipped', 'conflict', 'unsupported']) {
+    test(
+      'PR40 operator delete_validation handles $outcome without deleting screening',
+      () async {
+        await seed(image: true);
+        for (final op in await db.pendingOps()) {
+          await db.markOp(op.clientOpId, syncSynced);
+        }
+        await db.upsertDiagnosis(
+          (await db.findDiagnosis(diagnosis))!
+              .toCompanion(false)
+              .copyWith(
+                serverVersion: const Value(2),
+                status: const Value('agreed'),
+                lesionRating: const Value(10),
+                doctorNote: const Value('Audit note'),
+              ),
+        );
+        final repo = OfflineValidationRepository(
+          db: db,
+          client: client,
+          syncEngine: SyncEngine(
+            db: db,
+            client: client,
+            settings: SettingsStore(db),
+          ),
+          localOnly: true,
+        );
+        await repo.resetValidation(diagnosis);
+        await expectLater(
+          repo.submitLesionRating(id: diagnosis, rating: 1, status: 'agreed'),
+          throwsA(isA<ValidationContractException>()),
+        );
+        await handoff();
+        await activate();
+        for (final entry in await service().queued()) {
+          if ((entry['op'] as Map)['operation'] != 'delete_validation') {
+            await outbox.remove((entry['op'] as Map)['clientOpId'] as String);
+          }
+        }
+        var posts = 0;
+        client.dio.httpClientAdapter = _Adapter((o) {
+          if (o.uri.path == '/openapi.json') {
+            return (
+              200,
+              outcome == 'unsupported'
+                  ? {}
+                  : jsonDecode(
+                      File(
+                        'test/fixtures/pr40_validation_openapi.json',
+                      ).readAsStringSync(),
+                    ),
+            );
+          }
+          posts++;
+          final item = ((o.data as Map)['items'] as List).single as Map;
+          expect(item['operation'], 'delete_validation');
+          expect(item['base_version'], 2);
+          expect(item['owner_user_id'], doctor);
+          final answer = receipt(
+            o,
+            status: outcome,
+            opVersion: 3,
+            serverVersion: 3,
+          );
+          if (outcome == 'skipped') {
+            ((answer['results'] as List).single as Map)['code'] =
+                'already_deleted';
+          }
+          return (200, answer);
+        });
+        final report = await service().push(refreshCache: false);
+        expect(posts, outcome == 'unsupported' ? 0 : 1);
+        expect(report.blocked, outcome == 'unsupported' ? 1 : 0);
+        expect(report.conflicts, outcome == 'conflict' ? 1 : 0);
+        if (outcome == 'applied' || outcome == 'skipped') {
+          expect(await outbox.count(tenant, localDevice), 0);
+          await db.clearSessionData();
+          await owner(doctor);
+          await outbox.restoreDoctorQueue();
+          final restored = (await db.findDiagnosis(diagnosis))!;
+          expect(restored.status, 'agreed');
+          expect(restored.lesionRating, 10);
+          expect(restored.doctorNote, 'Audit note');
+          expect(restored.validationDeletedAt, isNotNull);
+        }
+      },
+    );
+  }
+
+  test(
+    'PR40 server deletion reaches doctor through operator state and retains local X-ray',
+    () async {
+      await seed(image: true);
+      await handoff();
+      await activate();
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.path == '/sync/operator/push') return (200, receipt(o));
+        if (o.path == '/sync/operator/state') {
+          final state = _serverState();
+          final dx = (state['diagnoses'] as List).single as Map;
+          dx['lesion_rating'] = 10;
+          dx['validation_deleted_at'] = '2026-11-07T00:00:00Z';
+          dx['validation_deleted_by'] = doctor;
+          return (200, state);
+        }
+        final body = o.data as Map;
+        return (
+          200,
+          {
+            'upload_id': 'synthetic-upload',
+            'diagnosis_id': diagnosis,
+            'size_bytes': body['size_bytes'],
+            'chunk_count': body['chunk_count'],
+            'chunk_size': body['chunk_size'],
+            'received_chunks': [0],
+            'status': 'completed',
+            'image_id': 'synthetic-image',
+          },
+        );
+      });
+      await service().push();
+      await db.clearSessionData();
+      await owner(doctor);
+      await outbox.restoreDoctorQueue();
+      final restored = (await db.findDiagnosis(diagnosis))!;
+      expect(restored.lesionRating, 10);
+      expect(restored.validationScore, 4);
+      expect(restored.validationDeletedBy, doctor);
+      expect(restored.tombstone, false);
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        xrayStore: xray,
+        localOnly: true,
+      );
+      expect(await repo.getCases(), isEmpty);
+      expect(await repo.watchPendingCount().first, 0);
+      expect(await repo.loadCaseImage(diagnosis), isNotNull);
+    },
+  );
+
+  test(
+    'PR40 upgrades a never-sent local archive into a versioned delete op',
+    () async {
+      await seed(image: true);
+      for (final op in await db.pendingOps()) {
+        await db.markOp(op.clientOpId, syncSynced);
+      }
+      await db.upsertDiagnosis(
+        (await db.findDiagnosis(
+          diagnosis,
+        ))!.toCompanion(false).copyWith(serverVersion: const Value(2)),
+      );
+      final key =
+          'deleted_validation_v1:${base64Url.encode(utf8.encode(jsonEncode([tenant, doctor, localDevice])))}';
+      await db.putSetting(key, jsonEncode([diagnosis]));
+      await db.enqueue(
+        SyncQueueCompanion.insert(
+          clientOpId: 'old-reset',
+          entityType: 'diagnosis',
+          entityId: diagnosis,
+          operation: 'update',
+          payload: '{"status":"pending","validation_score":null}',
+          baseVersion: const Value(2),
+          createdAt: DateTime.utc(2026),
+        ),
+      );
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        localOnly: true,
+      );
+      expect(await repo.getCases(), isEmpty);
+      expect((await db.pendingOps()).single.operation, 'delete_validation');
+      expect((await db.findOperation('old-reset'))!.status, syncSynced);
+      expect(jsonDecode((await db.getSetting(key))!), isEmpty);
+      expect(
+        (await db.findDiagnosis(diagnosis))!.validationDeletedAt,
+        isNotNull,
+      );
+    },
+  );
+
+  test('lesion rating allows disagreement without an optional note', () async {
+    await seed(image: true);
+    final repo = OfflineValidationRepository(
+      db: db,
+      client: client,
+      syncEngine: SyncEngine(
+        db: db,
+        client: client,
+        settings: SettingsStore(db),
+      ),
+      xrayStore: xray,
+      localOnly: true,
+    );
+    await repo.submitScore(id: diagnosis, score: 10, status: 'disagreed');
+    final saved = (await repo.getCases()).single;
+    expect(saved.status, 'disagreed');
+    expect(saved.validationScore, 10);
+    expect(saved.validationNote, isNull);
+    final queued = (await db.pendingOps()).singleWhere(
+      (op) => op.operation == 'update',
+    );
+    final body = jsonDecode(queued.payload) as Map;
+    expect(body['validation_score'], 10);
+    expect(body['doctor_note'], isNull);
+  });
+
   for (final supported in [false, true]) {
     test(
       'PR38 score operator sync requires deployed contract: $supported',

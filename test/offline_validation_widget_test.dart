@@ -30,23 +30,51 @@ class _Auth implements AuthRepository {
 }
 
 class _Repo extends ValidationRepository
-    implements NumericValidationRepository {
+    implements
+        NumericValidationRepository,
+        ValidationResetRepository,
+        LesionRatingValidationRepository {
+  @override
+  Future<void> submitLesionRating({
+    required String id,
+    required int rating,
+    required String status,
+    String? note,
+  }) => submitScore(id: id, score: rating, status: status, note: note);
+  int resetCalls = 0;
+  final hidden = <String>{};
+  @override
+  Future<void> resetValidation(String id) async {
+    resetCalls++;
+    hidden.add(id);
+    savedStatus = "pending";
+    score = null;
+    savedNote = null;
+  }
+
   int? score;
+  bool firstPending = false;
+  String? savedStatus;
+  String? savedNote;
   final images = <String, Completer<XrayImage?>>{};
   @override
   Future<List<ValidationCase>> getCases() async => [
-    for (final id in ['one', 'two'])
+    for (final id in ['one', 'two'].where((id) => !hidden.contains(id)))
       ValidationCase(
         id: id,
         name: 'Synthetic $id',
         initials: 'S',
         age: 30,
         gender: 'Female',
-        aiScore: 80,
-        diagnosisDate: '2026-10-30',
+        aiScore: id == 'one' ? 80 : 40,
+        diagnosisDate: id == 'one' ? '2026-10-30' : '2026-11-01',
         isPositive: true,
-        status: 'pending',
-        validationScore: id == 'one' ? score : null,
+        status: savedStatus != null && id == 'one'
+            ? savedStatus!
+            : id == 'one' && !firstPending
+            ? 'agreed'
+            : 'pending',
+        lesionRating: id == 'one' ? score : null,
         findings: const ValidationFindings(
           consolidation: 1,
           cavity: 2,
@@ -67,6 +95,8 @@ class _Repo extends ValidationRepository
     String? note,
   }) async {
     this.score = score;
+    savedStatus = status;
+    savedNote = note;
   }
 
   @override
@@ -77,29 +107,68 @@ class _Repo extends ValidationRepository
   }) => throw StateError('Legacy verdict must not be used');
 }
 
+Future<void> _mount(WidgetTester tester, _Repo repo, {String? caseId}) async {
+  final auth = AuthProvider(_Auth(), initialProfile: _doctor);
+  addTearDown(auth.dispose);
+  tester.view.physicalSize = const Size(1600, 1400);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    MultiProvider(
+      providers: [
+        Provider<ValidationRepository>.value(value: repo),
+        ChangeNotifierProvider.value(value: auth),
+        ChangeNotifierProvider(create: (_) => AppLanguage()),
+      ],
+      child: MaterialApp(
+        home: Scaffold(body: ValidationScreen(caseId: caseId)),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.pump();
+}
+
+Future<void> _choose(WidgetTester tester, String key) async {
+  final target = find.byKey(ValueKey(key));
+  await tester.ensureVisible(target);
+  await tester.tap(target);
+  await tester.pump();
+}
+
 void main() {
   testWidgets(
-    'numeric UI requires explicit score and clears previous X-ray during selection',
+    'deleting only a validation requires confirmation and removes the row from the validation list',
     (tester) async {
-      final repo = _Repo();
-      final auth = AuthProvider(_Auth(), initialProfile: _doctor);
-      addTearDown(auth.dispose);
-      tester.view.physicalSize = const Size(1200, 1400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(
-        MultiProvider(
-          providers: [
-            Provider<ValidationRepository>.value(value: repo),
-            ChangeNotifierProvider.value(value: auth),
-            ChangeNotifierProvider(create: (_) => AppLanguage()),
-          ],
-          child: const MaterialApp(
-            home: Scaffold(body: ValidationScreen(caseId: 'one')),
-          ),
-        ),
+      final repo = _Repo()..score = 7;
+      await _mount(tester, repo);
+      await _choose(tester, 'delete-one');
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(repo.resetCalls, 0);
+      await _choose(tester, 'delete-one');
+      await _choose(tester, 'confirm-delete-validation');
+      await tester.pumpAndSettle();
+      expect(repo.resetCalls, 1);
+      expect(repo.savedStatus, 'pending');
+      expect(repo.score, isNull);
+      expect(
+        tester.widget<DataTable>(find.byType(DataTable)).rows,
+        hasLength(1),
       );
-      await tester.pump();
+      expect(find.byKey(const ValueKey('validate-one')), findsNothing);
+      expect(find.byKey(const ValueKey('delete-one')), findsNothing);
+    },
+  );
+  testWidgets(
+    'radio review requires explicit rating, saves disagreement without a note, and isolates images by screening',
+    (tester) async {
+      final repo = _Repo()..firstPending = true;
+      await _mount(tester, repo, caseId: 'one');
+      repo.images['one']!.complete(XrayImage.placeholder());
+      await tester.pumpAndSettle();
+      expect(find.byType(Image), findsOneWidget);
+      expect(find.textContaining('Consolidation:'), findsNothing);
       expect(
         tester
             .widget<FilledButton>(
@@ -108,32 +177,99 @@ void main() {
             .onPressed,
         isNull,
       );
-      repo.images['one']!.complete(XrayImage.placeholder());
-      await tester.pumpAndSettle();
-      expect(find.byType(Image), findsOneWidget);
-      tester
-          .widget<Slider>(find.byKey(const Key('validation-score-slider')))
-          .onChanged!(0);
-      await tester.pump();
-      tester
-          .widget<DropdownButtonFormField<bool>>(
-            find.byType(DropdownButtonFormField<bool>),
-          )
-          .onChanged!(true);
-      await tester.pump();
-      await tester.ensureVisible(
-        find.byKey(const Key('confirm-validation-score')),
+      await _choose(tester, 'verdict-disagreed');
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const Key('confirm-validation-score')),
+            )
+            .onPressed,
+        isNull,
       );
-      await tester.tap(find.byKey(const Key('confirm-validation-score')));
+      await _choose(tester, 'lesion-rating-0');
+      await _choose(tester, 'confirm-validation-score');
       await tester.pumpAndSettle();
       expect(repo.score, 0);
-      await tester.tap(find.byKey(const ValueKey('validation-case-two')));
-      await tester.pump();
+      expect(repo.savedStatus, 'disagreed');
+      expect(repo.savedNote, '');
+      expect(find.byType(Dialog), findsNothing);
+      await _choose(tester, 'view-two');
       expect(find.byType(Image), findsNothing);
       repo.images['two']!.complete(null);
       await tester.pumpAndSettle();
-      expect(find.byType(Image), findsNothing);
+      expect(find.text('Local X-ray unavailable.'), findsOneWidget);
+      expect(find.byKey(const Key('confirm-validation-score')), findsNothing);
+      expect(
+        tester
+            .widget<Radio<int>>(find.byKey(const ValueKey('lesion-rating-10')))
+            .enabled,
+        isFalse,
+      );
+      expect(tester.takeException(), isNull);
+      tester.view.physicalSize = const Size(600, 1000);
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('table searches names and filters status and AI score order', (
+    tester,
+  ) async {
+    final repo = _Repo();
+    await _mount(tester, repo);
+    List<String> ids() => tester
+        .widget<DataTable>(find.byType(DataTable))
+        .rows
+        .map((row) => (row.key! as ValueKey<String>).value)
+        .toList();
+    expect(ids(), ['validation-case-two', 'validation-case-one']);
+    await tester.enterText(find.byKey(const Key('validation-search')), 'ONE');
+    await tester.pump();
+    expect(ids(), ['validation-case-one']);
+    await tester.enterText(find.byKey(const Key('validation-search')), '');
+    await tester.pump();
+    tester
+        .widget<DropdownButtonFormField<String>>(
+          find.byKey(const Key('validation-status-filter')),
+        )
+        .onChanged!('agreed');
+    await tester.pump();
+    expect(ids(), ['validation-case-one']);
+    tester
+        .widget<DropdownButtonFormField<String>>(
+          find.byKey(const Key('validation-status-filter')),
+        )
+        .onChanged!('all');
+    tester
+        .widget<DropdownButtonFormField<String>>(
+          find.byKey(const Key('validation-sort')),
+        )
+        .onChanged!('lowest');
+    await tester.pump();
+    expect(ids(), ['validation-case-two', 'validation-case-one']);
+    tester
+        .widget<DropdownButtonFormField<String>>(
+          find.byKey(const Key('validation-sort')),
+        )
+        .onChanged!('highest');
+    await tester.pump();
+    expect(ids(), ['validation-case-one', 'validation-case-two']);
+    tester
+        .widget<DropdownButtonFormField<String>>(
+          find.byKey(const Key('validation-sort')),
+        )
+        .onChanged!('earliest');
+    await tester.pump();
+    expect(ids(), ['validation-case-one', 'validation-case-two']);
+    tester
+        .widget<DropdownButtonFormField<String>>(
+          find.byKey(const Key('validation-sort')),
+        )
+        .onChanged!('latest');
+    await tester.pump();
+    expect(ids(), ['validation-case-two', 'validation-case-one']);
+    tester.view.physicalSize = const Size(600, 1000);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 }

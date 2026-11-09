@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:drift/native.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 
@@ -85,6 +86,63 @@ void _createV1(File file, {String? owner, bool complete = true}) {
 }
 
 void main() {
+  test(
+    'PR40 v4 to v5 preserves legacy trust, screening and queue without inventing lesion rating',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'pr40-migration-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}/owner.sqlite');
+      final first = AppDatabase(NativeDatabase(file));
+      await first.upsertDiagnosis(
+        LocalDiagnosesCompanion.insert(
+          id: 'synthetic',
+          patientId: 'patient',
+          isPositive: true,
+          confidence: 73,
+          modelVersion: 'synthetic',
+          diagnosedAt: DateTime.utc(2026),
+          validationScore: const Value(8),
+          doctorNote: const Value('Old audit note'),
+        ),
+      );
+      await first.enqueue(
+        SyncQueueCompanion.insert(
+          clientOpId: 'old-op',
+          entityType: 'diagnosis',
+          entityId: 'synthetic',
+          operation: 'update',
+          payload: '{"validation_score":8}',
+          createdAt: DateTime.utc(2026),
+        ),
+      );
+      await first.close();
+      final raw = sqlite3.open(file.path);
+      for (final column in [
+        'lesion_rating',
+        'validation_deleted_at',
+        'validation_deleted_by',
+      ]) {
+        raw.execute('ALTER TABLE local_diagnoses DROP COLUMN $column');
+      }
+      raw.execute('PRAGMA user_version = 4');
+      raw.close();
+      final upgraded = AppDatabase(NativeDatabase(file));
+      addTearDown(upgraded.close);
+      final row = (await upgraded.findDiagnosis('synthetic'))!;
+      expect(row.validationScore, 8);
+      expect(row.lesionRating, isNull);
+      expect(row.validationDeletedAt, isNull);
+      expect(row.doctorNote, 'Old audit note');
+      expect(row.confidence, 73);
+      expect(
+        (await upgraded.pendingOps()).single.payload,
+        '{"validation_score":8}',
+      );
+    },
+  );
+
   test('v3 to v4 keeps clinical rows and pending operations', () async {
     final directory = await Directory.systemTemp.createTemp(
       'tbscreen-score-migrate-',
@@ -114,7 +172,14 @@ void main() {
     );
     await first.close();
     final raw = sqlite3.open(file.path);
-    for (final column in ['validation_score', 'validated_by', 'validated_at']) {
+    for (final column in [
+      'validation_score',
+      'validated_by',
+      'validated_at',
+      'lesion_rating',
+      'validation_deleted_at',
+      'validation_deleted_by',
+    ]) {
       raw.execute('ALTER TABLE local_diagnoses DROP COLUMN $column');
     }
     raw.execute('PRAGMA user_version = 3');
