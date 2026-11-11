@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/localization/app_language.dart';
+import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/validation_case.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
 import 'package:myapp/state/auth_provider.dart';
@@ -16,6 +17,8 @@ class OfflineValidationScreen extends StatefulWidget {
 }
 
 class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
+  final ScrollController _horizontalScrollController = ScrollController();
+  final ScrollController _verticalScrollController = ScrollController();
   List<ValidationCase> _cases = [];
   String _search = '', _status = 'all', _sort = 'pending';
   bool _loading = true;
@@ -26,6 +29,13 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
   void initState() {
     super.initState();
     unawaited(_load(openRequested: true));
+  }
+
+  @override
+  void dispose() {
+    _horizontalScrollController.dispose();
+    _verticalScrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _load({bool openRequested = false}) async {
@@ -169,7 +179,7 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
     if (_loading) return const Center(child: CircularProgressIndicator());
     final rows = _visible;
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -295,169 +305,281 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
                       ),
                     ),
                   )
-                : SingleChildScrollView(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: DataTable(
-                        headingRowColor: WidgetStatePropertyAll(
-                          Theme.of(context).colorScheme.primaryContainer,
-                        ),
-                        dataRowMinHeight: 64,
-                        dataRowMaxHeight: 84,
-                        columnSpacing: 24,
-                        columns: [
-                          for (final label in [
-                            context.trRead('Nama pasien', 'Patient name'),
-                            context.trRead(
-                              'Tanggal screening',
-                              'Screening date',
-                            ),
-                            'AI Screening Result',
-                            'Validation screening',
-                            context.trRead(
-                              'Rating lesi (0-10)',
-                              'Lesion rating (0-10)',
-                            ),
-                            "Doctor notes",
-                            context.trRead('Aksi', 'Actions'),
-                          ])
-                            DataColumn(label: Text(label)),
-                        ],
-                        rows: [
-                          for (final row in rows)
-                            DataRow(
-                              key: ValueKey('validation-case-${row.id}'),
-                              cells: [
-                                DataCell(
-                                  SizedBox(
-                                    width: 150,
-                                    child: Text(
-                                      row.name,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                : LayoutBuilder(
+                    builder: (context, constraints) => Scrollbar(
+                      controller: _horizontalScrollController,
+                      thumbVisibility: true,
+                      child: SingleChildScrollView(
+                        controller: _horizontalScrollController,
+                        scrollDirection: Axis.horizontal,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minWidth: constraints.maxWidth,
+                          ),
+                          child: SingleChildScrollView(
+                            controller: _verticalScrollController,
+                            child: DataTable(
+                              showCheckboxColumn: false,
+                              headingRowColor: WidgetStatePropertyAll(
+                                Theme.of(context).colorScheme.primaryContainer,
+                              ),
+                              headingTextStyle: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onPrimaryContainer,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                              dataTextStyle: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(color: AppTheme.textPrimary),
+                              dataRowMinHeight: 64,
+                              dataRowMaxHeight: 84,
+                              horizontalMargin: 8,
+                              columnSpacing: 8,
+                              columns: [
+                                _buildColumn(
+                                  context.trRead('Nama pasien', 'Patient name'),
+                                  maxWidth: 100,
+                                ),
+                                _buildColumn(
+                                  context.trRead(
+                                    'Tanggal screening',
+                                    'Screening date',
+                                  ),
+                                  maxWidth: 80,
+                                ),
+                                _buildColumn(
+                                  'AI Screening Result',
+                                  maxWidth: 96,
+                                ),
+                                _buildColumn(
+                                  'Validation screening',
+                                  maxWidth: 90,
+                                ),
+                                _buildColumn(
+                                  context.trRead(
+                                    'Rating lesi (0-10)',
+                                    'Lesion rating (0-10)',
+                                  ),
+                                  maxWidth: 90,
+                                ),
+                                _buildColumn('Doctor notes', maxWidth: 85),
+                                _buildColumn(context.trRead('Aksi', 'Actions')),
+                              ],
+                              rows: [
+                                for (final row in rows)
+                                  DataRow(
+                                    key: ValueKey('validation-case-${row.id}'),
+                                    onSelectChanged: (_) => _open(
+                                      row,
+                                      readOnly: row.hasConflict || row.isMock,
                                     ),
-                                  ),
-                                ),
-                                DataCell(Text(row.diagnosisDate)),
-                                DataCell(
-                                  Text(
-                                    '${row.isPositive == null
-                                        ? "-"
-                                        : row.isPositive!
-                                        ? context.trRead("Positif", "Positive")
-                                        : context.trRead("Negatif", "Negative")} / ${row.aiScore}%',
-                                  ),
-                                ),
-                                DataCell(
-                                  Chip(
-                                    label: Text(
-                                      row.status == 'agreed'
-                                          ? 'Agree'
-                                          : row.status == 'disagreed'
-                                          ? 'Disagree'
-                                          : 'Unvalidated',
-                                    ),
-                                  ),
-                                ),
-                                DataCell(
-                                  Text(
-                                    row.lesionRating == null
-                                        ? '-'
-                                        : '${row.lesionRating}/10',
-                                  ),
-                                ),
-                                DataCell(
-                                  SizedBox(
-                                    width: 160,
-                                    child: Text(
-                                      row.validationNote ??
-                                          row.doctorNote ??
-                                          '-',
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                                DataCell(
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        key: ValueKey('validate-${row.id}'),
-                                        tooltip: context.trRead(
-                                          'Validasi',
-                                          'Validate',
-                                        ),
-                                        onPressed:
-                                            row.status == 'pending' &&
-                                                !row.hasConflict &&
-                                                !row.isMock
-                                            ? () => _open(row)
-                                            : null,
-                                        icon: const Icon(
-                                          Icons.fact_check_outlined,
+                                    cells: [
+                                      DataCell(
+                                        ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 100,
+                                          ),
+                                          child: Text(
+                                            row.name,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
                                         ),
                                       ),
-                                      IconButton(
-                                        key: ValueKey('view-${row.id}'),
-                                        tooltip: context.trRead(
-                                          'Lihat',
-                                          'View',
-                                        ),
-                                        onPressed: () =>
-                                            _open(row, readOnly: true),
-                                        icon: const Icon(
-                                          Icons.visibility_outlined,
+                                      DataCell(Text(row.diagnosisDate)),
+                                      DataCell(
+                                        ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 96,
+                                          ),
+                                          child: Text(
+                                            '${row.isPositive == null
+                                                ? "-"
+                                                : row.isPositive!
+                                                ? context.trRead("Positif", "Positive")
+                                                : context.trRead("Negatif", "Negative")} / ${row.aiScore}%',
+                                            maxLines: 2,
+                                          ),
                                         ),
                                       ),
-                                      IconButton(
-                                        key: ValueKey('edit-${row.id}'),
-                                        tooltip: context.trRead(
-                                          'Edit validasi',
-                                          'Edit validation',
-                                        ),
-                                        onPressed:
-                                            row.status != 'pending' &&
-                                                !row.hasConflict &&
-                                                !row.isMock
-                                            ? () => _open(row)
-                                            : null,
-                                        icon: const Icon(Icons.edit_outlined),
+                                      DataCell(
+                                        _buildValidationStatusChip(row.status),
                                       ),
-                                      IconButton(
-                                        key: ValueKey('delete-${row.id}'),
-                                        tooltip: context.trRead(
-                                          'Hapus',
-                                          'Delete',
+                                      DataCell(
+                                        Text(
+                                          row.lesionRating == null
+                                              ? '-'
+                                              : '${row.lesionRating}/10',
                                         ),
-                                        onPressed:
-                                            !_deleting &&
-                                                !row.hasConflict &&
-                                                !row.isMock &&
-                                                context
-                                                        .read<
-                                                          ValidationRepository
-                                                        >()
-                                                    is ValidationResetRepository
-                                            ? () => _deleteValidation(row)
-                                            : null,
-                                        icon: const Icon(Icons.delete_outline),
                                       ),
+                                      DataCell(
+                                        ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 90,
+                                          ),
+                                          child: Text(
+                                            row.validationNote ??
+                                                row.doctorNote ??
+                                                '-',
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ),
+                                      DataCell(_buildActionsCell(context, row)),
                                     ],
                                   ),
-                                ),
                               ],
                             ),
-                        ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
           ),
         ],
       ),
+    );
+  }
+
+  DataColumn _buildColumn(String label, {double? maxWidth}) {
+    final text = Text(label, softWrap: true, maxLines: 2);
+    return DataColumn(
+      label: maxWidth == null
+          ? text
+          : ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: text,
+            ),
+    );
+  }
+
+  Widget _buildValidationStatusChip(String status) {
+    final (String label, Color fg, Color bg, Color border) = switch (status) {
+      'agreed' => (
+        'Agree',
+        AppTheme.successDark,
+        AppTheme.success.withValues(alpha: 0.14),
+        AppTheme.success.withValues(alpha: 0.45),
+      ),
+      'disagreed' => (
+        'Disagree',
+        AppTheme.errorDark,
+        AppTheme.error.withValues(alpha: 0.14),
+        AppTheme.error.withValues(alpha: 0.45),
+      ),
+      _ => (
+        'Unvalidated',
+        const Color(0xFF92400E),
+        AppTheme.warning.withValues(alpha: 0.18),
+        AppTheme.warning.withValues(alpha: 0.50),
+      ),
+    };
+    return Chip(
+      backgroundColor: bg,
+      side: BorderSide(color: border),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+      labelStyle: TextStyle(
+        color: fg,
+        fontWeight: FontWeight.w700,
+        fontSize: 12,
+      ),
+      label: Text(
+        label,
+        style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 12),
+      ),
+    );
+  }
+
+  Widget _buildActionsCell(BuildContext context, ValidationCase row) {
+    final canOpenForm = !row.hasConflict && !row.isMock;
+    final canDelete =
+        !_deleting &&
+        !row.hasConflict &&
+        !row.isMock &&
+        context.read<ValidationRepository>() is ValidationResetRepository;
+    final compactIconStyle = IconButton.styleFrom(
+      minimumSize: const Size(34, 34),
+      padding: const EdgeInsets.all(2),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (row.status == 'pending')
+          FilledButton.icon(
+            key: ValueKey('validate-${row.id}'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.navy,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(0, 34),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: canOpenForm ? () => _open(row) : null,
+            icon: const Icon(Icons.fact_check_outlined, size: 15),
+            label: Text(context.trRead('Validasi', 'Validate')),
+          )
+        else
+          OutlinedButton.icon(
+            key: ValueKey('edit-${row.id}'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.navy,
+              side: BorderSide(
+                color: canOpenForm ? AppTheme.navy : Colors.grey.shade400,
+              ),
+              minimumSize: const Size(0, 34),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: canOpenForm ? () => _open(row) : null,
+            icon: const Icon(Icons.edit_outlined, size: 15),
+            label: Text(context.trRead('Edit', 'Edit')),
+          ),
+        const SizedBox(width: 2),
+        IconButton(
+          key: ValueKey('view-${row.id}'),
+          style: compactIconStyle,
+          tooltip: context.trRead('Lihat', 'View'),
+          visualDensity: VisualDensity.compact,
+          onPressed: () => _open(row, readOnly: true),
+          icon: const Icon(Icons.visibility_outlined, size: 19),
+        ),
+        IconButton(
+          key: ValueKey('delete-${row.id}'),
+          style: compactIconStyle,
+          tooltip: context.trRead('Hapus', 'Delete'),
+          visualDensity: VisualDensity.compact,
+          onPressed: canDelete ? () => _deleteValidation(row) : null,
+          icon: const Icon(Icons.delete_outline, size: 19),
+        ),
+      ],
     );
   }
 }

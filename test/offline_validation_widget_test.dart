@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/localization/app_language.dart';
+import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/validation_case.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/domain/models/xray_image.dart';
@@ -272,4 +273,111 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'validation screen shows high-contrast status chips and visible action buttons that open the form dialog',
+    (tester) async {
+      final repo = _Repo();
+      final auth = AuthProvider(_Auth(), initialProfile: _doctor);
+      addTearDown(auth.dispose);
+      // Width matching a 1024px tablet minus the 84px navigation rail.
+      tester.view.physicalSize = const Size(940, 768);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<ValidationRepository>.value(value: repo),
+            ChangeNotifierProvider.value(value: auth),
+            ChangeNotifierProvider(create: (_) => AppLanguage()),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: const Scaffold(body: ValidationScreen()),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Verify validation screening status chips have high-contrast dark label colors.
+      final agreeChip = tester.widget<Chip>(
+        find.ancestor(
+          of: find.text('Agree'),
+          matching: find.byType(Chip),
+        ),
+      );
+      final agreeText = agreeChip.label as Text;
+      expect(agreeText.style?.color, AppTheme.successDark);
+
+      final unvalidatedChip = tester.widget<Chip>(
+        find.ancestor(
+          of: find.text('Unvalidated'),
+          matching: find.byType(Chip),
+        ),
+      );
+      final unvalidatedText = unvalidatedChip.label as Text;
+      expect(unvalidatedText.style?.color, const Color(0xFF92400E));
+
+      // Verify Validate & Edit buttons are visible within tablet viewport without horizontal clipping.
+      final validateBtnFinder = find.byKey(const ValueKey('validate-two'));
+      final editBtnFinder = find.byKey(const ValueKey('edit-one'));
+      expect(validateBtnFinder, findsOneWidget);
+      expect(editBtnFinder, findsOneWidget);
+      expect(tester.getTopRight(validateBtnFinder).dx, lessThanOrEqualTo(940));
+      expect(tester.getTopRight(editBtnFinder).dx, lessThanOrEqualTo(940));
+
+      // Tap Validate button to open editable form dialog for pending row.
+      await tester.tap(validateBtnFinder);
+      await tester.pump();
+      repo.images['two']!.complete(XrayImage.placeholder());
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.byKey(const Key('confirm-validation-score')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.text('Synthetic two'),
+        ),
+        findsOneWidget,
+      );
+
+      // Submit a disagreement on 'two' and close, then verify Disagree chip contrast.
+      await _choose(tester, 'verdict-disagreed');
+      await _choose(tester, 'lesion-rating-3');
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+
+      // Tapping Edit button on validated row opens editable form dialog too.
+      await tester.tap(editBtnFinder);
+      await tester.pump();
+      repo.images['one']!.complete(XrayImage.placeholder());
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.byKey(const Key('confirm-validation-score')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.text('Synthetic one'),
+        ),
+        findsOneWidget,
+      );
+
+      await _choose(tester, 'verdict-disagreed');
+      await _choose(tester, 'lesion-rating-2');
+      await _choose(tester, 'confirm-validation-score');
+      await tester.pumpAndSettle();
+
+      final disagreeChip = tester.widget<Chip>(
+        find.ancestor(
+          of: find.text('Disagree'),
+          matching: find.byType(Chip),
+        ),
+      );
+      expect((disagreeChip.label as Text).style?.color, AppTheme.errorDark);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

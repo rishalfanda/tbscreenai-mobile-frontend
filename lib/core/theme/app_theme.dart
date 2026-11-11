@@ -296,7 +296,11 @@ class AppTheme {
         style: IconButton.styleFrom(minimumSize: const Size(44, 44)),
       ),
       chipTheme: base.chipTheme.copyWith(
-        labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        labelStyle: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: textPrimary,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
         side: BorderSide.none,
