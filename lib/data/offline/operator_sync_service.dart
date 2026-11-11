@@ -43,7 +43,9 @@ class OperatorSyncService {
     return entries;
   }
 
-  Future<int> queuedCount() async {
+  Future<int> queuedCount() async => (await queueSummary()).total;
+
+  Future<OperatorQueueSummary> queueSummary() async {
     if (!auth.isLoggedIn ||
         auth.mustChangePassword ||
         auth.mobileRole != MobileRole.technician) {
@@ -52,7 +54,7 @@ class OperatorSyncService {
     final actor = auth.profile;
     final generation = db.sessionGeneration;
     final device = await SettingsStore(db).readOrCreateDeviceId();
-    final count = await outbox.count(auth.tenantId, device);
+    final count = await outbox.summary(auth.tenantId, device);
     if (!identical(auth.profile, actor) || generation != db.sessionGeneration) {
       throw StateError('Session changed');
     }

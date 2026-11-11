@@ -702,6 +702,75 @@ void main() {
   );
 
   test(
+    'queue summary shows 104 operations for 52 patient and 52 screening records without decrypting archives',
+    () async {
+      await owner(technician, role: 'technician');
+      await db.batch((batch) {
+        for (var i = 0; i < 52; i++) {
+          for (final kind in ['patient', 'diagnosis']) {
+            batch.insert(
+              db.appSettings,
+              AppSettingsCompanion.insert(
+                key: '${DeviceOperatorOutbox.prefix}$kind-$i',
+                value: jsonEncode({
+                  'tenant_id': tenant,
+                  'device_id': localDevice,
+                  'owner_id': doctor,
+                  'op_status': syncPending,
+                  'entity_type': kind,
+                  'operation': 'create',
+                }),
+              ),
+            );
+          }
+        }
+      });
+      final summary = await DeviceOperatorOutbox(
+        db,
+        _NoArchiveKeyRead(),
+      ).summary(tenant, localDevice);
+      expect(summary.total, 104);
+      expect(summary.patients, 52);
+      expect(summary.screenings, 52);
+      expect(summary.validations, 0);
+      expect(summary.other, 0);
+      expect(
+        (await DeviceOperatorOutbox(
+          db,
+          _NoArchiveKeyRead(),
+        ).summary('foreign', localDevice)).total,
+        0,
+      );
+      expect((await service().queueSummary()).total, 104);
+    },
+  );
+
+  test(
+    'old encrypted archives gain summary metadata without changing queue entries',
+    () async {
+      await seed(image: true);
+      await handoff();
+      await db.customUpdate(
+        "UPDATE app_settings SET value = json_remove(value, '\$.entity_type', '\$.operation') WHERE key LIKE ?",
+        variables: [Variable.withString('${DeviceOperatorOutbox.prefix}%')],
+        updates: {db.appSettings},
+      );
+      final summary = await outbox.summary(tenant, localDevice);
+      expect(summary.total, 2);
+      expect(summary.patients, 1);
+      expect(summary.screenings, 1);
+      expect((await outbox.entries(tenant, localDevice)).length, 2);
+      expect(
+        (await DeviceOperatorOutbox(
+          db,
+          _NoArchiveKeyRead(),
+        ).summary(tenant, localDevice)).total,
+        2,
+      );
+    },
+  );
+
+  test(
     'queue summary counts tenant/device metadata without decrypting archives',
     () async {
       await seed(image: true);
@@ -1427,12 +1496,16 @@ void main() {
         ),
       );
       await app_fixture.pumpApp(tester);
-      expect(find.text('Retained queue: 1'), findsOneWidget);
+      expect(find.text('Queued sync operations: 1'), findsOneWidget);
+      expect(find.text('Patient data: 1'), findsOneWidget);
+      expect(find.text('Screening: 0'), findsOneWidget);
       await tester.tap(find.byType(CheckboxListTile));
       await tester.pump();
+      await tester.ensureVisible(find.text('Sync to server'));
       await tester.tap(find.text('Sync to server'));
       await app_fixture.pumpApp(tester);
-      expect(find.text('Retained queue: 0'), findsOneWidget);
+      expect(find.text('Queued sync operations: 0'), findsOneWidget);
+      expect(find.text('Patient data: 0'), findsOneWidget);
       expect(find.textContaining('Applied: 1'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());

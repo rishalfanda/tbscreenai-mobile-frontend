@@ -32,6 +32,17 @@ Future<Map<String, dynamic>> _decryptArchive(Map<String, dynamic> input) async {
 
 /// Device handoff storage, separate from every account's visible clinical cache.
 /// Only ciphertext survives logout. All reads require an explicit tenant/device.
+class OperatorQueueSummary {
+  const OperatorQueueSummary({
+    this.patients = 0,
+    this.screenings = 0,
+    this.validations = 0,
+    this.other = 0,
+  });
+  final int patients, screenings, validations, other;
+  int get total => patients + screenings + validations + other;
+}
+
 class DeviceOperatorOutbox {
   DeviceOperatorOutbox(this.db, this.storage);
   final AppDatabase db;
@@ -78,6 +89,8 @@ class DeviceOperatorOutbox {
         'device_id': op['deviceId'],
         'owner_id': op['userId'],
         'op_status': op['status'],
+        'entity_type': op['entityType'],
+        'operation': op['operation'],
       }),
     );
   }
@@ -242,11 +255,18 @@ class DeviceOperatorOutbox {
   }
 
   /// Counts metadata in SQLite without loading/decrypting image archives.
-  Future<int> count(String tenantId, String deviceId) async {
+  Future<int> count(String tenantId, String deviceId) async =>
+      (await summary(tenantId, deviceId)).total;
+
+  Future<OperatorQueueSummary> summary(String tenantId, String deviceId) async {
     final legacy = await db
         .customSelect(
-          "SELECT key FROM app_settings WHERE key LIKE ? AND json_extract(value, '\$.tenant_id') IS NULL",
-          variables: [Variable.withString('$prefix%')],
+          "SELECT key FROM app_settings WHERE key LIKE ? AND (json_extract(value, '\$.tenant_id') IS NULL OR (json_extract(value, '\$.tenant_id') = ? AND json_extract(value, '\$.device_id') = ? AND json_extract(value, '\$.entity_type') IS NULL))",
+          variables: [
+            Variable.withString('$prefix%'),
+            Variable.withString(tenantId),
+            Variable.withString(deviceId),
+          ],
         )
         .get();
     if (legacy.isNotEmpty) {
@@ -255,29 +275,56 @@ class DeviceOperatorOutbox {
       for (final entry in await entries(tenantId, deviceId)) {
         final op = entry['op'] as Map;
         await db.customUpdate(
-          "UPDATE app_settings SET value = json_set(value, '\$.tenant_id', ?, '\$.device_id', ?, '\$.owner_id', ?, '\$.op_status', ?) WHERE key = ?",
+          "UPDATE app_settings SET value = json_set(value, '\$.tenant_id', ?, '\$.device_id', ?, '\$.owner_id', ?, '\$.op_status', ?, '\$.entity_type', ?, '\$.operation', ?) WHERE key = ?",
           variables: [
             Variable.withString(op['tenantId'] as String),
             Variable.withString(op['deviceId'] as String),
             Variable.withString(op['userId'] as String),
             Variable.withString(op['status'] as String),
+            Variable.withString(op['entityType'] as String),
+            Variable.withString(op['operation'] as String),
             Variable.withString('$prefix${op['clientOpId']}'),
           ],
           updates: {db.appSettings},
         );
       }
     }
-    final result = await db
+    final groups = await db
         .customSelect(
-          "SELECT COUNT(*) AS n FROM app_settings WHERE key LIKE ? AND json_extract(value, '\$.tenant_id') = ? AND json_extract(value, '\$.device_id') = ?",
+          "SELECT json_extract(value, '\$.entity_type') AS kind, json_extract(value, '\$.operation') AS operation, COUNT(*) AS n FROM app_settings WHERE key LIKE ? AND json_extract(value, '\$.tenant_id') = ? AND json_extract(value, '\$.device_id') = ? GROUP BY kind, operation",
           variables: [
             Variable.withString('$prefix%'),
             Variable.withString(tenantId),
             Variable.withString(deviceId),
           ],
         )
-        .getSingle();
-    return result.read<int>('n');
+        .get();
+    var patients = 0, screenings = 0, validations = 0, other = 0;
+    for (final group in groups) {
+      final n = group.read<int>('n');
+      final kind = group.readNullable<String>('kind');
+      final operation = group.readNullable<String>('operation');
+      if (kind == 'patient') {
+        patients += n;
+      } else if (kind == 'diagnosis' && operation == 'create') {
+        screenings += n;
+      } else if (kind == 'diagnosis' &&
+          const [
+            'update',
+            'validate_score',
+            'delete_validation',
+          ].contains(operation)) {
+        validations += n;
+      } else {
+        other += n;
+      }
+    }
+    return OperatorQueueSummary(
+      patients: patients,
+      screenings: screenings,
+      validations: validations,
+      other: other,
+    );
   }
 
   Future<List<Map<String, dynamic>>> entries(
