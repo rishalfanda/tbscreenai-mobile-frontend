@@ -195,6 +195,7 @@ class OfflineValidationRepository extends ValidationRepository
             age: age,
             gender: gender,
             aiScore: row.confidence,
+            diagnosedAt: row.diagnosedAt,
             diagnosisDate: row.diagnosedAt
                 .toLocal()
                 .toString()

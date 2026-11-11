@@ -25,6 +25,7 @@ class ValidationCase {
     required this.gender,
     required this.aiScore,
     required this.diagnosisDate,
+    this.diagnosedAt,
     required this.status,
     this.patientCode,
     this.heightCm,
@@ -64,6 +65,18 @@ class ValidationCase {
   final int aiScore;
   final String diagnosisDate;
 
+  /// Original screening instant, kept separate from display text.
+  final DateTime? diagnosedAt;
+
+  String get screeningDateTimeLabel => diagnosedAt == null
+      ? diagnosisDate
+      : diagnosedAt!
+            .toLocal()
+            .toIso8601String()
+            .replaceFirst('T', ' ')
+            .split('.')
+            .first;
+
   /// "pending" | "agreed" | "disagreed"
   final String status;
   final String? patientId;
@@ -91,6 +104,7 @@ class ValidationCase {
       gender: gender,
       aiScore: aiScore,
       diagnosisDate: diagnosisDate,
+      diagnosedAt: diagnosedAt,
       status: status ?? this.status,
       patientCode: patientCode,
       heightCm: heightCm,

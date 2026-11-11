@@ -1055,6 +1055,30 @@ void main() {
     },
   );
 
+  test(
+    'validation repository retains screening hours minutes and seconds',
+    () async {
+      await seed(image: true);
+      final at = DateTime.utc(2026, 11, 11, 10, 25, 32);
+      await db.upsertDiagnosis(
+        (await db.findDiagnosis(
+          diagnosis,
+        ))!.toCompanion(false).copyWith(diagnosedAt: Value(at)),
+      );
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        localOnly: true,
+      );
+      expect((await repo.getCases()).single.diagnosedAt!.toUtc(), at);
+    },
+  );
+
   for (final outcome in ['applied', 'skipped', 'conflict', 'unsupported']) {
     test(
       'PR40 operator delete_validation handles $outcome without deleting screening',

@@ -134,6 +134,18 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
     }
   }
 
+  int _compareScreeningTime(
+    ValidationCase a,
+    ValidationCase b, {
+    bool newestFirst = true,
+  }) {
+    final left = a.diagnosedAt ?? DateTime.tryParse(a.diagnosisDate);
+    final right = b.diagnosedAt ?? DateTime.tryParse(b.diagnosisDate);
+    if (left == null) return right == null ? 0 : 1;
+    if (right == null) return -1;
+    return newestFirst ? right.compareTo(left) : left.compareTo(right);
+  }
+
   List<ValidationCase> get _visible {
     final rows = _cases
         .where(
@@ -146,19 +158,20 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
       int result;
       switch (_sort) {
         case 'earliest':
-          result = a.diagnosisDate.compareTo(b.diagnosisDate);
+          result = _compareScreeningTime(a, b, newestFirst: false);
         case 'highest':
           result = b.aiScore.compareTo(a.aiScore);
         case 'lowest':
           result = a.aiScore.compareTo(b.aiScore);
         case 'latest':
-          result = b.diagnosisDate.compareTo(a.diagnosisDate);
+          result = _compareScreeningTime(a, b);
         default:
           result = (a.status == 'pending' ? 0 : 1).compareTo(
             b.status == 'pending' ? 0 : 1,
           );
-          if (result == 0) result = b.diagnosisDate.compareTo(a.diagnosisDate);
+          if (result == 0) result = _compareScreeningTime(a, b);
       }
+      if (result == 0) result = _compareScreeningTime(a, b);
       return result == 0 ? a.id.compareTo(b.id) : result;
     });
     return rows;
@@ -309,8 +322,8 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
                           for (final label in [
                             context.trRead('Nama pasien', 'Patient name'),
                             context.trRead(
-                              'Tanggal screening',
-                              'Screening date',
+                              'Tanggal & jam screening (lokal)',
+                              'Screening date & time (local)',
                             ),
                             'AI Screening Result',
                             'Validation screening',
@@ -341,7 +354,7 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
                                     ),
                                   ),
                                 ),
-                                DataCell(Text(row.diagnosisDate)),
+                                DataCell(Text(row.screeningDateTimeLabel)),
                                 DataCell(
                                   Text(
                                     '${row.isPositive == null
