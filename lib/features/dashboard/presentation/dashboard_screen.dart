@@ -110,9 +110,16 @@ class DashboardScreen extends StatelessWidget {
                 width: isCompact ? 200 : 220,
               ),
             if (dashboard.isLive) ...[
-              const Chip(
-                avatar: Icon(Icons.lock_outline, size: 18),
-                label: AppText('Instansi akun'),
+              Chip(
+                avatar: const Icon(Icons.lock_outline, size: 18),
+                label: AppText(
+                  dashboard.isOffline
+                      ? context.trRead(
+                          'Data lokal - akun dokter ini',
+                          'Local data - current doctor',
+                        )
+                      : 'Instansi akun',
+                ),
               ),
               IconButton(
                 tooltip: localize(context, 'Refresh dashboard'),
@@ -231,7 +238,12 @@ class DashboardScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           AppText(
-                            metric.title,
+                            dashboard.isOffline && metric.icon == 'people'
+                                ? context.trRead(
+                                    'Pasien di perangkat',
+                                    'Patients on device',
+                                  )
+                                : metric.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.bodySmall
@@ -287,7 +299,12 @@ class DashboardScreen extends StatelessWidget {
                           if (metric.subtext != null) ...[
                             const SizedBox(height: 2),
                             AppText(
-                              metric.subtext!,
+                              dashboard.isOffline && metric.icon == 'people'
+                                  ? context.trRead(
+                                      'Semua pasien lokal akun ini',
+                                      'All local patients for this account',
+                                    )
+                                  : metric.subtext!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
@@ -800,7 +817,7 @@ class DashboardScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${activity.timestamp} · ${activity.institution}',
+                            '${activity.timestamp} · ${dashboard.isOffline ? context.trRead('Perangkat ini', 'This device') : activity.institution}',
                             style: const TextStyle(
                               color: AppTheme.subtitleGrey,
                               fontSize: 12,

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/domain/repositories/dashboard_repository.dart';
@@ -8,6 +9,13 @@ class DashboardProvider extends ChangeNotifier {
   DashboardProvider(this._repository, {AuthProvider? session})
     : _session = session {
     if (isLive) {
+      if (_repository is DeviceDashboardSource) {
+        _deviceChanges = (_repository as DeviceDashboardSource)
+            .watchChanges()
+            .listen((_) {
+              if (_owner != null && !_disposed) refresh();
+            });
+      }
       _session?.addListener(_sessionChanged);
       _sessionChanged();
     } else {
@@ -17,11 +25,14 @@ class DashboardProvider extends ChangeNotifier {
 
   final DashboardRepository _repository;
   final AuthProvider? _session;
+  StreamSubscription<void>? _deviceChanges;
   DashboardSnapshot? _snapshot;
   String? _owner;
   String? _error;
   int _generation = 0;
   bool _disposed = false;
+  bool get isOffline => _repository is DeviceDashboardSource;
+  // Real snapshot data; this does not imply an HTTP connection.
   bool get isLive => _repository is DashboardSnapshotRepository;
   DashboardSnapshot? get snapshot => _snapshot;
   String? get error => _error;
@@ -81,7 +92,9 @@ class DashboardProvider extends ChangeNotifier {
       _trendData = result.trend;
     } catch (_) {
       if (_disposed || generation != _generation) return;
-      _error = 'Dashboard tidak dapat dimuat. Periksa koneksi dan coba lagi.';
+      _error = isOffline
+          ? 'Dashboard lokal tidak dapat dimuat. Coba lagi.'
+          : 'Dashboard tidak dapat dimuat. Periksa koneksi dan coba lagi.';
     }
     if (_disposed || generation != _generation) return;
     _isLoading = false;
@@ -93,6 +106,7 @@ class DashboardProvider extends ChangeNotifier {
     _disposed = true;
     _generation++;
     _session?.removeListener(_sessionChanged);
+    _deviceChanges?.cancel();
     super.dispose();
   }
 

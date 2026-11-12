@@ -12,7 +12,7 @@ import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/state/auth_provider.dart';
-import 'http_dashboard_test.dart' as fixture;
+import 'package:myapp/state/dashboard_provider.dart';
 
 class _Adapter implements HttpClientAdapter {
   @override
@@ -33,8 +33,6 @@ class _Adapter implements HttpClientAdapter {
           'role': 'doctor',
         },
       },
-      '/dashboard/summary' => fixture.summary(),
-      '/dashboard/activity' => fixture.activities(),
       '/datasets' => {'items': [], 'total': 0, 'limit': 20, 'offset': 0},
       _ => throw StateError('Unexpected test request: ${options.path}'),
     };
@@ -102,6 +100,16 @@ void main() {
           tester.widget<MaterialApp>(find.byType(MaterialApp)).routerConfig!
               as GoRouter;
       expect(router.routeInformationProvider.value.uri.path, '/dashboard');
+      expect(find.text('Local data - current doctor'), findsOneWidget);
+      final dashboard = context.read<DashboardProvider>();
+      expect(dashboard.isOffline, isTrue);
+      expect(dashboard.error, isNull);
+      expect(dashboard.snapshot!.metrics.map((m) => m.value), [
+        '0',
+        '0',
+        '0',
+        '0',
+      ]);
       expect(tester.takeException(), isNull);
       await tester.tap(find.byTooltip('Screening'));
       await pumpApp(tester);

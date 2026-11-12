@@ -10,7 +10,7 @@ class DashboardDistribution {
   int get total => positive + negative;
 }
 
-/// A complete live response. A null rate means there is no denominator.
+/// A complete real snapshot (server or device). Null rates have no denominator.
 class DashboardSnapshot {
   const DashboardSnapshot({
     required this.days,

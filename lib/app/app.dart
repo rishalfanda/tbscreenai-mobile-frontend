@@ -15,7 +15,7 @@ import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/core/config/scroll_behavior.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/data/http/http_repositories.dart';
-import 'package:myapp/data/http/http_dashboard_repository.dart';
+import 'package:myapp/data/offline/offline_dashboard_repository.dart';
 import 'package:myapp/data/http/http_dataset_repository.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/encrypted_xray_store.dart';
@@ -175,7 +175,7 @@ class TBScreenApp extends StatelessWidget {
         ),
         Provider<DashboardRepository>(
           create: (c) => useHttp
-              ? HttpDashboardRepository(c.read<ApiClient>())
+              ? OfflineDashboardRepository(db)
               : MockDashboardRepository(),
         ),
         Provider<DiagnosisRepository>(
