@@ -55,6 +55,7 @@ class _Repo extends ValidationRepository
 
   int? score;
   bool firstPending = false;
+  final times = <String, DateTime>{};
   String? savedStatus;
   String? savedNote;
   final images = <String, Completer<XrayImage?>>{};
@@ -68,7 +69,12 @@ class _Repo extends ValidationRepository
         age: 30,
         gender: 'Female',
         aiScore: id == 'one' ? 80 : 40,
-        diagnosisDate: id == 'one' ? '2026-10-30' : '2026-11-01',
+        diagnosisDate: times.containsKey(id)
+            ? '2026-11-11'
+            : id == 'one'
+            ? '2026-10-30'
+            : '2026-11-01',
+        diagnosedAt: times[id],
         isPositive: true,
         status: savedStatus != null && id == 'one'
             ? savedStatus!
@@ -138,6 +144,46 @@ Future<void> _choose(WidgetTester tester, String key) async {
 }
 
 void main() {
+  testWidgets(
+    'same-day screenings sort by actual time and timezone rather than UUID or display date',
+    (tester) async {
+      final repo = _Repo()..firstPending = true;
+      repo.times['one'] = DateTime.parse('2026-11-11T08:00:02+07:00');
+      repo.times['two'] = DateTime.parse('2026-11-11T02:00:01Z');
+      await _mount(tester, repo);
+      List<String> ids() => tester
+          .widget<DataTable>(find.byType(DataTable))
+          .rows
+          .map((row) => (row.key! as ValueKey<String>).value)
+          .toList();
+      // Both have the same display date, but two is almost an hour later.
+      expect(ids(), ['validation-case-two', 'validation-case-one']);
+      for (final sort in ['earliest', 'latest']) {
+        tester
+            .widget<DropdownButtonFormField<String>>(
+              find.byKey(const Key('validation-sort')),
+            )
+            .onChanged!(sort);
+        await tester.pump();
+        expect(
+          ids(),
+          sort == 'earliest'
+              ? ['validation-case-one', 'validation-case-two']
+              : ['validation-case-two', 'validation-case-one'],
+        );
+      }
+      final one = (await repo.getCases()).firstWhere((row) => row.id == 'one');
+      expect(find.text(one.screeningDateTimeLabel), findsOneWidget);
+      expect(one.copyWith(status: 'agreed').diagnosedAt, one.diagnosedAt);
+      // Times only one second apart must also sort independently of the ID.
+      repo.times['one'] = DateTime.parse('2026-11-11T02:00:02Z');
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _mount(tester, repo);
+      expect(ids(), ['validation-case-one', 'validation-case-two']);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'deleting only a validation requires confirmation and removes the row from the validation list',
     (tester) async {

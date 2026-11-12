@@ -4,6 +4,7 @@ import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/offline/operator_sync_service.dart';
+import 'package:myapp/data/offline/device_operator_outbox.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/state/auth_provider.dart';
@@ -17,6 +18,7 @@ class OperatorSyncScreen extends StatefulWidget {
 class _OperatorSyncScreenState extends State<OperatorSyncScreen> {
   bool _busy = false, _consent = false, _activated = false;
   int _count = 0, _done = 0;
+  OperatorQueueSummary? _summary;
   String? _error;
   SyncReport? _report;
   UserProfile? _actor;
@@ -31,6 +33,7 @@ class _OperatorSyncScreenState extends State<OperatorSyncScreen> {
     if (!identical(_actor, auth.profile)) {
       _actor = auth.profile;
       _count = 0;
+      _summary = null;
       _report = null;
       _error = null;
       _consent = false;
@@ -45,10 +48,12 @@ class _OperatorSyncScreenState extends State<OperatorSyncScreen> {
     setState(() => _busy = true);
     try {
       final device = await context.read<ApiClient>().deviceIdentity.read();
-      final count = await service.queuedCount();
+      await service.prepareImageRepairs();
+      final summary = await service.queueSummary();
       if (!_current || !identical(actor, _actor)) return;
       setState(() {
-        _count = count;
+        _count = summary.total;
+        _summary = summary;
         _activated = device != null && device.tenantId == actor?.tenantId;
       });
     } catch (_) {
@@ -74,6 +79,7 @@ class _OperatorSyncScreenState extends State<OperatorSyncScreen> {
       _error = null;
       _report = null;
       _done = 0;
+      _summary = null;
     });
     try {
       final report = await service.push(
@@ -87,11 +93,12 @@ class _OperatorSyncScreenState extends State<OperatorSyncScreen> {
         },
       );
       if (_current && identical(actor, _actor)) {
-        final remaining = await service.queuedCount();
+        final remaining = await service.queueSummary();
         if (_current && identical(actor, _actor)) {
           setState(() {
             _report = report;
-            _count = remaining;
+            _count = remaining.total;
+            _summary = remaining;
             _done = 0;
           });
         }
@@ -146,8 +153,33 @@ class _OperatorSyncScreenState extends State<OperatorSyncScreen> {
             ),
           ),
         Text(
-          '${context.trRead('Antrean tersimpan', 'Retained queue')}: $_count',
+          '${context.trRead('Operasi menunggu sinkronisasi', 'Queued sync operations')}: $_count',
         ),
+        if (_summary case final summary?) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 16,
+            runSpacing: 6,
+            children: [
+              Text(
+                '${context.trRead("Data pasien", "Patient data")}: ${summary.patients}',
+              ),
+              Text('Screening: ${summary.screenings}'),
+              Text(
+                '${context.trRead("Validasi", "Validation")}: ${summary.validations}',
+              ),
+              if (summary.other > 0)
+                Text('${context.trRead("Lainnya", "Other")}: ${summary.other}'),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            context.trRead(
+              'Yang dihitung adalah operasi pengiriman, bukan jumlah pasien. Satu screening pasien baru biasanya menghasilkan 2 operasi.',
+              'This counts sync operations, not patients. One screening for a new patient usually creates 2 operations.',
+            ),
+          ),
+        ],
         if (_error != null)
           Text(_error!, style: const TextStyle(color: Colors.red)),
         if (_busy)

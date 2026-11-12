@@ -4,9 +4,11 @@ import 'package:provider/provider.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/validation_case.dart';
+import 'package:myapp/domain/models/clinical_conflict.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
 import 'package:myapp/state/auth_provider.dart';
 import 'validation_review_dialog.dart';
+import 'validation_conflict_dialog.dart';
 
 class OfflineValidationScreen extends StatefulWidget {
   const OfflineValidationScreen({super.key, this.caseId});
@@ -20,6 +22,7 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
   final ScrollController _horizontalScrollController = ScrollController();
   final ScrollController _verticalScrollController = ScrollController();
   List<ValidationCase> _cases = [];
+  List<ClinicalConflict> _conflicts = [];
   String _search = '', _status = 'all', _sort = 'pending';
   bool _loading = true;
   String? _error;
@@ -42,10 +45,17 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
     final auth = context.read<AuthProvider>();
     final profile = auth.profile;
     try {
-      final rows = await context.read<ValidationRepository>().getCases();
+      final repository = context.read<ValidationRepository>();
+      final results = await Future.wait([
+        repository.getCases(),
+        repository.getConflicts(),
+      ]);
+      final rows = results[0] as List<ValidationCase>;
+      final conflicts = results[1] as List<ClinicalConflict>;
       if (!mounted || profile != auth.profile || !auth.isLoggedIn) return;
       setState(() {
         _cases = rows;
+        _conflicts = conflicts;
         _loading = false;
         _error = null;
       });
@@ -75,6 +85,18 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
         });
       }
     }
+  }
+
+  Future<void> _openConflict(ClinicalConflict conflict) async {
+    final auth = context.read<AuthProvider>();
+    final profile = auth.profile;
+    if (!auth.isLoggedIn || auth.role != 'doctor') return;
+    final changed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ValidationConflictDialog(conflict: conflict),
+    );
+    if (changed == true && mounted && profile == auth.profile) await _load();
   }
 
   Future<void> _open(ValidationCase row, {bool readOnly = false}) async {
@@ -144,6 +166,18 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
     }
   }
 
+  int _compareScreeningTime(
+    ValidationCase a,
+    ValidationCase b, {
+    bool newestFirst = true,
+  }) {
+    final left = a.diagnosedAt ?? DateTime.tryParse(a.diagnosisDate);
+    final right = b.diagnosedAt ?? DateTime.tryParse(b.diagnosisDate);
+    if (left == null) return right == null ? 0 : 1;
+    if (right == null) return -1;
+    return newestFirst ? right.compareTo(left) : left.compareTo(right);
+  }
+
   List<ValidationCase> get _visible {
     final rows = _cases
         .where(
@@ -156,19 +190,20 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
       int result;
       switch (_sort) {
         case 'earliest':
-          result = a.diagnosisDate.compareTo(b.diagnosisDate);
+          result = _compareScreeningTime(a, b, newestFirst: false);
         case 'highest':
           result = b.aiScore.compareTo(a.aiScore);
         case 'lowest':
           result = a.aiScore.compareTo(b.aiScore);
         case 'latest':
-          result = b.diagnosisDate.compareTo(a.diagnosisDate);
+          result = _compareScreeningTime(a, b);
         default:
           result = (a.status == 'pending' ? 0 : 1).compareTo(
             b.status == 'pending' ? 0 : 1,
           );
-          if (result == 0) result = b.diagnosisDate.compareTo(a.diagnosisDate);
+          if (result == 0) result = _compareScreeningTime(a, b);
       }
+      if (result == 0) result = _compareScreeningTime(a, b);
       return result == 0 ? a.id.compareTo(b.id) : result;
     });
     return rows;
@@ -293,6 +328,71 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
               _error!,
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
+          if (_conflicts.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Card(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.trRead(
+                        '${_conflicts.length} konflik validasi perlu keputusan dokter',
+                        '${_conflicts.length} validation conflicts need clinician review',
+                      ),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    for (final conflict in _conflicts)
+                      ListTile(
+                        key: ValueKey(
+                          'validation-conflict-${conflict.clientOpId}',
+                        ),
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          conflict.isDelete
+                              ? Icons.delete_outline
+                              : Icons.sync_problem,
+                        ),
+                        title: Text(
+                          _cases
+                                  .where(
+                                    (row) => row.id == conflict.diagnosisId,
+                                  )
+                                  .firstOrNull
+                                  ?.name ??
+                              context.trRead(
+                                'Screening ${conflict.diagnosisId}',
+                                'Screening ${conflict.diagnosisId}',
+                              ),
+                        ),
+                        subtitle: Text(
+                          conflict.hasServerSnapshot
+                              ? context.trRead(
+                                  'Versi server ${conflict.serverVersion} siap diperiksa.',
+                                  'Server version ${conflict.serverVersion} is ready for review.',
+                                )
+                              : context.trRead(
+                                  'Offline / snapshot server belum tersedia. Sambungkan lalu muat ulang.',
+                                  'Offline / server snapshot unavailable. Reconnect and reload.',
+                                ),
+                        ),
+                        trailing: FilledButton.tonal(
+                          key: ValueKey(
+                            'resolve-validation-conflict-${conflict.clientOpId}',
+                          ),
+                          onPressed: () => _openConflict(conflict),
+                          child: Text(context.trRead('Selesaikan', 'Resolve')),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           Text('${rows.length} ${context.trRead("screening", "screenings")}'),
           const SizedBox(height: 8),
           Expanded(
@@ -347,10 +447,10 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
                                 ),
                                 _buildColumn(
                                   context.trRead(
-                                    'Tanggal screening',
-                                    'Screening date',
+                                    'Tanggal & jam screening (lokal)',
+                                    'Screening date & time (local)',
                                   ),
-                                  maxWidth: 80,
+                                  maxWidth: 110,
                                 ),
                                 _buildColumn(
                                   'AI Screening Result',
@@ -394,7 +494,18 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
                                           ),
                                         ),
                                       ),
-                                      DataCell(Text(row.diagnosisDate)),
+                                      DataCell(
+                                        ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 110,
+                                          ),
+                                          child: Text(
+                                            row.screeningDateTimeLabel,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ),
                                       DataCell(
                                         ConstrainedBox(
                                           constraints: const BoxConstraints(

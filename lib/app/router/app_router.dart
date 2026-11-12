@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:myapp/core/config/app_config.dart';
+import 'package:myapp/data/backup/device_backup_restore_service.dart';
+import 'package:myapp/features/backup/presentation/backup_restore_screen.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myapp/features/account/presentation/account_screen.dart';
 import 'package:myapp/features/auth/presentation/login_screen.dart';
@@ -119,6 +123,18 @@ class AppRouter {
             GoRoute(
               path: '/sync',
               builder: (context, state) => const OperatorSyncScreen(),
+            ),
+            GoRoute(
+              path: '/backup-restore',
+              builder: (context, state) => AppConfig.useHttp
+                  ? BackupRestoreScreen(
+                      service: context.read<DeviceBackupRestoreService>(),
+                    )
+                  : const Center(
+                      child: Text(
+                        'Backup & Restore memerlukan API dan perangkat terdaftar.',
+                      ),
+                    ),
             ),
             GoRoute(
               path: '/account',

@@ -14,6 +14,7 @@ import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/models/clinical_conflict.dart';
 import 'package:myapp/domain/models/validation_case.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
+import 'package:myapp/domain/repositories/validation_conflict_repository.dart';
 
 class ValidationContractException implements Exception {
   const ValidationContractException(this.message);
@@ -31,7 +32,8 @@ class OfflineValidationRepository extends ValidationRepository
         NumericValidationRepository,
         SegmentationValidationRepository,
         ValidationResetRepository,
-        LesionRatingValidationRepository {
+        LesionRatingValidationRepository,
+        NumericValidationConflictRepository {
   OfflineValidationRepository({
     required AppDatabase db,
     required ApiClient client,
@@ -195,6 +197,7 @@ class OfflineValidationRepository extends ValidationRepository
             age: age,
             gender: gender,
             aiScore: row.confidence,
+            diagnosedAt: row.diagnosedAt,
             diagnosisDate: row.diagnosedAt
                 .toLocal()
                 .toString()
@@ -645,8 +648,15 @@ class OfflineValidationRepository extends ValidationRepository
 
   @override
   Future<List<ClinicalConflict>> getConflicts() async {
+    await _promoteLegacyRatingConflicts();
     final operations = (await _db.opsWithStatus(syncConflict))
-        .where((op) => op.entityType == 'diagnosis' && op.operation == 'update')
+        .where(
+          (op) =>
+              op.entityType == 'diagnosis' &&
+              (op.operation == 'update' ||
+                  op.operation == 'delete_validation') &&
+              _owns(op),
+        )
         .toList(growable: false);
     return Future.wait(operations.map(_conflictFromOperation));
   }
@@ -664,18 +674,85 @@ class OfflineValidationRepository extends ValidationRepository
       serverStatus: server?['status'] as String?,
       serverNote: server?['doctor_note'] as String?,
       serverVersion: (server?['version'] as num?)?.toInt(),
+      operation: op.operation,
+      localLesionRating: (local['lesion_rating'] as num?)?.toInt(),
+      serverLesionRating: (server?['lesion_rating'] as num?)?.toInt(),
+      serverValidationDeletedAt: _date(server?['validation_deleted_at']),
+      serverValidationDeletedBy: server?['validation_deleted_by'] as String?,
+      requiresExplicitRating:
+          op.operation == 'update' &&
+          local.containsKey('validation_score') &&
+          !local.containsKey('lesion_rating'),
     );
   }
 
+  bool _owns(SyncQueueData op) {
+    final owner = _db.activeOwner;
+    return owner != null &&
+        op.userId == owner.userId &&
+        op.tenantId == owner.tenantId &&
+        op.deviceId == owner.deviceId;
+  }
+
+  DateTime? _date(Object? value) =>
+      value is String ? DateTime.tryParse(value)?.toUtc() : null;
+
+  Future<void> _promoteLegacyRatingConflicts() async {
+    if (await _db.getSetting(kUserRole) != 'doctor') return;
+    final operations = await _db.select(_db.syncQueue).get();
+    for (final op in operations) {
+      if (!_owns(op) ||
+          op.entityType != 'diagnosis' ||
+          op.operation != 'update' ||
+          op.status == syncSynced ||
+          op.status == syncConflict) {
+        continue;
+      }
+      final payload = _map(op.payload);
+      if (!payload.containsKey('validation_score') ||
+          payload.containsKey('lesion_rating') ||
+          op.retryCount == 0) {
+        continue;
+      }
+      await _db.transaction(() async {
+        await _db.markOp(
+          op.clientOpId,
+          syncConflict,
+          detail:
+              'Legacy validation was dispatched; reconnect and choose an explicit lesion rating.',
+        );
+        final row = await _db.findDiagnosis(op.entityId);
+        if (row != null) {
+          await _db.updateDiagnosisValidation(
+            op.entityId,
+            status: row.status,
+            doctorNote: row.doctorNote,
+            hasConflict: true,
+          );
+        }
+      });
+    }
+  }
+
   Future<Map<String, dynamic>?> _serverPayload(SyncQueueData op) async {
+    final generation = _db.sessionGeneration;
+    final owner = _db.activeOwner;
+    if (owner == null || !_owns(op)) return null;
     try {
       final payload = op.serverPayload == null
           ? (await _client.dio.get<Map<String, dynamic>>(
               '/diagnoses/${op.entityId}',
             )).data
           : _map(op.serverPayload!);
+      if (generation != _db.sessionGeneration ||
+          !identical(owner, _db.activeOwner) ||
+          !_owns(op)) {
+        return null;
+      }
       if (payload == null ||
           payload['id'] != op.entityId ||
+          (payload['tenant_id'] != null &&
+              payload['tenant_id'] != owner.tenantId) ||
           !const {
             'pending',
             'agreed',
@@ -684,6 +761,14 @@ class OfflineValidationRepository extends ValidationRepository
           payload['version'] is! int ||
           (payload['version'] as int) < 1) {
         throw const FormatException('Conflict response is incomplete.');
+      }
+      final current = await _db.findOperation(op.clientOpId);
+      if (generation != _db.sessionGeneration ||
+          !identical(owner, _db.activeOwner) ||
+          current == null ||
+          !_owns(current) ||
+          current.status != syncConflict) {
+        return null;
       }
       await _db.saveConflictServerPayload(op.clientOpId, jsonEncode(payload));
       return payload;
@@ -697,9 +782,23 @@ class OfflineValidationRepository extends ValidationRepository
     required ClinicalConflict conflict,
     required ConflictDecision decision,
   }) async {
+    await resolveNumericConflict(conflict: conflict, decision: decision);
+  }
+
+  @override
+  Future<void> resolveNumericConflict({
+    required ClinicalConflict conflict,
+    required ConflictDecision decision,
+    String? status,
+    int? lesionRating,
+    String? note,
+  }) async {
     final session = _db.sessionGeneration;
     final operation = await _db.findOperation(conflict.clientOpId);
-    if (operation == null || operation.status != syncConflict) {
+    if (operation == null ||
+        operation.status != syncConflict ||
+        !_owns(operation) ||
+        await _db.getSetting(kUserRole) != 'doctor') {
       throw const ValidationContractException(
         'This conflict is no longer active.',
       );
@@ -716,6 +815,13 @@ class OfflineValidationRepository extends ValidationRepository
     final serverNote = server?['doctor_note'] as String?;
     final serverVersion = (server?['version'] as num?)?.toInt();
     final updatedAt = DateTime.tryParse(server?['updated_at'] as String? ?? '');
+    final serverLesionRating = (server?['lesion_rating'] as num?)?.toInt();
+    final serverValidationScore = (server?['validation_score'] as num?)
+        ?.toInt();
+    final serverValidatedBy = server?['validated_by'] as String?;
+    final serverValidatedAt = _date(server?['validated_at']);
+    final serverDeletedAt = _date(server?['validation_deleted_at']);
+    final serverDeletedBy = server?['validation_deleted_by'] as String?;
 
     await _db.transaction(() async {
       if (session != _db.sessionGeneration) {
@@ -730,13 +836,28 @@ class OfflineValidationRepository extends ValidationRepository
               'Server snapshot is incomplete.',
             );
           }
-          await _db.updateDiagnosisValidation(
-            operation.entityId,
-            status: serverStatus,
-            doctorNote: serverNote,
-            serverVersion: serverVersion,
-            updatedAt: updatedAt,
-            hasConflict: false,
+          final row = await _db.findDiagnosis(operation.entityId);
+          if (row == null) {
+            throw const ValidationContractException(
+              'Diagnosis is unavailable.',
+            );
+          }
+          await _db.upsertDiagnosis(
+            row
+                .toCompanion(false)
+                .copyWith(
+                  status: Value(serverStatus),
+                  doctorNote: Value(serverNote),
+                  lesionRating: Value(serverLesionRating),
+                  validationScore: Value(serverValidationScore),
+                  validatedBy: Value(serverValidatedBy),
+                  validatedAt: Value(serverValidatedAt),
+                  validationDeletedAt: Value(serverDeletedAt),
+                  validationDeletedBy: Value(serverDeletedBy),
+                  serverVersion: Value(serverVersion),
+                  updatedAt: Value(updatedAt),
+                  hasConflict: const Value(false),
+                ),
           );
           await _db.markOp(
             operation.clientOpId,
@@ -749,32 +870,111 @@ class OfflineValidationRepository extends ValidationRepository
               'Server version is unavailable.',
             );
           }
-          final localStatus = local['status'] as String?;
-          if (localStatus == null) {
+          final isDelete = operation.operation == 'delete_validation';
+          if (serverDeletedAt != null) {
+            throw const ValidationContractException(
+              'The validation was deleted on the server. Keep the server value.',
+            );
+          }
+          final localStatus = status ?? local['status'] as String?;
+          final localRating =
+              lesionRating ?? (local['lesion_rating'] as num?)?.toInt();
+          if (!isDelete &&
+              (localStatus == null ||
+                  !const {
+                    'pending',
+                    'agreed',
+                    'disagreed',
+                  }.contains(localStatus))) {
             throw const ValidationContractException(
               'Local conflict payload is incomplete.',
             );
           }
-          final localNote = local['doctor_note'] as String?;
-          await _db.updateDiagnosisValidation(
-            operation.entityId,
-            status: localStatus,
-            doctorNote: localNote,
-            serverVersion: serverVersion,
-            updatedAt: updatedAt,
-            hasConflict: false,
+          if (!isDelete &&
+              (localRating == null || localRating < 0 || localRating > 10)) {
+            throw const ValidationContractException(
+              'Choose an explicit lesion rating from 0 to 10.',
+            );
+          }
+          final localNote = note ?? local['doctor_note'] as String?;
+          if ((localNote?.length ?? 0) > 500) {
+            throw const ValidationContractException('Note is too long.');
+          }
+          final row = await _db.findDiagnosis(operation.entityId);
+          if (row == null) {
+            throw const ValidationContractException(
+              'Diagnosis is unavailable.',
+            );
+          }
+          await _db.upsertDiagnosis(
+            row
+                .toCompanion(false)
+                .copyWith(
+                  status: Value(isDelete ? serverStatus! : localStatus!),
+                  doctorNote: Value(localNote),
+                  lesionRating: isDelete
+                      ? const Value.absent()
+                      : Value(localRating),
+                  validationScore: isDelete
+                      ? const Value.absent()
+                      : const Value(null),
+                  validatedBy: isDelete
+                      ? const Value.absent()
+                      : Value(
+                          localStatus == 'pending'
+                              ? null
+                              : _db.activeOwner!.userId,
+                        ),
+                  validatedAt: isDelete
+                      ? const Value.absent()
+                      : Value(
+                          localStatus == 'pending'
+                              ? null
+                              : DateTime.now().toUtc(),
+                        ),
+                  validationDeletedAt: isDelete
+                      ? const Value.absent()
+                      : const Value(null),
+                  validationDeletedBy: isDelete
+                      ? const Value.absent()
+                      : const Value(null),
+                  serverVersion: Value(serverVersion),
+                  updatedAt: Value(updatedAt),
+                  hasConflict: const Value(false),
+                ),
           );
           await _db.markOp(
             operation.clientOpId,
             syncSynced,
             detail: 'Resolved explicitly: local value re-queued',
           );
-          await _syncEngine.enqueueDiagnosisStatus(
-            operation.entityId,
-            status: localStatus,
-            doctorNote: localNote,
-            baseVersion: serverVersion,
-            baseUpdatedAt: updatedAt,
+          await _db.enqueue(
+            SyncQueueCompanion.insert(
+              clientOpId: uuidV4(),
+              entityType: 'diagnosis',
+              entityId: operation.entityId,
+              operation: isDelete ? 'delete_validation' : 'update',
+              payload: jsonEncode(
+                isDelete
+                    ? {
+                        'deleted_at':
+                            local['deleted_at'] ??
+                            DateTime.now().toUtc().toIso8601String(),
+                      }
+                    : {
+                        'status': localStatus,
+                        'lesion_rating': localRating,
+                        'validated_at': localStatus == 'pending'
+                            ? null
+                            : DateTime.now().toUtc().toIso8601String(),
+                        'doctor_note': localNote?.trim().isEmpty == true
+                            ? null
+                            : localNote?.trim(),
+                      },
+              ),
+              baseVersion: Value(serverVersion),
+              createdAt: DateTime.now().toUtc(),
+            ),
           );
         case ConflictDecision.cancel:
           // Deliberately retain the conflict and both snapshots.

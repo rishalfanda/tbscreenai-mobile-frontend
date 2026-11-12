@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
 import 'package:myapp/data/secure/doctor_session_store.dart';
 import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/local/app_database.dart';
@@ -260,21 +264,90 @@ class HttpAuthRepository
 
   @override
   Future<void> logout() {
+    // Keep the old bearer only in memory long enough to revoke this server
+    // session. The request is isolated from ApiClient's refresh interceptor:
+    // logout rejection must never refresh an expiring/invalid session.
+    final serverLogout = _revokeServerSession(_client.tokens.accessToken);
     _operation++;
     _identity = null;
     _db?.invalidateSession();
-    return _clearSession();
+    return _clearSession(serverLogout: serverLogout);
   }
 
-  Future<void> _clearSession() {
+  Future<void> _revokeServerSession(String? accessToken) async {
+    if (!_isLiveAccessToken(accessToken)) return;
+
+    // A short hard bound keeps offline logout usable. Login waits for the
+    // serialized cleanup below, so a legacy server token (without a session
+    // id) cannot finish late and revoke a newly-created login.
+    final cancel = CancelToken();
+    try {
+      final device = await _client.deviceIdentity.read();
+      final dio = Dio(
+        BaseOptions(
+          baseUrl: _client.baseUrl,
+          connectTimeout: const Duration(seconds: 3),
+          sendTimeout: const Duration(seconds: 3),
+          receiveTimeout: const Duration(seconds: 3),
+        ),
+      );
+      // Reuse only the transport so synthetic adapters remain testable. Do
+      // not close this Dio: the adapter is owned by the shared ApiClient.
+      dio.httpClientAdapter = _client.dio.httpClientAdapter;
+      await dio
+          .post<void>(
+            '/auth/logout',
+            cancelToken: cancel,
+            options: Options(
+              headers: <String, dynamic>{
+                'Authorization': 'Bearer $accessToken',
+                ...?device?.headers,
+              },
+            ),
+          )
+          .timeout(
+            const Duration(seconds: 3),
+            onTimeout: () {
+              cancel.cancel('Server logout timed out');
+              throw TimeoutException('Server logout timed out');
+            },
+          );
+    } catch (_) {
+      // Server revocation is best effort. Local secrets and clinical cache
+      // still have to be cleared when offline or when the session is stale.
+    }
+  }
+
+  bool _isLiveAccessToken(String? token) {
+    if (token == null || token.isEmpty) return false;
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return false;
+      final claims =
+          jsonDecode(
+                utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+              )
+              as Map<String, dynamic>;
+      final expiresAt = claims['exp'];
+      return expiresAt is num &&
+          expiresAt > DateTime.now().millisecondsSinceEpoch / 1000;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _clearSession({Future<void>? serverLogout}) {
     final clearedTokens = _client.tokens.clear();
     final clearedDoctorSession = _doctorSession?.clear();
 
     Future<void> clean() async {
-      await _outbox?.captureDoctorQueue();
-      await clearedTokens;
-      await clearedDoctorSession;
-      await _db?.clearSessionData();
+      final localCleanup = () async {
+        await _outbox?.captureDoctorQueue();
+        await clearedTokens;
+        await clearedDoctorSession;
+        await _db?.clearSessionData();
+      }();
+      await Future.wait<void>([localCleanup, ?serverLogout], eagerError: false);
     }
 
     // Serialize cleanup even if expiry and user logout arrive together.

@@ -26,6 +26,7 @@ class InferenceResult {
     required this.elapsed,
     required this.providersUsed,
     this.stepTimings = const {},
+    this.hasLesionConfidence = true,
   });
 
   /// Final verdict after fusion + threshold.
@@ -46,6 +47,7 @@ class InferenceResult {
 
   /// 256x256 — max softmax confidence of the lesion class map.
   final Float32List confidence;
+  final bool hasLesionConfidence;
 
   /// The 36-value RF design vector.
   final List<double> featureVector;
@@ -145,6 +147,7 @@ class InferenceResult {
       lungMask: lungMask,
       labelMap: labelMap,
       confidence: confidence,
+      hasLesionConfidence: out['confidence'] != null,
       featureVector: out['features']?.toDoubleList() ?? const [],
       featureNames: manifest.featureOrder,
       lesionNames: manifest.render.lesionNames,

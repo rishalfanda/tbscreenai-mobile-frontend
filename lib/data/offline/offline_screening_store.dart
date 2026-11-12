@@ -73,6 +73,15 @@ class OfflineScreeningStore implements ScreeningStore {
     if (result.outcome.imageId != null) {
       clinicalSnapshot['inference_image_id'] = result.outcome.imageId;
     }
+    final normalizedProvenance =
+        result.outcome.provenance ??
+        <String, dynamic>{
+          'schema_version': 1,
+          'bundle_version': result.outcome.modelVersion,
+          'inferred_at': result.outcome.createdAt.toUtc().toIso8601String(),
+          'image_sha256': image.checksumSha256,
+        };
+    final initialStatus = result.outcome.isPositive ? 'Suspected' : 'Normal';
     late final String imageReference;
     await _db.transaction(() async {
       if (newPatient) {
@@ -83,6 +92,7 @@ class OfflineScreeningStore implements ScreeningStore {
             name: draft.patientName.trim(),
             age: draft.age!,
             gender: draft.gender!,
+            status: Value(initialStatus),
           ),
         );
         await _syncEngine.enqueuePatientCreate({
@@ -90,8 +100,44 @@ class OfflineScreeningStore implements ScreeningStore {
           'name': draft.patientName.trim(),
           'age': draft.age,
           'gender': draft.gender,
-          'status': 'Normal',
+          'status': initialStatus,
         }, id: patientId);
+      }
+      if (!newPatient && result.outcome.isPositive) {
+        final patient = await _db.findPatient(patientId);
+        if (patient != null && patient.status == 'Normal') {
+          await _db.upsertPatient(
+            patient
+                .toCompanion(false)
+                .copyWith(status: const Value('Suspected')),
+          );
+          final owner = _db.activeOwner;
+          final creates = (await _db.select(_db.syncQueue).get())
+              .where(
+                (op) =>
+                    op.entityType == 'patient' &&
+                    op.entityId == patientId &&
+                    op.operation == 'create' &&
+                    op.userId == owner?.userId &&
+                    op.tenantId == owner?.tenantId &&
+                    op.deviceId == owner?.deviceId,
+              )
+              .toList();
+          if (patient.serverVersion != null) {
+            await _syncEngine.enqueuePatientUpdate(patientId, {
+              'status': 'Suspected',
+            }, baseVersion: patient.serverVersion);
+          } else if (creates.isNotEmpty) {
+            // A newly-created patient starts at v1; this op follows its create.
+            await _syncEngine.enqueuePatientUpdate(patientId, {
+              'status': 'Suspected',
+            }, baseVersion: 1);
+          } else {
+            throw const ClinicalPersistenceException(
+              'Versi pasien belum tersedia. Sinkronkan sebelum mengubah status.',
+            );
+          }
+        }
       }
       final segmentation = result.outcome.segmentation;
       if (segmentation != null) {
@@ -156,19 +202,7 @@ class OfflineScreeningStore implements ScreeningStore {
           diagnosedAt: outcome.createdAt.toUtc(),
           imageChecksum: Value(image.checksumSha256),
           imageReference: Value(imageReference),
-          provenance: Value(
-            jsonEncode(
-              outcome.provenance ??
-                  {
-                    'contract_version': 1,
-                    'model_version': outcome.modelVersion,
-                    'is_mock': false,
-                    'inferred_at': outcome.createdAt.toUtc().toIso8601String(),
-                    'device_id': deviceId,
-                    'image_checksum': image.checksumSha256,
-                  },
-            ),
-          ),
+          provenance: Value(jsonEncode(normalizedProvenance)),
           isMock: const Value(false),
           patientSnapshot: Value(jsonEncode(patientSnapshot)),
           clinicalSnapshot: Value(jsonEncode(clinicalSnapshot)),
@@ -177,7 +211,12 @@ class OfflineScreeningStore implements ScreeningStore {
       );
       await _syncEngine.enqueueDiagnosisCreate(
         diagnosisId,
-        _createPayload(patientId: patientId, outcome: outcome, draft: draft),
+        _createPayload(
+          patientId: patientId,
+          outcome: outcome,
+          draft: draft,
+          provenance: normalizedProvenance,
+        ),
       );
     });
 
@@ -194,6 +233,7 @@ class OfflineScreeningStore implements ScreeningStore {
     required String patientId,
     required DiagnosisOutcome outcome,
     required DiagnosisDraft draft,
+    required Map<String, dynamic> provenance,
   }) => {
     'patient_id': patientId,
     'clinical': {
@@ -223,7 +263,7 @@ class OfflineScreeningStore implements ScreeningStore {
       'processing_time_ms': outcome.processingTimeMs,
     'findings': outcome.findings,
     if (outcome.imageId != null) 'image_id': outcome.imageId,
-    if (outcome.provenance != null) 'provenance': outcome.provenance,
+    'provenance': provenance,
     'diagnosed_at': outcome.createdAt.toUtc().toIso8601String(),
   };
 
