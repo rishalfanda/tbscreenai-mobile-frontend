@@ -38,6 +38,11 @@ class AppShell extends StatefulWidget {
       label: 'Validation',
     ),
     (route: '/sync', icon: Icons.cloud_sync_rounded, label: 'Sync'),
+    (
+      route: '/backup-restore',
+      icon: Icons.backup_outlined,
+      label: 'Backup & Restore',
+    ),
     (route: '/dataset', icon: Icons.table_chart_rounded, label: 'Dataset'),
     (route: '/account', icon: Icons.person_rounded, label: 'Account'),
   ];
@@ -89,7 +94,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final auth = _getAuth(context, listen: true);
-    final owner = auth != null && auth.isLoggedIn && auth.mobileRole == MobileRole.clinician
+    final owner =
+        auth != null &&
+            auth.isLoggedIn &&
+            auth.mobileRole == MobileRole.clinician
         ? '${auth.userId}:${auth.tenantId}'
         : null;
     if (owner != _pendingOwner) {

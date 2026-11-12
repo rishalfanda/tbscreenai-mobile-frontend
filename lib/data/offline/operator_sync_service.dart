@@ -11,6 +11,7 @@ import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/models/access_scope.dart';
 import 'package:myapp/state/auth_provider.dart';
+import 'package:myapp/core/utils/uuid.dart';
 import 'device_operator_outbox.dart';
 
 class OperatorSyncService {
@@ -27,6 +28,87 @@ class OperatorSyncService {
   final EncryptedXrayStore xray;
   final AuthProvider auth;
   bool _running = false;
+  Future<void>? _preparingImageRepairs;
+
+  /// Re-check images retained by older APKs without replaying clinical edits.
+  /// Old successful metadata receipts did not track X-ray/lung upload receipts.
+  Future<void> prepareImageRepairs() {
+    final running = _preparingImageRepairs;
+    if (running != null) return running;
+    final next = _prepareImageRepairs();
+    _preparingImageRepairs = next;
+    return next.whenComplete(() {
+      if (identical(_preparingImageRepairs, next)) {
+        _preparingImageRepairs = null;
+      }
+    });
+  }
+
+  Future<void> _prepareImageRepairs() async {
+    final pending = await queued();
+    final actor = auth.profile!;
+    final generation = db.sessionGeneration;
+    void current() {
+      if (!identical(auth.profile, actor) ||
+          generation != db.sessionGeneration) {
+        throw StateError('Session changed');
+      }
+    }
+
+    final device = await SettingsStore(db).readOrCreateDeviceId();
+    final all = await outbox.entries(
+      actor.tenantId,
+      device,
+      includeReceived: true,
+    );
+    current();
+    final occupied = {
+      for (final entry in pending)
+        if ((entry['op'] as Map)['entityType'] == 'diagnosis')
+          (entry['op'] as Map)['entityId'],
+    };
+    for (final entry in all) {
+      final op = SyncQueueData.fromJson(entry['op'] as Map<String, dynamic>);
+      if (op.status != syncSynced ||
+          op.entityType != 'diagnosis' ||
+          entry['retired'] == true ||
+          entry['artifact'] == null ||
+          occupied.contains(op.entityId)) {
+        continue;
+      }
+      final artifact = entry['artifact'] as Map;
+      final receipt = entry['image_receipt'] as Map?;
+      final missingXray =
+          entry['xray_synced'] != true ||
+          receipt?['sha256'] != artifact['checksum'] ||
+          receipt?['size_bytes'] != artifact['sizeBytes'];
+      var missing = missingXray;
+      for (final raw in entry['segmentation_artifacts'] as List? ?? const []) {
+        final id = (raw as Map)['id'];
+        if (id == '${op.entityId}:lung' && entry['lung_map_synced'] != true ||
+            id == '${op.entityId}:lesion' && entry['heatmap_synced'] != true) {
+          missing = true;
+        }
+      }
+      if (!missing) continue;
+      current();
+      await outbox.save({
+        ...entry,
+        'record_synced': true,
+        if (missingXray) 'xray_synced': false,
+        'op': {
+          ...op.toJson(),
+          'clientOpId': uuidV4(),
+          'status': syncPending,
+          'operation': 'create',
+          'payload': '{}',
+        },
+      });
+      current();
+      occupied.add(op.entityId);
+    }
+  }
+
   Future<List<Map<String, dynamic>>> queued() async {
     if (!auth.isLoggedIn ||
         auth.mustChangePassword ||
@@ -68,6 +150,7 @@ class OperatorSyncService {
     if (_running) throw StateError('Sync is already running');
     _running = true;
     try {
+      await prepareImageRepairs();
       final entries = await queued();
       final actor = auth.profile!;
       final generation = db.sessionGeneration;
@@ -104,7 +187,7 @@ class OperatorSyncService {
           failed = 0,
           blocked = 0,
           done = 0;
-      bool? scoreSupported, ratingSupported;
+      bool? scoreSupported, ratingSupported, lungMapSupported;
       for (final entry in entries) {
         current();
         final op = SyncQueueData.fromJson(entry['op'] as Map<String, dynamic>);
@@ -231,63 +314,90 @@ class OperatorSyncService {
             await outbox.save(entry);
             current();
           }
-          if (op.entityType == 'diagnosis' &&
-              op.operation == 'create' &&
-              entry['heatmap_synced'] != true) {
+          if (op.entityType == 'diagnosis' && op.operation == 'create') {
+            // Upload the original first: an unavailable map endpoint must not
+            // prevent the original screening image reaching the server.
+            if (entry['artifact'] == null) {
+              throw const FormatException('Original X-ray archive is missing.');
+            }
+            if (entry['xray_synced'] != true) {
+              final artifact = EncryptedXrayArtifact.fromJson(
+                (entry['artifact'] as Map).cast<String, dynamic>(),
+              );
+              _checkArtifact(artifact, op, actor.tenantId, op.entityId);
+              final image = await xray.decodeArtifact(artifact);
+              current();
+              final receipt = await _upload(
+                op.entityId,
+                image.bytes,
+                image.checksumSha256,
+                current,
+              );
+              entry['xray_synced'] = true;
+              entry['image_receipt'] = {
+                ...receipt,
+                'sha256': image.checksumSha256,
+                'size_bytes': image.sizeBytes,
+              };
+              await outbox.save(entry);
+              current();
+            }
+            var mapBlocked = false;
             for (final raw
                 in entry['segmentation_artifacts'] as List? ?? const []) {
               final artifact = EncryptedXrayArtifact.fromJson(
                 (raw as Map).cast<String, dynamic>(),
               );
-              if (artifact.id != '${op.entityId}:lesion') continue;
-              if (artifact.tenantId != actor.tenantId ||
-                  artifact.userId != op.userId ||
-                  artifact.deviceId != op.deviceId ||
-                  artifact.mimeType != 'image/png') {
-                throw const FormatException(
-                  'Archived heatmap ownership mismatch',
-                );
+              final isLung = artifact.id == '${op.entityId}:lung';
+              if (!isLung && artifact.id != '${op.entityId}:lesion') continue;
+              final flag = isLung ? 'lung_map_synced' : 'heatmap_synced';
+              if (entry[flag] == true) continue;
+              _checkArtifact(
+                artifact,
+                op,
+                actor.tenantId,
+                '${op.entityId}:${isLung ? 'lung' : 'lesion'}',
+              );
+              if (artifact.mimeType != 'image/png') {
+                throw const FormatException('Map is not PNG.');
               }
-              final heatmap = await xray.decodeArtifact(artifact);
+              if (isLung) {
+                lungMapSupported ??= await _supportsLungMap();
+                current();
+                if (!lungMapSupported) {
+                  mapBlocked = true;
+                  continue;
+                }
+              }
+              final image = await xray.decodeArtifact(artifact);
               current();
               final receipt = (await client.dio.put<Object?>(
-                '/diagnoses/${Uri.encodeComponent(op.entityId)}/heatmap',
-                data: heatmap.bytes,
-                options: Options(contentType: 'image/png'),
+                '/diagnoses/${Uri.encodeComponent(op.entityId)}/${isLung ? 'lung-map' : 'heatmap'}',
+                data: image.bytes,
+                options: Options(
+                  contentType: 'image/png',
+                  headers: {'X-Content-SHA256': image.checksumSha256},
+                ),
               )).data;
               current();
               if (receipt is! Map ||
                   receipt['diagnosis_id'] != op.entityId ||
-                  receipt['sha256'] != heatmap.checksumSha256 ||
-                  receipt['size_bytes'] != heatmap.sizeBytes ||
+                  receipt['sha256'] != image.checksumSha256 ||
+                  receipt['size_bytes'] != image.sizeBytes ||
                   receipt['created'] is! bool) {
-                throw const FormatException('Invalid heatmap receipt');
+                throw const FormatException('Invalid segmentation receipt.');
               }
-              entry['heatmap_synced'] = true;
+              entry[flag] = true;
+              entry[isLung ? 'lung_map_receipt' : 'heatmap_receipt'] =
+                  Map<String, dynamic>.from(receipt);
               await outbox.save(entry);
               current();
             }
-          }
-          if (op.entityType == 'diagnosis' &&
-              op.operation == 'create' &&
-              entry['artifact'] != null) {
-            final artifact = EncryptedXrayArtifact.fromJson(
-              entry['artifact'] as Map<String, dynamic>,
-            );
-            if (artifact.tenantId != actor.tenantId ||
-                artifact.userId != op.userId ||
-                artifact.deviceId != op.deviceId ||
-                artifact.id != op.entityId) {
-              throw const FormatException('Archived image ownership mismatch');
+            if (mapBlocked) {
+              blocked++;
+              onProgress?.call(++done, entries.length);
+              continue;
             }
-            final image = await xray.decodeArtifact(artifact);
-            current();
-            await _upload(
-              op.entityId,
-              image.bytes,
-              image.checksumSha256,
-              current,
-            );
           }
           current();
           await outbox.retainReceived(entry);
@@ -314,6 +424,47 @@ class OperatorSyncService {
       );
     } finally {
       _running = false;
+    }
+  }
+
+  void _checkArtifact(
+    EncryptedXrayArtifact artifact,
+    SyncQueueData op,
+    String tenantId,
+    String expectedId,
+  ) {
+    if (artifact.id != expectedId ||
+        artifact.tenantId != tenantId ||
+        artifact.userId != op.userId ||
+        artifact.deviceId != op.deviceId) {
+      throw const FormatException('Archived image ownership mismatch');
+    }
+  }
+
+  Future<bool> _supportsLungMap() async {
+    try {
+      final uri = Uri.parse(
+        client.baseUrl,
+      ).replace(path: '/openapi.json', query: '', fragment: '');
+      final doc = (await client.dio.getUri<Object?>(
+        uri,
+        options: Options(
+          followRedirects: false,
+          receiveTimeout: const Duration(seconds: 10),
+        ),
+      )).data;
+      if (doc is! Map || doc['paths'] is! Map) return false;
+      return (doc['paths'] as Map).entries.any(
+        (entry) =>
+            entry.key is String &&
+            RegExp(
+              r'/diagnoses/\{[^/]+\}/lung-map$',
+            ).hasMatch(entry.key as String) &&
+            entry.value is Map &&
+            (entry.value as Map)['put'] is Map,
+      );
+    } catch (_) {
+      return false;
     }
   }
 
@@ -445,7 +596,7 @@ class OperatorSyncService {
     current();
   }
 
-  Future<void> _upload(
+  Future<Map<String, dynamic>> _upload(
     String diagnosisId,
     Uint8List bytes,
     String checksum,
@@ -488,7 +639,7 @@ class OperatorSyncService {
       if (upload['image_id'] is! String) {
         throw const FormatException('Missing image receipt');
       }
-      return;
+      return upload;
     }
     if (upload['status'] != 'receiving') {
       throw StateError('Image upload unavailable');
@@ -519,5 +670,6 @@ class OperatorSyncService {
         complete['image_id'] is! String) {
       throw const FormatException('Image completion was not confirmed');
     }
+    return complete;
   }
 }

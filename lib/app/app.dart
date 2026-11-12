@@ -35,6 +35,7 @@ import 'package:myapp/data/onnx/on_device_diagnosis_repository.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/data/secure/secure_token_storage.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
+import 'package:myapp/data/backup/device_backup_restore_service.dart';
 import 'package:myapp/domain/repositories/repositories.dart';
 import 'package:myapp/state/auth_provider.dart';
 import 'package:myapp/state/institution_provider.dart';
@@ -234,6 +235,22 @@ class TBScreenApp extends StatelessWidget {
               xray: c.read<EncryptedXrayStore>(),
               auth: c.read<AuthProvider>(),
             ),
+          ),
+        if (useHttp)
+          Provider<DeviceBackupRestoreService>(
+            create: (c) {
+              final auth = c.read<AuthProvider>();
+              return DeviceBackupRestoreService(
+                client: c.read<ApiClient>(),
+                db: db,
+                outbox: c.read<DeviceOperatorOutbox>(),
+                secureStorage: c.read<SecureTokenStorage>(),
+                localDeviceId: c.read<SettingsStore>().readOrCreateDeviceId,
+                actor: () => auth.isLoggedIn && !auth.mustChangePassword
+                    ? auth.profile
+                    : null,
+              );
+            },
           ),
         ChangeNotifierProvider(
           create: (context) {

@@ -32,6 +32,7 @@ enum MobileRole {
         '/users',
         '/models',
         '/sync',
+        '/backup-restore',
         '/dataset',
       }.contains(path),
       management || unsupported => false,

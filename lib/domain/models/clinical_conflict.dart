@@ -11,6 +11,12 @@ class ClinicalConflict {
     this.serverStatus,
     this.serverNote,
     this.serverVersion,
+    this.operation = 'update',
+    this.localLesionRating,
+    this.serverLesionRating,
+    this.serverValidationDeletedAt,
+    this.serverValidationDeletedBy,
+    this.requiresExplicitRating = false,
   });
 
   final String clientOpId;
@@ -22,6 +28,14 @@ class ClinicalConflict {
   final String? serverStatus;
   final String? serverNote;
   final int? serverVersion;
+  final String operation;
+  final int? localLesionRating;
+  final int? serverLesionRating;
+  final DateTime? serverValidationDeletedAt;
+  final String? serverValidationDeletedBy;
+  final bool requiresExplicitRating;
 
-  bool get hasServerSnapshot => serverStatus != null && serverVersion != null;
+  bool get isDelete => operation == 'delete_validation';
+  bool get serverDeleted => serverValidationDeletedAt != null;
+  bool get hasServerSnapshot => serverVersion != null;
 }

@@ -48,6 +48,7 @@ class _OperatorSyncScreenState extends State<OperatorSyncScreen> {
     setState(() => _busy = true);
     try {
       final device = await context.read<ApiClient>().deviceIdentity.read();
+      await service.prepareImageRepairs();
       final summary = await service.queueSummary();
       if (!_current || !identical(actor, _actor)) return;
       setState(() {

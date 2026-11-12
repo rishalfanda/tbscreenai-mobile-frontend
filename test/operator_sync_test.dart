@@ -643,7 +643,17 @@ void main() {
       await activate();
       client.dio.httpClientAdapter = _Adapter((o) {
         if (o.path == '/sync/operator/push') return (200, receipt(o));
-        if (o.path.endsWith('/heatmap')) {
+        if (o.uri.path == '/openapi.json') {
+          return (
+            200,
+            {
+              'paths': {
+                '/api/v1/diagnoses/{diagnosis_id}/lung-map': {'put': {}},
+              },
+            },
+          );
+        }
+        if (o.path.endsWith('/heatmap') || o.path.endsWith('/lung-map')) {
           return (
             200,
             {
@@ -698,6 +708,109 @@ void main() {
       expect(masks!.lesionPng, original.bytes);
       expect(masks.legend.single.name, 'cavity');
       expect((await db.findDiagnosis(diagnosis))!.saveStatus, 'saved');
+    },
+  );
+
+  test(
+    'missing lung-map support retains only unfinished maps after X-ray and lesion ACK, then resumes without resend',
+    () async {
+      await seed(image: true);
+      final original = await xray.read('local-encrypted://$diagnosis');
+      final refs = <String, dynamic>{'lung_area_px': 4, 'legend': []};
+      for (final kind in ['xray', 'lung', 'lesion']) {
+        refs[kind] = await xray.persist(
+          artifactId: '$diagnosis:$kind',
+          image: original,
+        );
+      }
+      await db.upsertDiagnosis(
+        (await db.findDiagnosis(diagnosis))!
+            .toCompanion(false)
+            .copyWith(
+              clinicalSnapshot: Value(jsonEncode({'segmentation_v1': refs})),
+            ),
+      );
+      await handoff();
+      await activate();
+      var supportsLung = false,
+          originals = 0,
+          lesions = 0,
+          lungs = 0,
+          records = 0;
+      final calls = <String>[];
+      client.dio.httpClientAdapter = _Adapter((o) {
+        calls.add(o.path);
+        if (o.path == '/sync/operator/push') {
+          records++;
+          return (200, receipt(o));
+        }
+        if (o.uri.path == '/openapi.json') {
+          return (
+            200,
+            {
+              'paths': {
+                if (supportsLung)
+                  '/api/v1/diagnoses/{diagnosis_id}/lung-map': {'put': {}},
+              },
+            },
+          );
+        }
+        if (o.path.endsWith('/heatmap') || o.path.endsWith('/lung-map')) {
+          if (o.path.endsWith('/heatmap')) {
+            lesions++;
+          } else {
+            lungs++;
+          }
+          expect(o.headers['X-Content-SHA256'], original.checksumSha256);
+          return (
+            200,
+            {
+              'diagnosis_id': diagnosis,
+              'sha256': original.checksumSha256,
+              'size_bytes': original.sizeBytes,
+              'created': true,
+            },
+          );
+        }
+        if (o.path == '/blobs/init') {
+          originals++;
+          final body = o.data as Map;
+          return (
+            200,
+            {
+              'upload_id': 'synthetic-upload',
+              'diagnosis_id': diagnosis,
+              'size_bytes': body['size_bytes'],
+              'chunk_count': body['chunk_count'],
+              'chunk_size': body['chunk_size'],
+              'received_chunks': [0],
+              'status': 'completed',
+              'image_id': 'synthetic-image',
+            },
+          );
+        }
+        throw StateError('Unexpected request');
+      });
+      final first = await service().push(refreshCache: false);
+      expect(first.applied, 1);
+      expect(first.blocked, 1);
+      expect(await service().queuedCount(), 1);
+      expect(originals, 1);
+      expect(lesions, 1);
+      expect(lungs, 0);
+      expect(
+        calls.indexOf('/blobs/init'),
+        lessThan(calls.indexOf('/diagnoses/$diagnosis/heatmap')),
+      );
+      supportsLung = true;
+      final second = await service().push(refreshCache: false);
+      expect(second.skipped, 1);
+      expect(second.blocked, 0);
+      expect(await service().queuedCount(), 0);
+      expect(originals, 1);
+      expect(lesions, 1);
+      expect(lungs, 1);
+      expect(records, 2);
     },
   );
 
@@ -1933,6 +2046,84 @@ void main() {
       expect(await client.deviceIdentity.read(), isNotNull);
       expect(await db.getSetting('tablet_activation_nonce_v1'), isNull);
       await expectLater(activate(), throwsStateError);
+    },
+  );
+  test(
+    'old received archives repair image uploads without replaying diagnosis metadata',
+    () async {
+      await seed(image: true);
+      final image = await xray.read('local-encrypted://$diagnosis');
+      await xray.persist(artifactId: '$diagnosis:lung', image: image);
+      await handoff();
+      await activate();
+      final old = (await service().queued()).singleWhere(
+        (e) => (e['op'] as Map)['entityType'] == 'diagnosis',
+      );
+      old['record_synced'] = true;
+      await outbox.retainReceived(old);
+      await outbox.remove((old['op'] as Map)['clientOpId'] as String);
+      var diagnosisPushes = 0, lungUploads = 0, xrayChecks = 0;
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.path == '/sync/operator/push') {
+          final item = ((o.data as Map)['items'] as List).single as Map;
+          if (item['entity_type'] == 'diagnosis') diagnosisPushes++;
+          return (200, receipt(o));
+        }
+        if (o.uri.path == '/openapi.json') {
+          return (
+            200,
+            {
+              'paths': {
+                '/api/v1/diagnoses/{diagnosis_id}/lung-map': {'put': {}},
+              },
+            },
+          );
+        }
+        if (o.path.endsWith('/lung-map')) {
+          lungUploads++;
+          return (
+            200,
+            {
+              'diagnosis_id': diagnosis,
+              'sha256': image.checksumSha256,
+              'size_bytes': image.sizeBytes,
+              'created': true,
+            },
+          );
+        }
+        if (o.path == '/blobs/init') {
+          xrayChecks++;
+          final b = o.data as Map;
+          return (
+            200,
+            {
+              'upload_id': 'old-image',
+              'diagnosis_id': diagnosis,
+              'size_bytes': b['size_bytes'],
+              'chunk_count': b['chunk_count'],
+              'chunk_size': b['chunk_size'],
+              'received_chunks': [0],
+              'status': 'completed',
+              'image_id': 'old-image-id',
+            },
+          );
+        }
+        throw StateError('Unexpected test request ${o.path}');
+      });
+      await service().prepareImageRepairs();
+      await service().prepareImageRepairs();
+      expect(
+        await service().queuedCount(),
+        2,
+        reason: 'Patient plus one image repair, no duplicates',
+      );
+      final report = await service().push(refreshCache: false);
+      expect(report.failed, 0);
+      expect(diagnosisPushes, 0);
+      expect(xrayChecks, 1);
+      expect(lungUploads, 1);
+      await service().prepareImageRepairs();
+      expect(await service().queuedCount(), 0);
     },
   );
 }
