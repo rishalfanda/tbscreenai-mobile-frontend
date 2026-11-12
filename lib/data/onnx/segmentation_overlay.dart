@@ -24,6 +24,7 @@ Future<SegmentationOverlays?> renderSegmentationOverlays({
       lungMask: result.lungMask,
       labelMap: result.labelMap,
       palette: result.lesionPaletteRgb,
+      lesionNames: result.lesionNames,
     ),
   );
   if (rendered == null) return null;
@@ -44,6 +45,7 @@ Future<SegmentationOverlays?> renderSegmentationOverlays({
     xrayPng: rendered.xray,
     lungPng: rendered.lung,
     lesionPng: rendered.lesion,
+    lesionLayerPngs: rendered.lesionLayers,
     legend: legend,
     lungAreaPx: result.lungAreaPx,
   );
@@ -54,11 +56,13 @@ class _RenderedPngs {
     required this.xray,
     required this.lung,
     required this.lesion,
+    required this.lesionLayers,
   });
 
   final Uint8List xray;
   final Uint8List lung;
   final Uint8List lesion;
+  final Map<String, Uint8List> lesionLayers;
 }
 
 class _OverlayRequest {
@@ -69,6 +73,7 @@ class _OverlayRequest {
     required this.lungMask,
     required this.labelMap,
     required this.palette,
+    required this.lesionNames,
   });
 
   final Uint8List xrayBytes;
@@ -77,6 +82,7 @@ class _OverlayRequest {
   final Uint8List lungMask;
   final Int16List labelMap;
   final List<List<int>> palette;
+  final List<String> lesionNames;
 }
 
 _RenderedPngs? _render(_OverlayRequest req) {
@@ -124,10 +130,35 @@ _RenderedPngs? _render(_OverlayRequest req) {
         ? backdrop
         : decoded;
 
+    final classCount = req.lesionNames.length < req.palette.length
+        ? req.lesionNames.length
+        : req.palette.length;
+    final hasClass = List<bool>.filled(classCount, false);
+    for (final cls in req.labelMap) {
+      if (cls >= 0 && cls < classCount) hasClass[cls] = true;
+    }
+    final lesionLayers = <String, Uint8List>{};
+    for (var i = 0; i < classCount; i++) {
+      if (!hasClass[i]) continue;
+      final layerGrid = _lesionClassLayer(req, classIndex: i);
+      final finalLayer = (req.width == origW && req.height == origH)
+          ? layerGrid
+          : img.copyResize(
+              layerGrid,
+              width: origW,
+              height: origH,
+              interpolation: img.Interpolation.linear,
+            );
+      lesionLayers[req.lesionNames[i].toLowerCase()] = Uint8List.fromList(
+        img.encodePng(finalLayer),
+      );
+    }
+
     return _RenderedPngs(
       xray: Uint8List.fromList(img.encodePng(finalXray)),
       lung: Uint8List.fromList(img.encodePng(finalLung)),
       lesion: Uint8List.fromList(img.encodePng(finalLesion)),
+      lesionLayers: lesionLayers,
     );
   } catch (_) {
     return null;
@@ -163,6 +194,21 @@ img.Image _lesionOverlay(img.Image backdrop, _OverlayRequest req) {
     }
   }
   return canvas;
+}
+
+img.Image _lesionClassLayer(_OverlayRequest req, {required int classIndex}) {
+  final h = req.height, w = req.width;
+  final c = req.palette[classIndex];
+  final layer = img.Image(width: w, height: h, numChannels: 4);
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      // Non-lesion pixels keep the class RGB with 0 alpha so bilinear
+      // upscaling stays free of dark edge fringes.
+      final alpha = req.labelMap[y * w + x] == classIndex ? 140 : 0;
+      layer.setPixelRgba(x, y, c[0], c[1], c[2], alpha);
+    }
+  }
+  return layer;
 }
 
 void _blend(img.Image im, int x, int y, int r, int g, int b, double a) {

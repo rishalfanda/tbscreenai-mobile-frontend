@@ -413,10 +413,28 @@ class DeviceOperatorOutbox {
         if (imagePending) serialized['status'] = syncPending;
         final overlays = <Map<String, dynamic>>[];
         if (diagnosis != null) {
-          for (final kind in ['xray', 'lung', 'lesion']) {
-            final overlay = await db.findEncryptedArtifact(
-              '${diagnosis.id}:$kind',
-            );
+          final artifactIds = <String>[
+            '${diagnosis.id}:xray',
+            '${diagnosis.id}:lung',
+            '${diagnosis.id}:lesion',
+          ];
+          try {
+            final decoded = jsonDecode(diagnosis.clinicalSnapshot);
+            final refs = decoded is Map ? decoded['segmentation_v1'] : null;
+            final rawLayers = refs is Map ? refs['lesion_layers'] : null;
+            if (rawLayers is Map) {
+              final keys =
+                  rawLayers.keys
+                      .map((key) => key.toString().toLowerCase())
+                      .toList()
+                    ..sort();
+              for (final key in keys) {
+                artifactIds.add('${diagnosis.id}:lesion:$key');
+              }
+            }
+          } on FormatException catch (_) {}
+          for (final artifactId in artifactIds) {
+            final overlay = await db.findEncryptedArtifact(artifactId);
             if (overlay == null) continue;
             if (overlay.tenantId != owner.tenantId ||
                 overlay.userId != owner.userId ||

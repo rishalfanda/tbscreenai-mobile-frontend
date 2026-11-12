@@ -4,6 +4,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:myapp/data/onnx/inference_result.dart';
 import 'package:myapp/data/onnx/on_device_diagnosis_repository.dart';
 import 'package:myapp/data/onnx/segmentation_overlay.dart';
@@ -63,6 +64,27 @@ void main() {
       expect(overlays.legend[1].name, 'cavity');
       expect(overlays.legend[1].pixelCount, 0);
       expect(overlays.lungAreaPx, 16);
+
+      // Per-class transparent layers are produced only for detected classes.
+      final gridInput = Uint8List.fromList(
+        img.encodePng(img.Image(width: 4, height: 4)),
+      );
+      final gridOverlays = await renderSegmentationOverlays(
+        xrayBytes: gridInput,
+        result: _fakeResult(grid: 4),
+      );
+      expect(gridOverlays!.lesionLayerPngs.keys, ['consolidation']);
+      expect(
+        gridOverlays.layerFor('CONSOLIDATION'),
+        gridOverlays.lesionLayerPngs['consolidation'],
+      );
+      expect(gridOverlays.layerFor('cavity'), isNull);
+      final layer = img.decodePng(
+        gridOverlays.lesionLayerPngs['consolidation']!,
+      );
+      expect(layer, isNotNull);
+      expect(layer!.getPixel(0, 0).a, greaterThan(0));
+      expect(layer.getPixel(layer.width - 1, layer.height - 1).a, 0);
     });
 
     test('returns null when the X-ray bytes cannot be decoded as an image', () async {

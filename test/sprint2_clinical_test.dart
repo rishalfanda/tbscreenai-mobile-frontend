@@ -221,6 +221,7 @@ void main() {
           xrayPng: png,
           lungPng: png,
           lesionPng: png,
+          lesionLayerPngs: {'cavity': png},
           lungAreaPx: 4,
           legend: const [
             LesionLegendEntry(
@@ -243,8 +244,14 @@ void main() {
         (await db.findEncryptedArtifact('${saved.id}:lesion'))!.cipherText,
         isNot(equals(png)),
       );
+      expect(
+        (await db.findEncryptedArtifact('${saved.id}:lesion:cavity'))!
+            .cipherText,
+        isNot(equals(png)),
+      );
       final restored = await store().restoreLatest();
       expect(restored!.outcome.segmentation!.lesionPng, png);
+      expect(restored.outcome.segmentation!.layerFor('cavity'), png);
       expect(restored.outcome.segmentation!.legend.single.name, 'cavity');
     },
   );

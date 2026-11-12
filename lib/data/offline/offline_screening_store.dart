@@ -122,6 +122,21 @@ class OfflineScreeningStore implements ScreeningStore {
             ),
           );
         }
+        if (segmentation.lesionLayerPngs.isNotEmpty) {
+          final layerRefs = <String, String>{};
+          for (final layer in segmentation.lesionLayerPngs.entries) {
+            final safeKey = layer.key.toLowerCase();
+            layerRefs[safeKey] = await _xrayStore.persist(
+              artifactId: '$diagnosisId:lesion:$safeKey',
+              image: XrayImage.fromBytes(
+                bytes: layer.value,
+                filename: 'lesion_$safeKey.png',
+                source: XrayImageSource.gallery,
+              ),
+            );
+          }
+          refs['lesion_layers'] = layerRefs;
+        }
         clinicalSnapshot['segmentation_v1'] = refs;
       }
       imageReference = await _xrayStore.persist(
@@ -312,10 +327,26 @@ Future<SegmentationOverlays?> readStoredSegmentation(
   final xray = await store.read(refs['xray'] as String);
   final lung = await store.read(refs['lung'] as String);
   final lesion = await store.read(refs['lesion'] as String);
+  final lesionLayers = <String, Uint8List>{};
+  final rawLayers = refs['lesion_layers'];
+  if (rawLayers is Map) {
+    for (final entry in rawLayers.entries) {
+      final safeKey = entry.key.toString().toLowerCase();
+      final ref = entry.value;
+      if (ref != 'local-encrypted://$diagnosisId:lesion:$safeKey') {
+        throw const FormatException(
+          'Segmentation belongs to a different screening.',
+        );
+      }
+      final stored = await store.read(ref as String);
+      lesionLayers[safeKey] = stored.bytes;
+    }
+  }
   return SegmentationOverlays(
     xrayPng: xray.bytes,
     lungPng: lung.bytes,
     lesionPng: lesion.bytes,
+    lesionLayerPngs: lesionLayers,
     lungAreaPx: refs['lung_area_px'] as int,
     legend: [
       for (final e in refs['legend'] as List)
