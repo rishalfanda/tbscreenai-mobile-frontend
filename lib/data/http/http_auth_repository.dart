@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:myapp/data/secure/device_identity_store.dart';
 import 'package:myapp/data/secure/doctor_session_store.dart';
 import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/local/app_database.dart';
@@ -49,13 +50,14 @@ class HttpAuthRepository
     // cache until the replacement account has authenticated successfully.
     final operation = ++_operation;
     _identity = null;
-    await _doctorSession?.clear();
-    _ensureCurrent(operation);
-    _db?.invalidateSession();
+    final clearingDoctorSession = _doctorSession?.clear();
     final clearingTokens = _client.tokens.clear();
+    _db?.invalidateSession();
     final cleanup = _cleanup;
     if (cleanup != null) await cleanup;
+    await clearingDoctorSession;
     await clearingTokens;
+    _ensureCurrent(operation);
     await _outbox?.captureDoctorQueue();
     _ensureCurrent(operation);
 
@@ -157,7 +159,9 @@ class HttpAuthRepository
   }
 
   @override
-  Future<UserProfile?> restoreDoctorSession() async {
+  Future<UserProfile?> restoreDoctorSession({
+    DeviceIdentity? knownDevice,
+  }) async {
     final operation = ++_operation;
     final db = _db;
     final settings = _settings;
@@ -166,28 +170,43 @@ class HttpAuthRepository
       return null;
     }
     try {
-      final device = await _client.deviceIdentity.read();
+      final device = knownDevice ?? await _client.deviceIdentity.read();
       _ensureCurrent(operation);
       if (device == null) {
         await _client.tokens.clear();
         return null;
       }
-      final profile = await _doctorSession.read(device.id, _client.baseUrl);
+      final checks = await Future.wait<Object?>([
+        _doctorSession.read(device.id, _client.baseUrl),
+        settings.readSessionOwner(),
+        settings.readRole(),
+      ]);
+      final profile = checks[0] as UserProfile?;
+      final owner = checks[1] as String?;
+      final role = checks[2] as String?;
       if (profile == null ||
           profile.tenantId != device.tenantId ||
-          await settings.readSessionOwner() !=
-              '${profile.tenantId}:${profile.userId}' ||
-          await settings.readRole() != 'doctor' ||
-          !await _client.tokens.restore(
-            localAuthenticationGranted: true,
-            allowExpiredAccess: true,
-          )) {
+          owner != '${profile.tenantId}:${profile.userId}' ||
+          role != 'doctor') {
+        await _doctorSession.clear();
+        await _client.tokens.clear();
+        return null;
+      }
+      final restored = await Future.wait<Object?>([
+        _client.tokens.restore(
+          localAuthenticationGranted: true,
+          allowExpiredAccess: true,
+          knownOwner: owner,
+        ),
+        settings.readOrCreateDeviceId(),
+      ]);
+      if (restored[0] != true) {
         await _doctorSession.clear();
         await _client.tokens.clear();
         return null;
       }
       _ensureCurrent(operation);
-      final localDevice = await settings.readOrCreateDeviceId();
+      final localDevice = restored[1] as String;
       await db.activateOwner(
         db.sessionGeneration,
         DataOwner(

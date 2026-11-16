@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:myapp/data/http/backend_refusal.dart';
+import 'package:myapp/data/secure/device_identity_store.dart';
 
 import 'package:myapp/domain/models/access_scope.dart';
 import 'package:myapp/domain/models/user_profile.dart';
@@ -64,12 +65,12 @@ class AuthProvider extends ChangeNotifier {
     _notifyIfAlive();
   }
 
-  Future<void> restoreSession() async {
+  Future<void> restoreSession({DeviceIdentity? knownDevice}) async {
     final repo = _authRepository;
     if (repo is! PersistentDoctorAuthRepository) return;
     final generation = ++_generation;
     final profile = await (repo as PersistentDoctorAuthRepository)
-        .restoreDoctorSession();
+        .restoreDoctorSession(knownDevice: knownDevice);
     _ensureCurrent(generation);
     if (profile != null && _hasActiveModel != null) {
       final hasModel = await _hasActiveModel();

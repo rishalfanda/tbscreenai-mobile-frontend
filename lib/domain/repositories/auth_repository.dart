@@ -1,3 +1,4 @@
+import 'package:myapp/data/secure/device_identity_store.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 
 /// Thrown when a clinician attempts to log in but no active verified model is
@@ -25,5 +26,5 @@ abstract interface class PasswordChangeRepository {
 }
 
 abstract interface class PersistentDoctorAuthRepository {
-  Future<UserProfile?> restoreDoctorSession();
+  Future<UserProfile?> restoreDoctorSession({DeviceIdentity? knownDevice});
 }

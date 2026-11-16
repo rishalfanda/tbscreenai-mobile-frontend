@@ -53,13 +53,21 @@ class TokenStore {
   Future<bool> restore({
     required bool localAuthenticationGranted,
     bool allowExpiredAccess = false,
+    String? knownOwner,
   }) {
     if (!localAuthenticationGranted) return Future<bool>.value(false);
     final expectedGeneration = generation;
     return _serializeSecure(() async {
-      final access = await _secureStorage.read(kSecureAccessToken);
-      final refresh = await _secureStorage.read(kSecureRefreshToken);
-      final owner = await _settings?.readSessionOwner();
+      final results = await Future.wait<String?>([
+        _secureStorage.read(kSecureAccessToken),
+        _secureStorage.read(kSecureRefreshToken),
+        knownOwner != null
+            ? Future<String?>.value(knownOwner)
+            : (_settings?.readSessionOwner() ?? Future<String?>.value(null)),
+      ]);
+      final access = results[0];
+      final refresh = results[1];
+      final owner = results[2];
       if (generation != expectedGeneration) return false;
       if (!_matchesOwnerAndExpiry(
             access,

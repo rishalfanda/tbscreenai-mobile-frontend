@@ -364,8 +364,9 @@ class _RouterViewState extends State<_RouterView> with WidgetsBindingObserver {
   Future<void> _initialize(AuthProvider auth) async {
     try {
       final client = context.read<ApiClient>();
-      auth.setDeviceActivated(await client.deviceIdentity.read() != null);
-      if (auth.deviceActivated) await auth.restoreSession();
+      final device = await client.deviceIdentity.read();
+      auth.setDeviceActivated(device != null);
+      if (auth.deviceActivated) await auth.restoreSession(knownDevice: device);
       if (mounted) {
         unawaited(_watchConnectivity());
       }

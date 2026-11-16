@@ -465,6 +465,183 @@ void main() {
       expect(auth2.sessionRefusalCode, 'logout_cleanup_failed');
     },
   );
+
+  test(
+    'P2: DeviceOperatorOutbox decrypts multi-chunk batches in order and restores without losing snapshots',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      final secure = MemorySecureTokenStorage();
+      final outbox = DeviceOperatorOutbox(db, secure);
+      addTearDown(db.close);
+
+      const owner = DataOwner(
+        tenantId: 'hosp-1',
+        userId: 'doc-1',
+        deviceId: 'dev-1',
+      );
+      await db.activateOwner(db.sessionGeneration, owner);
+
+      // Empty restore returns cleanly.
+      await outbox.restoreDoctorQueue();
+      expect(await db.countPatients(), 0);
+
+      // Seed 20 entries (>8 chunk threshold) mixing pending and retained received rows.
+      for (var i = 0; i < 20; i++) {
+        final ts = DateTime.utc(2026, 11, 16, 0, i).toIso8601String();
+        final op = {
+          'clientOpId': 'op-$i',
+          'entityType': 'patient',
+          'entityId': 'pat-$i',
+          'operation': 'create',
+          'payload': '{}',
+          'status': i.isEven ? syncPending : syncSynced,
+          'createdAt': ts,
+          'retryCount': 0,
+          'tenantId': 'hosp-1',
+          'userId': 'doc-1',
+          'deviceId': 'dev-1',
+        };
+        final patient = {
+          'id': 'pat-$i',
+          'code': 'C$i',
+          'name': 'Patient $i',
+          'age': 30 + i,
+          'gender': 'Female',
+          'status': 'Normal',
+          'history': '[]',
+          'tombstone': false,
+          'hasConflict': false,
+          'tenantId': 'hosp-1',
+          'userId': 'doc-1',
+          'deviceId': 'dev-1',
+        };
+        if (i.isEven) {
+          await outbox.save({'op': op, 'patient': patient});
+        } else {
+          await outbox.retainReceived({'op': op, 'patient': patient});
+        }
+      }
+
+      final entries = await outbox.entries(
+        'hosp-1',
+        'dev-1',
+        ownerId: 'doc-1',
+        includeReceived: true,
+      );
+      expect(entries.length, 20);
+      for (var i = 0; i < 20; i++) {
+        expect((entries[i]['op'] as Map)['clientOpId'], 'op-$i');
+      }
+
+      // Restore populates SQLite patients and queued sync ops.
+      await db.clearSessionData();
+      await db.activateOwner(db.sessionGeneration, owner);
+      await db.putSetting(kUserRole, 'doctor');
+      await outbox.restoreDoctorQueue();
+      expect(await db.countPatients(), 20);
+      expect((await db.pendingOps()).length, 10);
+    },
+  );
+
+  test(
+    'P3: AuthProvider.restoreSession(knownDevice) avoids re-reading device identity and duplicate session_owner SQLite queries',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      final spyStorage = _CountingSecureStorage();
+      final settings = _CountingSettingsStore(db);
+      final client = ApiClient(
+        baseUrl: 'https://synthetic.invalid/api/v1',
+        settings: settings,
+        secureStorage: spyStorage,
+      );
+      addTearDown(() async {
+        await client.close();
+        await db.close();
+      });
+
+      await client.deviceIdentity.saveActivation({
+        'device_id': 'dev-1',
+        'tenant_id': 'hosp-1',
+        'credential': 'cred-1',
+        'label': 'Tablet 1',
+        'status': 'active',
+      });
+      final device = (await client.deviceIdentity.read())!;
+
+      final exp = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
+      final header = base64Url.encode(utf8.encode('{"alg":"HS256","typ":"JWT"}'));
+      final body = base64Url.encode(
+        utf8.encode(
+          jsonEncode({'sub': 'doc-1', 'tenant_id': 'hosp-1', 'exp': exp}),
+        ),
+      );
+      final jwt = '$header.$body.sig';
+
+      await settings.saveIdentity(
+        userId: 'doc-1',
+        tenantId: 'hosp-1',
+        role: 'doctor',
+        displayName: 'Dr. One',
+        email: 'doc1@example.invalid',
+      );
+      await client.tokens.update(access: jwt, refresh: 'refresh-1');
+      final doctorSession = DoctorSessionStore(spyStorage);
+      await doctorSession.save(
+        const UserProfile(
+          userId: 'doc-1',
+          tenantId: 'hosp-1',
+          displayName: 'Dr. One',
+          email: 'doc1@example.invalid',
+          role: 'doctor',
+        ),
+        device.id,
+        client.baseUrl,
+      );
+
+      spyStorage.resetCounts();
+      settings.resetCounts();
+
+      final repo = HttpAuthRepository(
+        client,
+        settings: settings,
+        db: db,
+        doctorSession: doctorSession,
+      );
+      final auth = AuthProvider(repo);
+      addTearDown(auth.dispose);
+
+      await auth.restoreSession(knownDevice: device);
+      expect(auth.isLoggedIn, isTrue);
+      expect(spyStorage.readsByKey['registered_tablet_identity_v1'] ?? 0, 0);
+      expect(settings.sessionOwnerReads, 1);
+    },
+  );
+}
+
+class _CountingSecureStorage extends MemorySecureTokenStorage {
+  final Map<String, int> readsByKey = {};
+
+  void resetCounts() => readsByKey.clear();
+
+  @override
+  Future<String?> read(String key) {
+    readsByKey[key] = (readsByKey[key] ?? 0) + 1;
+    return super.read(key);
+  }
+}
+
+class _CountingSettingsStore extends SettingsStore {
+  _CountingSettingsStore(super.db);
+
+  int sessionOwnerReads = 0;
+
+  void resetCounts() => sessionOwnerReads = 0;
+
+  @override
+  Future<String?> readSessionOwner() {
+    sessionOwnerReads++;
+    return super.readSessionOwner();
+  }
 }
 
 class _FakeAuthRepo implements AuthRepository {

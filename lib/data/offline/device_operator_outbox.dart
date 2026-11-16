@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:drift/drift.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:myapp/data/local/app_database.dart';
@@ -17,17 +18,26 @@ Future<Map<String, dynamic>> _encryptArchive(Map<String, dynamic> input) async {
   };
 }
 
-Future<Map<String, dynamic>> _decryptArchive(Map<String, dynamic> input) async {
-  final box = jsonDecode(input['value'] as String) as Map;
-  final clear = await AesGcm.with256bits().decrypt(
-    SecretBox(
-      base64Decode(box['cipher'] as String),
-      nonce: base64Decode(box['nonce'] as String),
-      mac: Mac(base64Decode(box['mac'] as String)),
-    ),
-    secretKey: SecretKey(input['key'] as List<int>),
-  );
-  return jsonDecode(utf8.decode(clear)) as Map<String, dynamic>;
+Future<List<Map<String, dynamic>>> _decryptArchiveBatch(
+  Map<String, dynamic> input,
+) async {
+  final secretKey = SecretKey(input['key'] as List<int>);
+  final aes = AesGcm.with256bits();
+  final values = input['values'] as List<String>;
+  final out = <Map<String, dynamic>>[];
+  for (final value in values) {
+    final box = jsonDecode(value) as Map;
+    final clear = await aes.decrypt(
+      SecretBox(
+        base64Decode(box['cipher'] as String),
+        nonce: base64Decode(box['nonce'] as String),
+        mac: Mac(base64Decode(box['mac'] as String)),
+      ),
+      secretKey: secretKey,
+    );
+    out.add(jsonDecode(utf8.decode(clear)) as Map<String, dynamic>);
+  }
+  return out;
 }
 
 /// Device handoff storage, separate from every account's visible clinical cache.
@@ -343,24 +353,41 @@ class DeviceOperatorOutbox {
             ))
             .get();
     if (rows.isEmpty) return [];
-    final key = await _key();
+    final keyBytes = await (await _key()).extractBytes();
+    final workerCount = rows.length <= 8
+        ? 1
+        : math.min(4, (rows.length + 7) ~/ 8);
+    final chunkSize = (rows.length + workerCount - 1) ~/ workerCount;
+    final chunks = <List<AppSetting>>[
+      for (var i = 0; i < rows.length; i += chunkSize)
+        rows.sublist(i, math.min(i + chunkSize, rows.length)),
+    ];
+    final decryptedChunks = await Future.wait([
+      for (final chunk in chunks)
+        compute(_decryptArchiveBatch, {
+          'values': [for (final r in chunk) r.value],
+          'key': keyBytes,
+        }),
+    ]);
     final result = <Map<String, dynamic>>[];
-    for (final row in rows) {
-      final entry = await compute(_decryptArchive, {
-        'value': row.value,
-        'key': await key.extractBytes(),
-      });
-      final op = SyncQueueData.fromJson(entry['op'] as Map<String, dynamic>);
-      if (row.key != '$prefix${op.clientOpId}' &&
-          (!includeReceived ||
-              row.key !=
-                  '$cachePrefix${op.userId}:${op.entityType}:${op.entityId}')) {
-        throw const FormatException('Outbox identity mismatch');
-      }
-      if (op.tenantId == tenantId &&
-          op.deviceId == deviceId &&
-          (ownerId == null || op.userId == ownerId)) {
-        result.add(entry);
+    for (var c = 0; c < chunks.length; c++) {
+      final chunk = chunks[c];
+      final entries = decryptedChunks[c];
+      for (var i = 0; i < chunk.length; i++) {
+        final row = chunk[i];
+        final entry = entries[i];
+        final op = SyncQueueData.fromJson(entry['op'] as Map<String, dynamic>);
+        if (row.key != '$prefix${op.clientOpId}' &&
+            (!includeReceived ||
+                row.key !=
+                    '$cachePrefix${op.userId}:${op.entityType}:${op.entityId}')) {
+          throw const FormatException('Outbox identity mismatch');
+        }
+        if (op.tenantId == tenantId &&
+            op.deviceId == deviceId &&
+            (ownerId == null || op.userId == ownerId)) {
+          result.add(entry);
+        }
       }
     }
     result.sort(
@@ -513,36 +540,64 @@ class DeviceOperatorOutbox {
       ownerId: owner.userId,
       includeReceived: true,
     );
+    if (saved.isEmpty) return;
     await db.writeForSession(generation, () async {
+      final needsExistingLookup = saved.any(
+        (entry) =>
+            entry['retired'] != true &&
+            (entry['op'] as Map)['status'] == syncSynced,
+      );
+      final existingPatients = needsExistingLookup
+          ? <String>{
+              for (final row
+                  in await (db.select(db.localPatients)..where(
+                        (t) =>
+                            t.tenantId.equals(owner.tenantId) &
+                            t.userId.equals(owner.userId) &
+                            t.deviceId.equals(owner.deviceId),
+                      ))
+                      .get())
+                row.id,
+            }
+          : <String>{};
+      final existingDiagnoses = needsExistingLookup
+          ? <String>{
+              for (final row
+                  in await (db.select(db.localDiagnoses)..where(
+                        (t) =>
+                            t.tenantId.equals(owner.tenantId) &
+                            t.userId.equals(owner.userId) &
+                            t.deviceId.equals(owner.deviceId),
+                      ))
+                      .get())
+                row.id,
+            }
+          : <String>{};
       for (final entry in saved) {
         if (entry['retired'] == true) continue;
         final archivedOp = SyncQueueData.fromJson(
           entry['op'] as Map<String, dynamic>,
         );
         final received = archivedOp.status == syncSynced;
-        if (entry['patient'] != null &&
-            (!received ||
-                await db.findPatient(
-                      (entry['patient'] as Map)['id'] as String,
-                    ) ==
-                    null)) {
-          await db.upsertPatient(
-            LocalPatient.fromJson(
-              entry['patient'] as Map<String, dynamic>,
-            ).toCompanion(true),
-          );
+        if (entry['patient'] != null) {
+          final patientMap = entry['patient'] as Map<String, dynamic>;
+          final patientId = patientMap['id'] as String;
+          if (!received || !existingPatients.contains(patientId)) {
+            await db.upsertPatient(
+              LocalPatient.fromJson(patientMap).toCompanion(true),
+            );
+            existingPatients.add(patientId);
+          }
         }
-        if (entry['diagnosis'] != null &&
-            (!received ||
-                await db.findDiagnosis(
-                      (entry['diagnosis'] as Map)['id'] as String,
-                    ) ==
-                    null)) {
-          await db.upsertDiagnosis(
-            LocalDiagnose.fromJson(
-              entry['diagnosis'] as Map<String, dynamic>,
-            ).toCompanion(true),
-          );
+        if (entry['diagnosis'] != null) {
+          final diagMap = entry['diagnosis'] as Map<String, dynamic>;
+          final diagId = diagMap['id'] as String;
+          if (!received || !existingDiagnoses.contains(diagId)) {
+            await db.upsertDiagnosis(
+              LocalDiagnose.fromJson(diagMap).toCompanion(true),
+            );
+            existingDiagnoses.add(diagId);
+          }
         }
         if (entry['artifact'] != null) {
           await db.upsertEncryptedArtifact(
