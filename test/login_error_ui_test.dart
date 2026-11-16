@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:myapp/app/router/app_router.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/http/http_auth_repository.dart';
@@ -25,6 +27,9 @@ import 'package:myapp/features/auth/presentation/login_screen.dart';
 import 'package:myapp/features/auth/presentation/tablet_activation_screen.dart';
 import 'package:myapp/features/shared/presentation/app_shell.dart';
 import 'package:myapp/state/auth_provider.dart';
+import 'package:myapp/state/institution_provider.dart';
+
+class _LoopbackHttp extends HttpOverrides {}
 
 class _AuthAdapter implements HttpClientAdapter {
   _AuthAdapter(this.handler);
@@ -614,6 +619,346 @@ void main() {
       expect(auth.isLoggedIn, isTrue);
       expect(spyStorage.readsByKey['registered_tablet_identity_v1'] ?? 0, 0);
       expect(settings.sessionOwnerReads, 1);
+    },
+  );
+
+  test(
+    'B5: HttpAuthRepository.login rejects empty role and mismatched registered tenant',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      final secure = MemorySecureTokenStorage();
+      final settings = SettingsStore(db);
+      final client = ApiClient(
+        baseUrl: 'https://synthetic.invalid/api/v1',
+        settings: settings,
+        secureStorage: secure,
+      );
+      addTearDown(() async {
+        await client.close();
+        await db.close();
+      });
+
+      await client.deviceIdentity.saveActivation({
+        'device_id': 'dev-1',
+        'tenant_id': 'hosp-a',
+        'credential': 'cred-1',
+        'label': 'Tablet A',
+        'status': 'active',
+      });
+
+      var role = '';
+      var tenant = 'hosp-a';
+      final adapter = _AuthAdapter((options) {
+        if (options.path == '/auth/login') {
+          return (
+            200,
+            {
+              'access_token': _liveJwt(),
+              'refresh_token': 'ref-1',
+              'user': {
+                'id': 'u-1',
+                'tenant_id': tenant,
+                'full_name': 'User One',
+                'email': 'u1@example.invalid',
+                'role': role,
+              },
+            },
+          );
+        }
+        return (200, {'ok': true});
+      });
+      client.dio.httpClientAdapter = adapter;
+
+      final repo = HttpAuthRepository(client, settings: settings, db: db);
+      await expectLater(
+        repo.login(email: 'u1@example.invalid', password: 'pw'),
+        throwsFormatException,
+      );
+
+      role = 'doctor';
+      tenant = 'hosp-b';
+      adapter.paths.clear();
+      await expectLater(
+        repo.login(email: 'u1@example.invalid', password: 'pw'),
+        throwsFormatException,
+      );
+      expect(adapter.paths, ['/auth/login', '/auth/logout']);
+      expect(client.tokens.hasSession, isFalse);
+    },
+  );
+
+  test(
+    'B6 & B7: ApiClient skips refresh on change-password 401 credential codes and supplies session_ended on repeatedUnauthorized',
+    () => HttpOverrides.runWithHttpOverrides(() async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final paths = <String>[];
+      server.listen((request) async {
+        await request.drain<void>();
+        paths.add(request.uri.path);
+        request.response.headers.contentType = ContentType.json;
+        if (request.uri.path.endsWith('/auth/change-password')) {
+          request.response.statusCode = 401;
+          request.response.write(
+            jsonEncode({
+              'detail': {'code': 'current_password_wrong'},
+            }),
+          );
+        } else if (request.uri.path.endsWith('/auth/refresh')) {
+          request.response.statusCode = 200;
+          request.response.write(
+            jsonEncode({'access_token': 'acc-2', 'refresh_token': 'ref-2'}),
+          );
+        } else {
+          request.response.statusCode = 401;
+          request.response.write('{}');
+        }
+        await request.response.close();
+      });
+
+      final db = AppDatabase(NativeDatabase.memory());
+      final secure = MemorySecureTokenStorage();
+      final client = ApiClient(
+        baseUrl: 'http://127.0.0.1:${server.port}/api/v1',
+        settings: SettingsStore(db),
+        secureStorage: secure,
+        initialAccessToken: 'acc-1',
+        initialRefreshToken: 'ref-1',
+      );
+      final events = <SessionExpiredEvent>[];
+      final sub = client.sessionExpired.listen(events.add);
+      try {
+        await expectLater(
+          client.dio.post<void>('/auth/change-password', data: {}),
+          throwsA(isA<DioException>()),
+        );
+        expect(paths, ['/api/v1/auth/change-password']);
+        expect(events, isEmpty);
+        expect(client.tokens.hasSession, isTrue);
+
+        await expectLater(
+          client.dio.get<void>('/patients'),
+          throwsA(isA<DioException>()),
+        );
+        expect(events.length, 1);
+        expect(events.single.reason, SessionEndReason.repeatedUnauthorized);
+        expect(events.single.code, 'session_ended');
+      } finally {
+        await sub.cancel();
+        await client.close();
+        await db.close();
+        await server.close(force: true);
+      }
+    }, _LoopbackHttp()),
+  );
+
+  test(
+    'B6: HttpAuthRepository.changePassword preserves updated session if outbox restore throws',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      final secure = MemorySecureTokenStorage();
+      final settings = SettingsStore(db);
+      final outbox = DeviceOperatorOutbox(db, secure);
+      final client = ApiClient(
+        baseUrl: 'https://synthetic.invalid/api/v1',
+        settings: settings,
+        secureStorage: secure,
+      );
+      addTearDown(() async {
+        await client.close();
+        await db.close();
+      });
+
+      final exp = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
+      final header = base64Url.encode(utf8.encode('{"alg":"HS256","typ":"JWT"}'));
+      final body = base64Url.encode(
+        utf8.encode(
+          jsonEncode({'sub': 'doc-1', 'tenant_id': 'hosp-1', 'exp': exp}),
+        ),
+      );
+      final jwt = '$header.$body.sig';
+
+      client.dio.httpClientAdapter = _AuthAdapter((options) {
+        final forced = options.path == '/auth/login';
+        return (
+          200,
+          {
+            'access_token': forced ? jwt : 'acc-after',
+            'refresh_token': forced ? 'ref-before' : 'ref-after',
+            'user': {
+              'id': 'doc-1',
+              'tenant_id': 'hosp-1',
+              'full_name': 'Doc',
+              'email': 'doc@example.invalid',
+              'role': 'doctor',
+              'must_change_password': forced,
+            },
+          },
+        );
+      });
+
+      // Seed an encrypted outbox row without its AES key so restoreDoctorQueue throws.
+      await db.putSetting('${DeviceOperatorOutbox.prefix}stale', '{"cipher":"x"}');
+
+      final repo = HttpAuthRepository(
+        client,
+        settings: settings,
+        db: db,
+        outbox: outbox,
+      );
+      final auth = AuthProvider(repo);
+      addTearDown(auth.dispose);
+
+      await auth.login(email: 'doc@example.invalid', password: 'temp');
+      expect(auth.mustChangePassword, isTrue);
+
+      await auth.changePassword(
+        currentPassword: 'temp',
+        newPassword: 'new-password-123',
+      );
+      expect(auth.mustChangePassword, isFalse);
+      expect(client.tokens.accessToken, 'acc-after');
+    },
+  );
+
+  testWidgets(
+    'B6 & B7: LoginScreen validates strict email/password and ChangePasswordScreen supports voluntary Back/Cancel + policy error banner',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final db = AppDatabase(NativeDatabase.memory());
+      final client = ApiClient(
+        baseUrl: 'https://synthetic.invalid/api/v1',
+        settings: SettingsStore(db),
+      );
+      final adapter = _AuthAdapter(
+        (_) => (
+          422,
+          {
+            'detail': {'code': 'weak_password'},
+          },
+        ),
+      );
+      client.dio.httpClientAdapter = adapter;
+
+      var loginCalls = 0;
+      final auth = AuthProvider(
+        _FakeAuthRepo(
+          onLogin: () async {
+            loginCalls++;
+            return const UserProfile(
+              userId: 'doc-1',
+              tenantId: 'hosp-1',
+              displayName: 'Doc',
+              email: 'doc@example.invalid',
+              role: 'doctor',
+            );
+          },
+          onLogout: () async {},
+        ),
+      );
+      final language = AppLanguage();
+      addTearDown(() async {
+        auth.dispose();
+        language.dispose();
+        await client.close();
+        await db.close();
+      });
+
+      await tester.pumpWidget(_wrapAuth(const LoginScreen(), auth, language));
+      await tester.enterText(find.byType(TextFormField).at(0), 'user@host');
+      await tester.enterText(find.byType(TextFormField).at(1), '   ');
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign In'));
+      await tester.pump();
+      expect(loginCalls, 0);
+      expect(find.text('Enter a valid email'), findsOneWidget);
+      expect(find.text('Password is required'), findsOneWidget);
+
+      // Forced password change hides Back and Cancel.
+      final forcedAuth = AuthProvider(
+        HttpAuthRepository(client, db: db),
+        initialProfile: const UserProfile(
+          userId: 'doc-1',
+          tenantId: 'hosp-1',
+          displayName: 'Doc',
+          email: 'doc@example.invalid',
+          role: 'doctor',
+          mustChangePassword: true,
+        ),
+      );
+      addTearDown(forcedAuth.dispose);
+      await tester.pumpWidget(
+        _wrapAuth(const ChangePasswordScreen(), forcedAuth, language),
+      );
+      expect(find.byKey(const Key('change-password-back-button')), findsNothing);
+      expect(
+        find.byKey(const Key('change-password-cancel-button')),
+        findsNothing,
+      );
+
+      // Voluntary password change exposes Back/Cancel, maps 422 weak_password to AuthErrorBanner, and returns home.
+      final voluntaryAuth = AuthProvider(
+        HttpAuthRepository(client, db: db),
+        initialProfile: const UserProfile(
+          userId: 'tech-1',
+          tenantId: 'sardjito',
+          displayName: 'Tech',
+          email: 'tech@example.invalid',
+          role: 'technician',
+          mustChangePassword: false,
+        ),
+      );
+      final router = AppRouter.create(voluntaryAuth);
+      final engine = OnnxInferenceEngine();
+      addTearDown(() async {
+        router.dispose();
+        voluntaryAuth.dispose();
+        await engine.dispose();
+      });
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: voluntaryAuth),
+            ChangeNotifierProvider.value(value: language),
+            ChangeNotifierProvider(create: (_) => InstitutionProvider()),
+            Provider<ValidationRepository>.value(
+              value: MockValidationRepository(),
+            ),
+            Provider<OnnxInferenceEngine>.value(value: engine),
+            Provider<ApiClient>.value(value: client),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      router.go('/change-password');
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('change-password-back-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('change-password-cancel-button')),
+        findsOneWidget,
+      );
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'old-pass-1');
+      await tester.enterText(find.byType(TextFormField).at(1), 'new-pass-123');
+      await tester.enterText(find.byType(TextFormField).at(2), 'new-pass-123');
+      await tester.tap(find.text('Save password'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AuthErrorBanner), findsOneWidget);
+      expect(
+        find.text('New password does not meet security requirements.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('change-password-cancel-button')));
+      await tester.pumpAndSettle();
+      expect(router.routeInformationProvider.value.uri.path, '/users');
     },
   );
 }

@@ -349,13 +349,19 @@ class ApiClient {
         error.response?.statusCode != 401 ||
         options.path == '/auth/login' ||
         options.path == '/auth/refresh' ||
-        options.path == '/devices/activation') {
+        options.path == '/devices/activation' ||
+        (options.path == '/auth/change-password' &&
+            (code == 'current_password_wrong' ||
+                code == 'password_unchanged'))) {
       return handler.next(error);
     }
 
     final retryCount = options.extra[_authRetryCountKey] as int? ?? 0;
     if (retryCount >= 1) {
-      await _expire(SessionEndReason.repeatedUnauthorized);
+      await _expire(
+        SessionEndReason.repeatedUnauthorized,
+        code: code ?? 'session_ended',
+      );
       return handler.next(error);
     }
 

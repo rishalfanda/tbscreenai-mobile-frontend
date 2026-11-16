@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
@@ -400,17 +401,36 @@ class _NavRail extends StatelessWidget {
               try {
                 auth = Provider.of<AuthProvider?>(context);
               } catch (_) {}
-              return IconButton(
-                tooltip: context.trRead('Keluar', 'Sign out'),
-                color: Colors.white,
-                onPressed: auth?.isBusy == true
-                    ? null
-                    : () => unawaited(
-                        context.read<AuthProvider>().logout().catchError(
-                          (Object _) {},
-                        ),
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (AppConfig.useHttp &&
+                      auth?.mobileRole == MobileRole.technician)
+                    IconButton(
+                      key: const ValueKey('technician-change-password'),
+                      tooltip: context.trRead(
+                        'Ganti password',
+                        'Change password',
                       ),
-                icon: const Icon(Icons.logout),
+                      color: Colors.white,
+                      onPressed: auth?.isBusy == true
+                          ? null
+                          : () => context.go('/change-password'),
+                      icon: const Icon(Icons.key_outlined),
+                    ),
+                  IconButton(
+                    tooltip: context.trRead('Keluar', 'Sign out'),
+                    color: Colors.white,
+                    onPressed: auth?.isBusy == true
+                        ? null
+                        : () => unawaited(
+                            context.read<AuthProvider>().logout().catchError(
+                              (Object _) {},
+                            ),
+                          ),
+                    icon: const Icon(Icons.logout),
+                  ),
+                ],
               );
             },
           ),

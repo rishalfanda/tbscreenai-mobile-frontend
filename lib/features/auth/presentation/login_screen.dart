@@ -51,7 +51,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       _passwordController.clear();
       setState(() => _isSubmitting = false);
-      context.go(
+      GoRouter.maybeOf(context)?.go(
         auth.mustChangePassword ? '/change-password' : auth.mobileRole.home,
       );
     } catch (failure) {
@@ -122,35 +122,50 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: AuthErrorBanner(message: bannerMessage),
               ),
             const SizedBox(height: 24),
-            TextFormField(
-              controller: _emailController,
-              enabled: !_isSubmitting,
-              keyboardType: TextInputType.emailAddress,
-              onChanged: (_) => _clearErrorOnEdit(),
-              decoration: InputDecoration(
-                labelText: context.trRead('Email', 'Email'),
-                prefixIcon: const Icon(Icons.mail_outline),
+            AutofillGroup(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextFormField(
+                    controller: _emailController,
+                    enabled: !_isSubmitting,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.email],
+                    onChanged: (_) => _clearErrorOnEdit(),
+                    decoration: InputDecoration(
+                      labelText: context.trRead('Email', 'Email'),
+                      prefixIcon: const Icon(Icons.mail_outline),
+                    ),
+                    validator: (v) =>
+                        v == null ||
+                            !RegExp(
+                              r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
+                            ).hasMatch(v.trim())
+                        ? context.trRead(
+                            'Masukkan email yang valid',
+                            'Enter a valid email',
+                          )
+                        : null,
+                  ),
+                  const SizedBox(height: 20),
+                  SecretFormField(
+                    controller: _passwordController,
+                    label: context.trRead('Password', 'Password'),
+                    enabled: !_isSubmitting,
+                    autofillHints: const [AutofillHints.password],
+                    textInputAction: TextInputAction.done,
+                    onChanged: (_) => _clearErrorOnEdit(),
+                    validator: (v) => v == null || v.trim().isEmpty
+                        ? context.trRead(
+                            'Password wajib diisi',
+                            'Password is required',
+                          )
+                        : null,
+                    onSubmitted: (_) => _isSubmitting ? null : _submit(),
+                  ),
+                ],
               ),
-              validator: (v) => v == null || !v.contains('@')
-                  ? context.trRead(
-                      'Masukkan email yang valid',
-                      'Enter a valid email',
-                    )
-                  : null,
-            ),
-            const SizedBox(height: 20),
-            SecretFormField(
-              controller: _passwordController,
-              label: context.trRead('Password', 'Password'),
-              enabled: !_isSubmitting,
-              onChanged: (_) => _clearErrorOnEdit(),
-              validator: (v) => v == null || v.isEmpty
-                  ? context.trRead(
-                      'Password wajib diisi',
-                      'Password is required',
-                    )
-                  : null,
-              onSubmitted: (_) => _isSubmitting ? null : _submit(),
             ),
             const SizedBox(height: 24),
             FilledButton(

@@ -9,6 +9,8 @@ class SecretFormField extends StatefulWidget {
     this.validator,
     this.enabled = true,
     this.maxLength,
+    this.autofillHints,
+    this.textInputAction,
     this.onChanged,
     this.onSubmitted,
   });
@@ -17,6 +19,8 @@ class SecretFormField extends StatefulWidget {
   final String? Function(String?)? validator;
   final bool enabled;
   final int? maxLength;
+  final Iterable<String>? autofillHints;
+  final TextInputAction? textInputAction;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   @override
@@ -33,6 +37,8 @@ class _SecretFormFieldState extends State<SecretFormField> {
     enableSuggestions: false,
     autocorrect: false,
     maxLength: widget.maxLength,
+    autofillHints: widget.autofillHints,
+    textInputAction: widget.textInputAction,
     validator: widget.validator,
     onChanged: widget.onChanged,
     onFieldSubmitted: widget.onSubmitted,

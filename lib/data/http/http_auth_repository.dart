@@ -52,7 +52,6 @@ class HttpAuthRepository
     _identity = null;
     final clearingDoctorSession = _doctorSession?.clear();
     final clearingTokens = _client.tokens.clear();
-    _db?.invalidateSession();
     final cleanup = _cleanup;
     if (cleanup != null) await cleanup;
     await clearingDoctorSession;
@@ -62,7 +61,6 @@ class HttpAuthRepository
     _ensureCurrent(operation);
 
     final tokenGeneration = _client.tokens.generation;
-    final databaseGeneration = _db?.sessionGeneration;
     final response = await _client.dio.post<Map<String, dynamic>>(
       '/auth/login',
       data: {'email': email, 'password': password},
@@ -89,8 +87,11 @@ class HttpAuthRepository
         tenantId is! String ||
         tenantId.isEmpty ||
         displayName is! String ||
+        displayName.trim().isEmpty ||
         userEmail is! String ||
+        userEmail.trim().isEmpty ||
         role is! String ||
+        role.trim().isEmpty ||
         (user.containsKey('must_change_password') &&
             user['must_change_password'] is! bool)) {
       throw const FormatException('Authenticated user identity is incomplete');
@@ -115,14 +116,24 @@ class HttpAuthRepository
       }
     }
 
+    final device = await _client.deviceIdentity.read();
+    _ensureCurrent(operation, tokenGeneration: tokenGeneration);
+    if (device != null && device.tenantId != profile.tenantId) {
+      await _trackCleanup(() => _revokeServerSession(access));
+      throw const FormatException(
+        'Authenticated tenant does not match tablet registration',
+      );
+    }
+
     try {
       final settings = _settings;
       final database = _db;
       if (database != null && settings != null) {
         final deviceId = await settings.readOrCreateDeviceId();
         _ensureCurrent(operation, tokenGeneration: tokenGeneration);
+        database.invalidateSession();
         await database.activateOwner(
-          databaseGeneration!,
+          database.sessionGeneration,
           DataOwner(tenantId: tenantId, userId: userId, deviceId: deviceId),
         );
         _ensureCurrent(operation, tokenGeneration: tokenGeneration);
@@ -148,8 +159,6 @@ class HttpAuthRepository
       }
       rethrow;
     }
-    final device = await _client.deviceIdentity.read();
-    _ensureCurrent(operation);
     if (device != null && device.tenantId == profile.tenantId) {
       await _doctorSession?.save(profile, device.id, _client.baseUrl);
     }
@@ -278,8 +287,6 @@ class HttpAuthRepository
     }
     await _client.tokens.replaceSession(access: access, refresh: refresh);
     _ensureCurrent(operation);
-    await _outbox?.restoreDoctorQueue();
-    _ensureCurrent(operation);
     final updated = UserProfile(
       userId: user['id'] as String,
       tenantId: user['tenant_id'] as String,
@@ -288,10 +295,19 @@ class HttpAuthRepository
       role: user['role'] as String,
     );
     final device = await _client.deviceIdentity.read();
+    _ensureCurrent(operation);
     if (device != null && device.tenantId == updated.tenantId) {
       await _doctorSession?.save(updated, device.id, _client.baseUrl);
     }
+    _ensureCurrent(operation);
     _identity = updated;
+    try {
+      await _outbox?.restoreDoctorQueue();
+    } catch (_) {
+      // Password and tokens are already committed on server and secure storage;
+      // retain the updated session rather than misreporting password failure.
+    }
+    _ensureCurrent(operation);
     return updated;
   }
 
