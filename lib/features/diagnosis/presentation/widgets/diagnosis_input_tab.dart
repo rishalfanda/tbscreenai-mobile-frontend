@@ -1,3 +1,4 @@
+import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/localization/app_text.dart';
 import 'package:myapp/core/config/app_config.dart';
 import 'dart:async';
@@ -142,30 +143,48 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     'Other',
   ];
 
+  OnnxInferenceEngine? _readInferenceEngine(BuildContext context) {
+    try {
+      return context.read<OnnxInferenceEngine>();
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     if (widget.hasModelOverride != null) {
       _checkingModel = false;
     } else {
-      context
-          .read<OnnxInferenceEngine>()
-          .ready
-          .then((_) {
-            if (!mounted) return;
-            setState(() {
-              _hasModelReady = context.read<OnnxInferenceEngine>().hasBundle;
-              _checkingModel = false;
-            });
-          })
-          .catchError((Object _) {
-            if (mounted) {
+      final engine = _readInferenceEngine(context);
+      if (engine == null) {
+        _checkingModel = false;
+      } else {
+        engine.ready
+            .then((_) {
+              if (!mounted) return;
+              final readyEngine = _readInferenceEngine(context);
+              final hasBundle = readyEngine?.hasBundle ?? false;
               setState(() {
-                _hasModelReady = false;
+                _hasModelReady = hasBundle;
                 _checkingModel = false;
               });
-            }
-          });
+              if (hasBundle &&
+                  readyEngine != null &&
+                  !readyEngine.isStandbyReady) {
+                unawaited(readyEngine.initiateStandby());
+              }
+            })
+            .catchError((Object _) {
+              if (mounted) {
+                setState(() {
+                  _hasModelReady = false;
+                  _checkingModel = false;
+                });
+              }
+            });
+      }
     }
   }
 
@@ -924,13 +943,68 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     bool checkingModel,
     bool locked,
   ) {
+    final engine = widget.hasModelOverride == null
+        ? _readInferenceEngine(context)
+        : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (!checkingModel && !hasModel) ...[
           const NoModelBanner(),
           const SizedBox(height: 18),
-        ],
+        ] else if (!checkingModel && hasModel && engine != null)
+          ValueListenableBuilder<bool>(
+            valueListenable: engine.isWarmingUp,
+            builder: (context, warmingUp, _) {
+              if (!warmingUp) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Container(
+                  key: const Key('model-warmup-indicator'),
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: diagnosisAccent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: diagnosisAccent.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            diagnosisAccent,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          context.tr(
+                            'Menyiapkan model AI di latar belakang...',
+                            'Preparing AI model in background...',
+                          ),
+                          style: const TextStyle(
+                            color: diagnosisText,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
         IgnorePointer(
           ignoring: locked,
           child: Opacity(

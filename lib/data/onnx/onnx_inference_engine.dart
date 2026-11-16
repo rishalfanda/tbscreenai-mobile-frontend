@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'package:myapp/data/models_ota/model_store.dart';
@@ -33,8 +34,13 @@ class OnnxInferenceEngine {
   Future<bool>? _readyFuture;
   Future<bool>? _standbyFuture;
   bool _isStandbyReady = false;
+  int _standbyGeneration = 0;
   int _activeRuns = 0;
   bool _releasePendingAfterRun = false;
+  bool _disposed = false;
+
+  /// Whether background standby warmup is currently preloading/warming up.
+  final ValueNotifier<bool> isWarmingUp = ValueNotifier<bool>(false);
 
   bool get hasBundle => _executor != null && _store != null;
 
@@ -64,9 +70,11 @@ class OnnxInferenceEngine {
   /// repeatedly — the update pipeline calls it after every activation /
   /// rollback. Returns `false` when no bundle is active.
   Future<bool> init() async {
+    _standbyGeneration++;
     _isStandbyReady = false;
     _standbyFuture = null;
     _releasePendingAfterRun = false;
+    if (!_disposed) isWarmingUp.value = false;
     await _executor?.dispose();
     _executor = null;
     _store = null;
@@ -90,8 +98,10 @@ class OnnxInferenceEngine {
   /// Releases preloaded standby sessions from memory without clearing the
   /// active bundle on disk. Safe to call on app pause, logout, or after smoke tests.
   Future<void> releaseStandby() async {
+    _standbyGeneration++;
     _isStandbyReady = false;
     _standbyFuture = null;
+    if (!_disposed) isWarmingUp.value = false;
     if (_activeRuns > 0) {
       _releasePendingAfterRun = true;
       return;
@@ -103,7 +113,7 @@ class OnnxInferenceEngine {
   /// Preloads all pipeline sessions into memory and warms up inference
   /// so subsequent runs execute without cold-start delay.
   Future<bool> initiateStandby({Uint8List? sampleBytes}) async {
-    if (isStandbyReady) return true;
+    if (isStandbyReady || _disposed) return isStandbyReady;
     final inFlight = _standbyFuture;
     if (inFlight != null) return inFlight;
 
@@ -119,14 +129,25 @@ class OnnxInferenceEngine {
   }
 
   Future<bool> _doInitiateStandby({Uint8List? sampleBytes}) async {
-    final hasActive = await ready;
-    if (!hasActive || _executor == null || _store == null) {
-      _isStandbyReady = false;
-      return false;
-    }
-
+    final standbyGen = _standbyGeneration;
+    if (!_disposed) isWarmingUp.value = true;
     try {
+      final hasActive = await ready;
+      if (!hasActive ||
+          _executor == null ||
+          _store == null ||
+          standbyGen != _standbyGeneration) {
+        _isStandbyReady = false;
+        return false;
+      }
+
       await _executor!.preloadSessions();
+      if (standbyGen != _standbyGeneration) {
+        await _executor?.releaseSessions();
+        _isStandbyReady = false;
+        return false;
+      }
+
       Uint8List? bytes = sampleBytes;
       if (bytes == null) {
         try {
@@ -135,14 +156,21 @@ class OnnxInferenceEngine {
         } catch (_) {}
       }
 
-      if (bytes != null) {
+      if (bytes != null && standbyGen == _standbyGeneration) {
         await run(bytes);
+      }
+      if (standbyGen != _standbyGeneration) {
+        await _executor?.releaseSessions();
+        _isStandbyReady = false;
+        return false;
       }
       _isStandbyReady = true;
       return true;
     } catch (_) {
       _isStandbyReady = false;
       return false;
+    } finally {
+      if (!_disposed) isWarmingUp.value = false;
     }
   }
 
@@ -263,9 +291,12 @@ class OnnxInferenceEngine {
   }
 
   Future<void> dispose() async {
+    _disposed = true;
+    _standbyGeneration++;
     _isStandbyReady = false;
     _standbyFuture = null;
     _releasePendingAfterRun = false;
+    isWarmingUp.dispose();
     await _executor?.dispose();
     _executor = null;
     _store = null;
