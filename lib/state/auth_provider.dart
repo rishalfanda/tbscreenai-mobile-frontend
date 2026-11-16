@@ -7,17 +7,10 @@ import 'package:myapp/domain/models/access_scope.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/domain/repositories/auth_repository.dart';
 
+export 'package:myapp/domain/repositories/auth_repository.dart'
+    show NoActiveModelException;
+
 enum AuthStatus { loggedOut, authenticating, authenticated, loggingOut }
-
-/// Thrown when a clinician attempts to log in but no active verified model is
-/// present on the device.
-class NoActiveModelException implements Exception {
-  const NoActiveModelException();
-
-  @override
-  String toString() =>
-      'NoActiveModelException: Active AI model is required for clinician login.';
-}
 
 /// Single source of truth for the active user and session lifecycle.
 class AuthProvider extends ChangeNotifier {
@@ -62,6 +55,12 @@ class AuthProvider extends ChangeNotifier {
   void setDeviceActivated(bool value) {
     _deviceActivated = value;
     if (value) sessionRefusalCode = null;
+    _notifyIfAlive();
+  }
+
+  void clearSessionRefusal() {
+    if (sessionRefusalCode == null) return;
+    sessionRefusalCode = null;
     _notifyIfAlive();
   }
 
@@ -140,6 +139,7 @@ class AuthProvider extends ChangeNotifier {
         _ensureCurrent(generation);
         if (!hasModel) {
           await _authRepository.logout();
+          await _onSessionEnded?.call();
           throw const NoActiveModelException();
         }
       }
@@ -150,13 +150,15 @@ class AuthProvider extends ChangeNotifier {
       _notifyIfAlive();
     } catch (error) {
       if (!_disposed && generation == _generation) {
-        sessionRefusalCode = refusalFromError(error);
+        sessionRefusalCode = error is NoActiveModelException
+            ? 'no_active_model'
+            : refusalFromError(error);
         if (requiresTabletActivation(sessionRefusalCode)) {
           _deviceActivated = false;
         }
         _profile = null;
         _status = AuthStatus.loggedOut;
-        notifyListeners();
+        _notifyIfAlive();
       }
       rethrow;
     }

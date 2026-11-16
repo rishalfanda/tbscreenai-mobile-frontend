@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/data/http/backend_refusal.dart';
-import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/state/auth_provider.dart';
 import 'package:myapp/core/config/app_config.dart';
 
@@ -22,6 +21,14 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isSubmitting = false;
+  ({String id, String en})? _submitError;
+
+  void _clearErrorOnEdit() {
+    if (_submitError != null) {
+      setState(() => _submitError = null);
+    }
+    context.read<AuthProvider>().clearSessionRefusal();
+  }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
@@ -29,7 +36,11 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     final auth = context.read<AuthProvider>();
-    setState(() => _isSubmitting = true);
+    auth.clearSessionRefusal();
+    setState(() {
+      _isSubmitting = true;
+      _submitError = null;
+    });
     try {
       // Mock resolves synchronously (no visible spinner); Http awaits the
       // backend and surfaces failures instead of navigating blindly.
@@ -39,40 +50,32 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (!mounted) return;
       _passwordController.clear();
+      setState(() => _isSubmitting = false);
       context.go(
         auth.mustChangePassword ? '/change-password' : auth.mobileRole.home,
       );
     } catch (failure) {
       if (!mounted) return;
-      setState(() => _isSubmitting = false);
-      if (failure is NoActiveModelException) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              context.trRead(
-                'Login gagal — belum ada model AI yang aktif. Silakan aktifkan model terlebih dahulu atau hubungi teknisi.',
-                'Login failed — no active AI model found. Please activate a model first or contact a technician.',
-              ),
-            ),
-            backgroundColor: AppTheme.error,
-          ),
-        );
-        return;
-      }
-      final code = refusalFromError(failure);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.trRead(
-              refusalMessage(code, english: false) ??
-                  'Login gagal — periksa email/password atau koneksi server',
-              refusalMessage(code, english: true) ??
-                  'Login failed — check email/password or server connection',
-            ),
-          ),
-          backgroundColor: AppTheme.error,
-        ),
-      );
+      final nextError = failure is NoActiveModelException
+          ? (
+              id: 'Login gagal — belum ada model AI yang aktif. Silakan aktifkan model terlebih dahulu atau hubungi teknisi.',
+              en: 'Login failed — no active AI model found. Please activate a model first or contact a technician.',
+            )
+          : () {
+              final code = refusalFromError(failure);
+              return (
+                id:
+                    refusalMessage(code, english: false) ??
+                    'Login gagal — periksa email/password atau koneksi server',
+                en:
+                    refusalMessage(code, english: true) ??
+                    'Login failed — check email/password or server connection',
+              );
+            }();
+      setState(() {
+        _isSubmitting = false;
+        _submitError = nextError;
+      });
     }
   }
 
@@ -85,9 +88,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!context.watch<AuthProvider>().deviceActivated) {
+    context.watch<AppLanguage?>();
+    final auth = context.watch<AuthProvider>();
+    if (!auth.deviceActivated) {
       return const TabletActivationScreen();
     }
+    final refusalCode = auth.sessionRefusalCode;
+    final bannerMessage = _submitError != null
+        ? context.trRead(_submitError!.id, _submitError!.en)
+        : refusalCode != null
+        ? context.trRead(
+            refusalMessage(refusalCode, english: false) ??
+                'Silakan login kembali.',
+            refusalMessage(refusalCode, english: true) ??
+                'Please sign in again.',
+          )
+        : null;
+
     return AuthFrame(
       child: Form(
         key: _formKey,
@@ -99,29 +116,17 @@ class _LoginScreenState extends State<LoginScreen> {
               context.trRead('Masuk', 'Sign In'),
               style: Theme.of(context).textTheme.headlineSmall,
             ),
-            if (context.watch<AuthProvider>().sessionRefusalCode != null)
+            if (bannerMessage != null)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
-                child: Text(
-                  context.trRead(
-                    refusalMessage(
-                          context.read<AuthProvider>().sessionRefusalCode,
-                          english: false,
-                        ) ??
-                        'Silakan login kembali.',
-                    refusalMessage(
-                          context.read<AuthProvider>().sessionRefusalCode,
-                          english: true,
-                        ) ??
-                        'Please sign in again.',
-                  ),
-                ),
+                child: AuthErrorBanner(message: bannerMessage),
               ),
             const SizedBox(height: 24),
             TextFormField(
               controller: _emailController,
               enabled: !_isSubmitting,
               keyboardType: TextInputType.emailAddress,
+              onChanged: (_) => _clearErrorOnEdit(),
               decoration: InputDecoration(
                 labelText: context.trRead('Email', 'Email'),
                 prefixIcon: const Icon(Icons.mail_outline),
@@ -138,6 +143,7 @@ class _LoginScreenState extends State<LoginScreen> {
               controller: _passwordController,
               label: context.trRead('Password', 'Password'),
               enabled: !_isSubmitting,
+              onChanged: (_) => _clearErrorOnEdit(),
               validator: (v) => v == null || v.isEmpty
                   ? context.trRead(
                       'Password wajib diisi',

@@ -9,6 +9,7 @@ class SecretFormField extends StatefulWidget {
     this.validator,
     this.enabled = true,
     this.maxLength,
+    this.onChanged,
     this.onSubmitted,
   });
   final TextEditingController controller;
@@ -16,6 +17,7 @@ class SecretFormField extends StatefulWidget {
   final String? Function(String?)? validator;
   final bool enabled;
   final int? maxLength;
+  final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   @override
   State<SecretFormField> createState() => _SecretFormFieldState();
@@ -32,6 +34,7 @@ class _SecretFormFieldState extends State<SecretFormField> {
     autocorrect: false,
     maxLength: widget.maxLength,
     validator: widget.validator,
+    onChanged: widget.onChanged,
     onFieldSubmitted: widget.onSubmitted,
     decoration: InputDecoration(
       labelText: widget.label,

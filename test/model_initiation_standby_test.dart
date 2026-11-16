@@ -12,6 +12,7 @@ import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/domain/repositories/auth_repository.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
+import 'package:myapp/features/auth/presentation/auth_frame.dart';
 import 'package:myapp/features/auth/presentation/login_screen.dart';
 import 'package:myapp/features/shared/presentation/app_shell.dart';
 import 'package:myapp/features/shared/presentation/model_initiation_dialog.dart';
@@ -287,9 +288,12 @@ void main() {
       // Login must fail
       expect(auth.isLoggedIn, isFalse);
       expect(auth.status, AuthStatus.loggedOut);
+      expect(auth.sessionRefusalCode, 'no_active_model');
       expect(repo.logoutCalls, 1);
 
-      // Verify guidance message shown in SnackBar
+      // Verify guidance message shown once in AuthErrorBanner (no duplicate SnackBar)
+      expect(find.byType(AuthErrorBanner), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
       expect(
         find.text(
           'Login failed — no active AI model found. Please activate a model first or contact a technician.',

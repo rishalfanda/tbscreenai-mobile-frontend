@@ -6,6 +6,7 @@ import 'package:myapp/data/secure/doctor_session_store.dart';
 import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/settings_store.dart';
+import 'package:myapp/domain/models/access_scope.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/domain/repositories/auth_repository.dart';
 import 'package:myapp/data/offline/device_operator_outbox.dart';
@@ -22,16 +23,19 @@ class HttpAuthRepository
     AppDatabase? db,
     DeviceOperatorOutbox? outbox,
     DoctorSessionStore? doctorSession,
+    Future<bool> Function()? hasActiveModel,
   }) : _settings = settings,
        _db = db,
        _outbox = outbox,
-       _doctorSession = doctorSession;
+       _doctorSession = doctorSession,
+       _hasActiveModel = hasActiveModel;
 
   final DoctorSessionStore? _doctorSession;
   final ApiClient _client;
   final SettingsStore? _settings;
   final AppDatabase? _db;
   final DeviceOperatorOutbox? _outbox;
+  final Future<bool> Function()? _hasActiveModel;
   int _operation = 0;
   Future<void>? _cleanup;
   UserProfile? _identity;
@@ -99,6 +103,15 @@ class HttpAuthRepository
       role: role,
       mustChangePassword: user['must_change_password'] == true,
     );
+
+    if (profile.mobileRole == MobileRole.clinician && _hasActiveModel != null) {
+      final hasModel = await _hasActiveModel();
+      _ensureCurrent(operation, tokenGeneration: tokenGeneration);
+      if (!hasModel) {
+        await _trackCleanup(() => _revokeServerSession(access));
+        throw const NoActiveModelException();
+      }
+    }
 
     try {
       final settings = _settings;
@@ -336,6 +349,17 @@ class HttpAuthRepository
     }
   }
 
+  Future<void> _trackCleanup(Future<void> Function() action) {
+    final previous = _cleanup;
+    final next = previous == null
+        ? action()
+        : previous.then((_) => action(), onError: (Object _) => action());
+    _cleanup = next;
+    return next.whenComplete(() {
+      if (identical(_cleanup, next)) _cleanup = null;
+    });
+  }
+
   Future<void> _clearSession({Future<void>? serverLogout}) {
     final clearedTokens = _client.tokens.clear();
     final clearedDoctorSession = _doctorSession?.clear();
@@ -351,13 +375,6 @@ class HttpAuthRepository
     }
 
     // Serialize cleanup even if expiry and user logout arrive together.
-    final previous = _cleanup;
-    final next = previous == null
-        ? clean()
-        : previous.then((_) => clean(), onError: (Object _) => clean());
-    _cleanup = next;
-    return next.whenComplete(() {
-      if (identical(_cleanup, next)) _cleanup = null;
-    });
+    return _trackCleanup(clean);
   }
 }

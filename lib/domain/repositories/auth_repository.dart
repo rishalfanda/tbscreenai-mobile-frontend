@@ -1,5 +1,15 @@
 import 'package:myapp/domain/models/user_profile.dart';
 
+/// Thrown when a clinician attempts to log in but no active verified model is
+/// present on the device.
+class NoActiveModelException implements Exception {
+  const NoActiveModelException();
+
+  @override
+  String toString() =>
+      'NoActiveModelException: Active AI model is required for clinician login.';
+}
+
 /// Contract for authentication. Mock now, HTTP (JWT) in a later phase.
 abstract class AuthRepository {
   Future<UserProfile> login({required String email, required String password});

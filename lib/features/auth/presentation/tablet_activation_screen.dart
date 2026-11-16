@@ -64,64 +64,67 @@ class _TabletActivationScreenState extends State<TabletActivationScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => AuthFrame(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          context.trRead('Aktivasi tablet', 'Activate tablet'),
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        const SizedBox(height: 24),
-        if (context.watch<AuthProvider>().sessionRefusalCode != null)
+  Widget build(BuildContext context) {
+    context.watch<AppLanguage?>();
+    return AuthFrame(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            context.trRead('Aktivasi tablet', 'Activate tablet'),
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 24),
+          if (context.watch<AuthProvider>().sessionRefusalCode != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: AuthErrorBanner(
+                message: context.trRead(
+                  refusalMessage(
+                        context.read<AuthProvider>().sessionRefusalCode,
+                        english: false,
+                      ) ??
+                      'Aktivasi tablet diperlukan.',
+                  refusalMessage(
+                        context.read<AuthProvider>().sessionRefusalCode,
+                        english: true,
+                      ) ??
+                      'Tablet activation required.',
+                ),
+              ),
+            ),
+          SecretFormField(
+            controller: _code,
+            label: context.trRead('Kode aktivasi', 'Activation code'),
+            maxLength: 64,
+            enabled: !_busy,
+            onSubmitted: (_) => _activate(),
+          ),
+          const SizedBox(height: 8),
           Text(
             context.trRead(
-              refusalMessage(
-                    context.read<AuthProvider>().sessionRefusalCode,
-                    english: false,
-                  ) ??
-                  'Aktivasi tablet diperlukan.',
-              refusalMessage(
-                    context.read<AuthProvider>().sessionRefusalCode,
-                    english: true,
-                  ) ??
-                  'Tablet activation required.',
+              'Masukkan kode aktivasi dari admin. Aktivasi memerlukan koneksi internet.',
+              'Enter the activation code from your administrator. Internet is required.',
             ),
           ),
-        SecretFormField(
-          controller: _code,
-          label: context.trRead('Kode aktivasi', 'Activation code'),
-          maxLength: 64,
-          enabled: !_busy,
-          onSubmitted: (_) => _activate(),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          context.trRead(
-            'Masukkan kode aktivasi dari admin. Aktivasi memerlukan koneksi internet.',
-            'Enter the activation code from your administrator. Internet is required.',
-          ),
-        ),
-        if (_message != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
+          if (_message != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: AuthErrorBanner(message: _message!),
+            ),
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: _busy ? null : _activate,
             child: Text(
-              _message!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              context.trRead(
+                _busy ? 'Memproses...' : 'Aktifkan tablet',
+                _busy ? 'Activating...' : 'Activate tablet',
+              ),
             ),
           ),
-        const SizedBox(height: 24),
-        FilledButton(
-          onPressed: _busy ? null : _activate,
-          child: Text(
-            context.trRead(
-              _busy ? 'Memproses...' : 'Aktifkan tablet',
-              _busy ? 'Activating...' : 'Activate tablet',
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }

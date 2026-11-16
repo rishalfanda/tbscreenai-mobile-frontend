@@ -74,6 +74,18 @@ class TBScreenApp extends StatelessWidget {
     }
     final db = database ?? AppDatabase();
     final secureStorage = secureTokenStorage ?? MemorySecureTokenStorage();
+    final hasActiveModelCheck =
+        hasActiveModelOverride ??
+        () async {
+          if (!useHttp) return true;
+          try {
+            final store = ModelStore();
+            final dir = await store.activeBundleDir();
+            return dir != null;
+          } catch (_) {
+            return false;
+          }
+        };
 
     return MultiProvider(
       providers: [
@@ -152,6 +164,7 @@ class TBScreenApp extends StatelessWidget {
                   doctorSession: DoctorSessionStore(
                     c.read<SecureTokenStorage>(),
                   ),
+                  hasActiveModel: hasActiveModelCheck,
                 )
               : MockAuthRepository(),
         ),
@@ -208,18 +221,7 @@ class TBScreenApp extends StatelessWidget {
             final engine = context.read<OnnxInferenceEngine>();
             return AuthProvider(
               context.read<AuthRepository>(),
-              hasActiveModel:
-                  hasActiveModelOverride ??
-                  () async {
-                    if (!useHttp) return true;
-                    try {
-                      final store = ModelStore();
-                      final dir = await store.activeBundleDir();
-                      return dir != null;
-                    } catch (_) {
-                      return false;
-                    }
-                  },
+              hasActiveModel: hasActiveModelCheck,
               onSessionEnded: () async {
                 await engine.releaseStandby();
               },

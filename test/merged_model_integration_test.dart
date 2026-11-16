@@ -97,6 +97,7 @@ void main() {
         ),
       );
       expect(auth.isLoggedIn, false);
+      expect(auth.sessionRefusalCode, 'no_active_model');
       expect(client.tokens.hasSession, false);
       await tester.pumpWidget(const SizedBox.shrink());
       await fixture.pumpApp(tester);
