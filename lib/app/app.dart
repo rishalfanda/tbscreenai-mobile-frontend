@@ -36,6 +36,7 @@ import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/data/secure/secure_token_storage.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/data/backup/device_backup_restore_service.dart';
+import 'package:myapp/features/auth/presentation/startup_recovery_screen.dart';
 import 'package:myapp/domain/repositories/repositories.dart';
 import 'package:myapp/state/auth_provider.dart';
 import 'package:myapp/state/institution_provider.dart';
@@ -330,7 +331,9 @@ class _RouterViewState extends State<_RouterView> with WidgetsBindingObserver {
 
   bool _ready = !AppConfig.useHttp;
   bool _starting = false;
-  String? _startupError;
+  bool _recovering = false;
+  StartupErrorKind _startupError = StartupErrorKind.none;
+  String? _recoveryError;
   GoRouter? _router;
   ApiClient? _client;
   StreamSubscription<SessionExpiredEvent>? _sessionSubscription;
@@ -364,15 +367,66 @@ class _RouterViewState extends State<_RouterView> with WidgetsBindingObserver {
       if (mounted) {
         setState(() {
           _ready = true;
-          _startupError = null;
+          _startupError = StartupErrorKind.none;
+          _recoveryError = null;
         });
+      }
+    } on FormatException {
+      if (mounted) {
+        setState(
+          () => _startupError = StartupErrorKind.corruptedIdentity,
+        );
       }
     } catch (_) {
       if (mounted) {
         setState(
-          () => _startupError =
-              'Penyimpanan perangkat belum dapat dibaca. Tutup dan buka kembali aplikasi.',
+          () => _startupError = StartupErrorKind.storageUnavailable,
         );
+      }
+    }
+  }
+
+  Future<void> _retryInitialize() async {
+    if (_recovering) return;
+    setState(() {
+      _recovering = true;
+      _recoveryError = null;
+    });
+    await _initialize(context.read<AuthProvider>());
+    if (mounted) {
+      setState(() => _recovering = false);
+    }
+  }
+
+  Future<void> _resetDeviceActivation() async {
+    if (_recovering) return;
+    setState(() {
+      _recovering = true;
+      _recoveryError = null;
+    });
+    try {
+      final client = context.read<ApiClient>();
+      final secureStorage = context.read<SecureTokenStorage>();
+      final auth = context.read<AuthProvider>();
+      await client.deviceIdentity.clearRegistration();
+      await DoctorSessionStore(secureStorage).clear();
+      await client.tokens.clear();
+      auth.sessionRefusalCode = 'device_required';
+      auth.setDeviceActivated(false);
+      if (mounted) {
+        unawaited(_watchConnectivity());
+        setState(() {
+          _ready = true;
+          _startupError = StartupErrorKind.none;
+          _recovering = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _recovering = false;
+          _recoveryError = 'reset_failed';
+        });
       }
     }
   }
@@ -391,14 +445,22 @@ class _RouterViewState extends State<_RouterView> with WidgetsBindingObserver {
     AppConfig.validate();
     if (!_ready) {
       return MaterialApp(
+        locale: context.watch<AppLanguage>().locale,
+        supportedLocales: const [Locale('en'), Locale('id')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
-        home: Scaffold(
-          body: Center(
-            child: _startupError == null
-                ? const CircularProgressIndicator()
-                : Text(_startupError!),
-          ),
-        ),
+        home: _startupError == StartupErrorKind.none
+            ? const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              )
+            : StartupRecoveryScreen(
+                errorKind: _startupError,
+                busy: _recovering,
+                recoveryError: _recoveryError,
+                onRetry: _retryInitialize,
+                onResetActivation: _resetDeviceActivation,
+              ),
       );
     }
     return MaterialApp.router(

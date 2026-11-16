@@ -161,16 +161,17 @@ class HttpAuthRepository
     final operation = ++_operation;
     final db = _db;
     final settings = _settings;
-    final device = await _client.deviceIdentity.read();
-    _ensureCurrent(operation);
-    if (_doctorSession == null ||
-        db == null ||
-        settings == null ||
-        device == null) {
+    if (_doctorSession == null || db == null || settings == null) {
       await _client.tokens.clear();
       return null;
     }
     try {
+      final device = await _client.deviceIdentity.read();
+      _ensureCurrent(operation);
+      if (device == null) {
+        await _client.tokens.clear();
+        return null;
+      }
       final profile = await _doctorSession.read(device.id, _client.baseUrl);
       if (profile == null ||
           profile.tenantId != device.tenantId ||
