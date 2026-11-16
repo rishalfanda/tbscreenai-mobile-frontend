@@ -36,19 +36,23 @@ class AccountScreen extends StatelessWidget {
             child: Text(context.tr('Ganti password', 'Change password')),
           ),
         FilledButton(
-          onPressed: () async {
-            try {
-              await auth.logout();
-            } catch (_) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: AppText('Sign out cleanup failed. Please retry.'),
-                  ),
-                );
-              }
-            }
-          },
+          onPressed: auth.isBusy
+              ? null
+              : () async {
+                  try {
+                    await auth.logout();
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: AppText(
+                            'Sign out cleanup failed. Please retry.',
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                },
           child: const AppText('Sign Out'),
         ),
       ],

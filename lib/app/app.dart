@@ -92,6 +92,7 @@ class TBScreenApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AppLanguage()),
         ChangeNotifierProvider(create: (_) => InstitutionProvider()),
+        Provider<ConnectivityService>(create: (_) => ConnectivityService()),
         // === Section: Local storage & networking ===
         Provider<AppDatabase>.value(value: db),
         Provider<SecureTokenStorage>.value(value: secureStorage),
@@ -287,9 +288,12 @@ class _RouterView extends StatefulWidget {
 }
 
 class _RouterViewState extends State<_RouterView> with WidgetsBindingObserver {
-  final _connectivity = ConnectivityService();
+  ConnectivityService? _connectivity;
   StreamSubscription<bool>? _connectivitySubscription;
   bool _checkingSession = false;
+
+  ConnectivityService get _connectivityService =>
+      _connectivity ??= context.read<ConnectivityService>();
 
   @override
   void initState() {
@@ -308,7 +312,7 @@ class _RouterViewState extends State<_RouterView> with WidgetsBindingObserver {
     }
     _checkingSession = true;
     try {
-      if (await _connectivity.checkNow() && mounted) {
+      if (await _connectivityService.checkNow() && mounted) {
         await checkOnlineSession(_client!, context.read<AuthProvider>());
       }
     } finally {
@@ -319,9 +323,10 @@ class _RouterViewState extends State<_RouterView> with WidgetsBindingObserver {
   Future<void> _watchConnectivity() async {
     // Check platform availability before subscribing, including desktop tests
     // where connectivity_plus has no native implementation.
-    final online = await _connectivity.checkNow();
+    final connectivity = _connectivityService;
+    final online = await connectivity.checkNow();
     if (!mounted) return;
-    _connectivitySubscription ??= _connectivity.onStatusChange
+    _connectivitySubscription ??= connectivity.onStatusChange
         .distinct()
         .listen((online) {
           if (online) unawaited(_checkSession());

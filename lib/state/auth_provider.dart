@@ -164,7 +164,8 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Locks the router immediately; any later login waits for cleanup to finish.
+  /// Locks the router immediately; any later login waits for cleanup and
+  /// session-end hooks to finish.
   Future<void> logout() {
     final running = _logoutInProgress;
     if (running != null) return running;
@@ -172,35 +173,56 @@ class AuthProvider extends ChangeNotifier {
     _generation++;
     _status = AuthStatus.loggingOut;
     _notifyIfAlive();
-    final cleanup = Future<void>.sync(_authRepository.logout);
     final completion = Completer<void>();
     final tracked = completion.future;
     _logoutInProgress = tracked;
 
-    void finish() {
+    unawaited(() async {
+      Object? caughtError;
+      StackTrace? caughtStack;
+      try {
+        await Future<void>.sync(_authRepository.logout);
+      } catch (error, stack) {
+        caughtError = error;
+        caughtStack = stack;
+      }
+      try {
+        await Future<void>.sync(() => _onSessionEnded?.call());
+      } catch (error, stack) {
+        caughtError ??= error;
+        caughtStack ??= stack;
+      }
+
       if (identical(_logoutInProgress, tracked)) _logoutInProgress = null;
+      if (caughtError != null) {
+        sessionRefusalCode ??= 'logout_cleanup_failed';
+      }
       _profile = null;
       _status = AuthStatus.loggedOut;
       _notifyIfAlive();
-      unawaited(_onSessionEnded?.call());
-    }
 
-    unawaited(
-      cleanup.then<void>(
-        (_) {
-          finish();
-          completion.complete();
-        },
-        onError: (Object error, StackTrace stack) {
-          finish();
-          completion.completeError(error, stack);
-        },
-      ),
-    );
+      if (caughtError != null) {
+        completion.completeError(caughtError, caughtStack);
+      } else {
+        completion.complete();
+      }
+    }());
     return tracked;
   }
 
   Future<void> expireSession({String? code}) {
+    final running = _logoutInProgress;
+    if (running != null) {
+      _generation++;
+      sessionRefusalCode = code;
+      if (requiresTabletActivation(code)) _deviceActivated = false;
+      _notifyIfAlive();
+      return running;
+    }
+    if (_status == AuthStatus.authenticating &&
+        !requiresTabletActivation(code)) {
+      return Future<void>.value();
+    }
     sessionRefusalCode = code;
     if (requiresTabletActivation(code)) _deviceActivated = false;
     return logout();

@@ -394,11 +394,25 @@ class _NavRail extends StatelessWidget {
               },
             ),
           ),
-          IconButton(
-            tooltip: context.trRead('Keluar', 'Sign out'),
-            color: Colors.white,
-            onPressed: () => context.read<AuthProvider>().logout(),
-            icon: const Icon(Icons.logout),
+          Builder(
+            builder: (context) {
+              AuthProvider? auth;
+              try {
+                auth = Provider.of<AuthProvider?>(context);
+              } catch (_) {}
+              return IconButton(
+                tooltip: context.trRead('Keluar', 'Sign out'),
+                color: Colors.white,
+                onPressed: auth?.isBusy == true
+                    ? null
+                    : () => unawaited(
+                        context.read<AuthProvider>().logout().catchError(
+                          (Object _) {},
+                        ),
+                      ),
+                icon: const Icon(Icons.logout),
+              );
+            },
           ),
         ],
       ),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -10,12 +11,19 @@ import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/http/http_auth_repository.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/settings_store.dart';
+import 'package:myapp/data/mock/mock_validation_repository.dart';
 import 'package:myapp/data/offline/device_operator_outbox.dart';
+import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/data/secure/doctor_session_store.dart';
 import 'package:myapp/data/secure/secure_token_storage.dart';
+import 'package:myapp/domain/models/user_profile.dart';
+import 'package:myapp/domain/repositories/auth_repository.dart';
+import 'package:myapp/domain/repositories/validation_repository.dart';
 import 'package:myapp/features/auth/presentation/auth_frame.dart';
+import 'package:myapp/features/auth/presentation/change_password_screen.dart';
 import 'package:myapp/features/auth/presentation/login_screen.dart';
 import 'package:myapp/features/auth/presentation/tablet_activation_screen.dart';
+import 'package:myapp/features/shared/presentation/app_shell.dart';
 import 'package:myapp/state/auth_provider.dart';
 
 class _AuthAdapter implements HttpClientAdapter {
@@ -259,4 +267,218 @@ void main() {
       );
     },
   );
+
+  test(
+    'B4: AuthProvider.logout awaits async onSessionEnded before releasing a queued login',
+    () async {
+      final events = <String>[];
+      final releaseGate = Completer<void>();
+      final repo = _FakeAuthRepo(
+        onLogin: () async {
+          events.add('repo_login');
+          return const UserProfile(
+            userId: 'doc-2',
+            tenantId: 'hosp-1',
+            displayName: 'Doctor Two',
+            email: 'doc2@example.invalid',
+            role: 'doctor',
+          );
+        },
+        onLogout: () async {
+          events.add('repo_logout');
+        },
+      );
+      final auth = AuthProvider(
+        repo,
+        initialProfile: const UserProfile(
+          userId: 'doc-1',
+          tenantId: 'hosp-1',
+          displayName: 'Doctor One',
+          email: 'doc1@example.invalid',
+          role: 'doctor',
+        ),
+        onSessionEnded: () async {
+          events.add('release_start');
+          await releaseGate.future;
+          events.add('release_end');
+        },
+      );
+      addTearDown(auth.dispose);
+
+      final pendingLogout = auth.logout();
+      await Future<void>.delayed(Duration.zero);
+      final pendingLogin = auth.login(
+        email: 'doc2@example.invalid',
+        password: 'pw',
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(events, ['repo_logout', 'release_start']);
+      expect(auth.isLoggedIn, isFalse);
+
+      releaseGate.complete();
+      await Future.wait([pendingLogout, pendingLogin]);
+
+      expect(events, [
+        'repo_logout',
+        'release_start',
+        'release_end',
+        'repo_login',
+      ]);
+      expect(auth.isLoggedIn, isTrue);
+      expect(auth.userId, 'doc-2');
+    },
+  );
+
+  test(
+    'B4: expireSession aborts login waiting on logout and ignores stale non-activation expiry while authenticating',
+    () async {
+      final logoutGate = Completer<void>();
+      final loginGate = Completer<void>();
+      const profile = UserProfile(
+        userId: 'doc-1',
+        tenantId: 'hosp-1',
+        displayName: 'Doctor One',
+        email: 'doc1@example.invalid',
+        role: 'doctor',
+      );
+      final repo = _FakeAuthRepo(
+        onLogin: () async {
+          await loginGate.future;
+          return profile;
+        },
+        onLogout: () => logoutGate.future,
+      );
+      final auth = AuthProvider(repo, initialProfile: profile);
+      addTearDown(auth.dispose);
+
+      // Case A: logout in flight + queued login + device_revoked expiry.
+      final pendingLogout = auth.logout();
+      final abortedLogin = expectLater(
+        auth.login(email: 'doc1@example.invalid', password: 'pw'),
+        throwsStateError,
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      final expireFuture = auth.expireSession(code: 'device_revoked');
+      expect(auth.deviceActivated, isFalse);
+      expect(auth.sessionRefusalCode, 'device_revoked');
+
+      logoutGate.complete();
+      loginGate.complete();
+      await Future.wait([pendingLogout, expireFuture, abortedLogin]);
+      expect(auth.isLoggedIn, isFalse);
+
+      // Case B: non-activation expiry during active login is ignored.
+      final loginGate2 = Completer<void>();
+      final repo2 = _FakeAuthRepo(
+        onLogin: () async {
+          await loginGate2.future;
+          return profile;
+        },
+        onLogout: () async {},
+      );
+      final auth2 = AuthProvider(repo2);
+      addTearDown(auth2.dispose);
+      final activeLogin = auth2.login(
+        email: 'doc1@example.invalid',
+        password: 'pw',
+      );
+      await auth2.expireSession(code: 'session_ended');
+      loginGate2.complete();
+      await activeLogin;
+      expect(auth2.isLoggedIn, isTrue);
+      expect(auth2.sessionRefusalCode, isNull);
+    },
+  );
+
+  testWidgets(
+    'B4: failed logout cleanup surfaces logout_cleanup_failed on LoginScreen and avoids unhandled errors in AppShell & ChangePasswordScreen',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      const profile = UserProfile(
+        userId: 'doc-1',
+        tenantId: 'hosp-1',
+        displayName: 'Doctor One',
+        email: 'doc1@example.invalid',
+        role: 'doctor',
+      );
+      final repo = _FakeAuthRepo(
+        onLogin: () async => profile,
+        onLogout: () async => throw StateError('Outbox key missing'),
+      );
+      final language = AppLanguage();
+      final auth = AuthProvider(repo, initialProfile: profile);
+      final engine = OnnxInferenceEngine();
+      addTearDown(() async {
+        auth.dispose();
+        language.dispose();
+        await engine.dispose();
+      });
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: auth),
+            ChangeNotifierProvider.value(value: language),
+            Provider<ValidationRepository>.value(
+              value: MockValidationRepository(),
+            ),
+            Provider<OnnxInferenceEngine>.value(value: engine),
+          ],
+          child: const MaterialApp(
+            home: AppShell(
+              location: '/dashboard',
+              child: Text('Dashboard'),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byIcon(Icons.logout));
+      await tester.pumpAndSettle();
+
+      expect(auth.status, AuthStatus.loggedOut);
+      expect(auth.sessionRefusalCode, 'logout_cleanup_failed');
+
+      await tester.pumpWidget(_wrapAuth(const LoginScreen(), auth, language));
+      expect(find.byType(AuthErrorBanner), findsOneWidget);
+      expect(
+        find.text(
+          'Failed to archive local data during sign out. Your offline data remains preserved — please sign in again.',
+        ),
+        findsOneWidget,
+      );
+
+      // Verify ChangePasswordScreen Sign Out absorbs cleanup failure safely too.
+      final auth2 = AuthProvider(repo, initialProfile: profile);
+      addTearDown(auth2.dispose);
+      await tester.pumpWidget(
+        _wrapAuth(const ChangePasswordScreen(), auth2, language),
+      );
+      await tester.tap(find.text('Sign out'));
+      await tester.pumpAndSettle();
+      expect(auth2.status, AuthStatus.loggedOut);
+      expect(auth2.sessionRefusalCode, 'logout_cleanup_failed');
+    },
+  );
+}
+
+class _FakeAuthRepo implements AuthRepository {
+  _FakeAuthRepo({required this.onLogin, required this.onLogout});
+
+  final Future<UserProfile> Function() onLogin;
+  final Future<void> Function() onLogout;
+
+  @override
+  Future<UserProfile> login({
+    required String email,
+    required String password,
+  }) => onLogin();
+
+  @override
+  Future<void> logout() => onLogout();
 }

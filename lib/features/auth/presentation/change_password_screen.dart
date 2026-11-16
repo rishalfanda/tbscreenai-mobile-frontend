@@ -203,10 +203,12 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                       ),
                     ),
                     TextButton(
-                      onPressed: _busy
+                      onPressed: _busy || context.watch<AuthProvider>().isBusy
                           ? null
                           : () async {
-                              await context.read<AuthProvider>().logout();
+                              try {
+                                await context.read<AuthProvider>().logout();
+                              } catch (_) {}
                             },
                       child: Text(context.trRead('Keluar', 'Sign out')),
                     ),

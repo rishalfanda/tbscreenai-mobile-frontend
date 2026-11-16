@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:myapp/core/connectivity/connectivity_service.dart';
 import 'package:myapp/core/localization/app_language.dart';
 
@@ -12,12 +13,19 @@ class ConnectionStatusBadge extends StatefulWidget {
 
 class _ConnectionStatusBadgeState extends State<ConnectionStatusBadge> {
   bool? _online;
+  bool _started = false;
   StreamSubscription<bool>? _subscription;
+
   @override
-  void initState() {
-    super.initState();
-    final service = widget.service ?? ConnectivityService();
-    unawaited(_start(service));
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    ConnectivityService? shared;
+    try {
+      shared = Provider.of<ConnectivityService?>(context, listen: false);
+    } catch (_) {}
+    unawaited(_start(widget.service ?? shared ?? ConnectivityService()));
   }
 
   Future<void> _start(ConnectivityService service) async {

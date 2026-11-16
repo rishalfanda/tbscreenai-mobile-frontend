@@ -73,6 +73,10 @@ String? refusalMessage(String? code, {required bool english}) {
       'Password sementara kedaluwarsa. Minta teknisi mereset password.',
       'Temporary password expired. Ask your technician for a reset.',
     ),
+    'logout_cleanup_failed': (
+      'Gagal mencadangkan data lokal saat keluar. Data offline tetap aman — silakan login kembali.',
+      'Failed to archive local data during sign out. Your offline data remains preserved — please sign in again.',
+    ),
   };
   final message = messages[code];
   return message == null
