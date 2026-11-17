@@ -8,11 +8,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/local/app_database.dart';
+import 'package:myapp/data/local/encrypted_xray_store.dart';
 import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/offline/offline_validation_repository.dart';
 import 'package:myapp/data/secure/secure_token_storage.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/models/clinical_conflict.dart';
+import 'package:myapp/domain/models/validation_case.dart';
+import 'package:myapp/domain/models/xray_image.dart';
 
 const _tenant = '11111111-1111-4111-8111-111111111111';
 const _doctor = '22222222-2222-4222-8222-222222222222';
@@ -392,4 +395,237 @@ void main() {
       expect((await db.findOperation(opId))?.serverPayload, isNull);
     },
   );
+
+  test(
+    'getCases uses SQL-scoped activeValidations and single-pass clinicalSnapshot decoding',
+    () async {
+      await db.upsertDiagnosis(
+        LocalDiagnosesCompanion.insert(
+          id: 'diag-active',
+          patientId: _patient,
+          isPositive: true,
+          confidence: 92,
+          modelVersion: 'v2',
+          diagnosedAt: DateTime.utc(2026, 11, 12, 8, 15, 30),
+          isMock: const Value(false),
+          clinicalSnapshot: Value(
+            jsonEncode({
+              'symptoms': ['batuk_lama', 'demam'],
+              'local_validation_v1': {
+                'confirmed': true,
+                'score': 9,
+                'note': 'Lokal note',
+              },
+            }),
+          ),
+        ),
+      );
+      await db.upsertDiagnosis(
+        LocalDiagnosesCompanion.insert(
+          id: 'diag-deleted',
+          patientId: _patient,
+          isPositive: false,
+          confidence: 10,
+          modelVersion: 'v2',
+          diagnosedAt: DateTime.utc(2026, 11, 12, 9),
+          isMock: const Value(false),
+          validationDeletedAt: Value(DateTime.utc(2026, 11, 13)),
+        ),
+      );
+
+      final cases = await repository.getCases();
+      expect(cases.map((c) => c.id), containsAll([_diagnosis, 'diag-active']));
+      expect(cases.map((c) => c.id), isNot(contains('diag-deleted')));
+
+      final active = cases.firstWhere((c) => c.id == 'diag-active');
+      expect(active.symptoms, ['batuk_lama', 'demam']);
+      expect(active.validationScore, 9);
+      expect(active.validationNote, 'Lokal note');
+      expect(
+        active.screeningDateTimeLabel,
+        ValidationCase.formatScreeningDateTimeLabel(
+          active.diagnosedAt,
+          active.diagnosisDate,
+        ),
+      );
+    },
+  );
+
+  test(
+    'EncryptedXrayStore caches AES key across concurrent loadCaseImage and loadCaseSegmentation without double DB fetch',
+    () async {
+      final spyDb = _SpyArtifactDatabase();
+      final spyStorage = _CountingXrayStorage();
+      addTearDown(spyDb.close);
+
+      await spyDb.activateOwner(
+        spyDb.sessionGeneration,
+        const DataOwner(tenantId: _tenant, userId: _doctor, deviceId: 'dev-1'),
+      );
+      await SettingsStore(spyDb).saveIdentity(
+        userId: _doctor,
+        tenantId: _tenant,
+        role: 'doctor',
+        displayName: 'Dr. Spy',
+        email: 'spy@example.invalid',
+      );
+      final xrayStore = EncryptedXrayStore(
+        db: spyDb,
+        secureStorage: spyStorage,
+      );
+      final image = XrayImage.placeholder('case.png');
+      final ref = await xrayStore.persist(artifactId: 'diag-fast', image: image);
+      await xrayStore.persist(
+        artifactId: 'diag-fast:xray',
+        image: XrayImage.placeholder('xray.png'),
+      );
+      await xrayStore.persist(
+        artifactId: 'diag-fast:lung',
+        image: XrayImage.placeholder('lung.png'),
+      );
+      await xrayStore.persist(
+        artifactId: 'diag-fast:lesion',
+        image: XrayImage.placeholder('lesion.png'),
+      );
+      await xrayStore.persist(
+        artifactId: 'diag-fast:lesion:cavity',
+        image: XrayImage.placeholder('cavity.png'),
+      );
+      await spyDb.upsertPatient(
+        LocalPatientsCompanion.insert(
+          id: 'pat-fast',
+          code: 'PF',
+          name: 'Fast Patient',
+          age: 40,
+          gender: 'Female',
+        ),
+      );
+      await spyDb.upsertDiagnosis(
+        LocalDiagnosesCompanion.insert(
+          id: 'diag-fast',
+          patientId: 'pat-fast',
+          isPositive: true,
+          confidence: 88,
+          modelVersion: 'v1',
+          diagnosedAt: DateTime.utc(2026, 11, 17, 2),
+          imageReference: Value(ref),
+          imageChecksum: Value(image.checksumSha256),
+          isMock: const Value(false),
+          clinicalSnapshot: Value(
+            jsonEncode({
+              'segmentation_v1': {
+                'xray': 'local-encrypted://diag-fast:xray',
+                'lung': 'local-encrypted://diag-fast:lung',
+                'lesion': 'local-encrypted://diag-fast:lesion',
+                'lesion_layers': {
+                  'cavity': 'local-encrypted://diag-fast:lesion:cavity',
+                },
+                'lung_area_px': 123,
+                'legend': [
+                  {
+                    'name': 'Cavity',
+                    'red': 255,
+                    'green': 0,
+                    'blue': 0,
+                    'pixel_count': 42,
+                  },
+                ],
+              },
+            }),
+          ),
+        ),
+      );
+
+      final spyClient = ApiClient(
+        baseUrl: 'https://synthetic.invalid/api/v1',
+        secureStorage: spyStorage,
+        initialAccessToken: 'tok',
+        initialRefreshToken: 'ref',
+      );
+      final fastRepo = OfflineValidationRepository(
+        db: spyDb,
+        client: spyClient,
+        syncEngine: SyncEngine(
+          db: spyDb,
+          client: spyClient,
+          settings: SettingsStore(spyDb),
+        ),
+        xrayStore: xrayStore,
+      );
+
+      // Fresh EncryptedXrayStore simulating opening a case from cold cache.
+      final freshStore = EncryptedXrayStore(
+        db: spyDb,
+        secureStorage: spyStorage,
+      );
+      final coldRepo = OfflineValidationRepository(
+        db: spyDb,
+        client: spyClient,
+        syncEngine: SyncEngine(
+          db: spyDb,
+          client: spyClient,
+          settings: SettingsStore(spyDb),
+        ),
+        xrayStore: freshStore,
+      );
+      expect(fastRepo, isNotNull);
+
+      spyStorage.resetReads();
+      spyDb.resetCounts();
+
+      final results = await Future.wait<Object?>([
+        coldRepo.loadCaseImage('diag-fast'),
+        coldRepo.loadCaseSegmentation('diag-fast'),
+      ]);
+      final loadedImg = results[0] as XrayImage?;
+      final seg = results[1] as dynamic;
+
+      expect(loadedImg, isNotNull);
+      expect(loadedImg!.checksumSha256, image.checksumSha256);
+      expect(seg, isNotNull);
+      expect(seg.lesionLayerPngs.keys, ['cavity']);
+      // Single key read across all 5 artifacts + single findEncryptedArtifact for X-ray + 1 batch findEncryptedArtifacts for segmentation.
+      expect(spyStorage.readsByKey['clinical_xray_aes_key_v1'], 1);
+      expect(spyDb.singleArtifactReads, 1);
+      expect(spyDb.batchArtifactReads, 1);
+    },
+  );
+}
+
+class _CountingXrayStorage extends MemorySecureTokenStorage {
+  final Map<String, int> readsByKey = {};
+
+  void resetReads() => readsByKey.clear();
+
+  @override
+  Future<String?> read(String key) {
+    readsByKey[key] = (readsByKey[key] ?? 0) + 1;
+    return super.read(key);
+  }
+}
+
+class _SpyArtifactDatabase extends AppDatabase {
+  _SpyArtifactDatabase() : super(NativeDatabase.memory());
+
+  int singleArtifactReads = 0;
+  int batchArtifactReads = 0;
+
+  void resetCounts() {
+    singleArtifactReads = 0;
+    batchArtifactReads = 0;
+  }
+
+  @override
+  Future<EncryptedXrayArtifact?> findEncryptedArtifact(String id) {
+    singleArtifactReads++;
+    return super.findEncryptedArtifact(id);
+  }
+
+  @override
+  Future<List<EncryptedXrayArtifact>> findEncryptedArtifacts(
+    Iterable<String> ids,
+  ) {
+    batchArtifactReads++;
+    return super.findEncryptedArtifacts(ids);
+  }
 }

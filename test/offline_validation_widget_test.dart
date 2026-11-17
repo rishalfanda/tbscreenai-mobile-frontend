@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/theme/app_theme.dart';
+import 'package:myapp/domain/models/clinical_conflict.dart';
 import 'package:myapp/domain/models/validation_case.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/domain/models/xray_image.dart';
@@ -152,8 +153,19 @@ void main() {
       repo.times['two'] = DateTime.parse('2026-11-11T02:00:01Z');
       await _mount(tester, repo);
       List<String> ids() => tester
-          .widget<DataTable>(find.byType(DataTable))
-          .rows
+          .widgetList<InkWell>(
+            find.descendant(
+              of: find.byType(ListView),
+              matching: find.byWidgetPredicate(
+                (w) =>
+                    w is InkWell &&
+                    w.key is ValueKey<String> &&
+                    (w.key! as ValueKey<String>).value.startsWith(
+                      'validation-case-',
+                    ),
+              ),
+            ),
+          )
           .map((row) => (row.key! as ValueKey<String>).value)
           .toList();
       // Both have the same display date, but two is almost an hour later.
@@ -200,8 +212,18 @@ void main() {
       expect(repo.savedStatus, 'pending');
       expect(repo.score, isNull);
       expect(
-        tester.widget<DataTable>(find.byType(DataTable)).rows,
-        hasLength(1),
+        find.descendant(
+          of: find.byType(ListView),
+          matching: find.byWidgetPredicate(
+            (w) =>
+                w is InkWell &&
+                w.key is ValueKey<String> &&
+                (w.key! as ValueKey<String>).value.startsWith(
+                  'validation-case-',
+                ),
+          ),
+        ),
+        findsOneWidget,
       );
       expect(find.byKey(const ValueKey('validate-one')), findsNothing);
       expect(find.byKey(const ValueKey('delete-one')), findsNothing);
@@ -265,8 +287,19 @@ void main() {
     final repo = _Repo();
     await _mount(tester, repo);
     List<String> ids() => tester
-        .widget<DataTable>(find.byType(DataTable))
-        .rows
+        .widgetList<InkWell>(
+          find.descendant(
+            of: find.byType(ListView),
+            matching: find.byWidgetPredicate(
+              (w) =>
+                  w is InkWell &&
+                  w.key is ValueKey<String> &&
+                  (w.key! as ValueKey<String>).value.startsWith(
+                    'validation-case-',
+                  ),
+            ),
+          ),
+        )
         .map((row) => (row.key! as ValueKey<String>).value)
         .toList();
     expect(ids(), ['validation-case-two', 'validation-case-one']);
@@ -347,23 +380,27 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // Verify validation screening status chips have high-contrast dark label colors.
-      final agreeChip = tester.widget<Chip>(
-        find.ancestor(
-          of: find.text('Agree'),
-          matching: find.byType(Chip),
+      // Verify validation screening status pills have high-contrast dark label colors.
+      final agreeText = tester.widget<Text>(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Agree'),
+            matching: find.byType(DecoratedBox),
+          ),
+          matching: find.text('Agree'),
         ),
       );
-      final agreeText = agreeChip.label as Text;
       expect(agreeText.style?.color, AppTheme.successDark);
 
-      final unvalidatedChip = tester.widget<Chip>(
-        find.ancestor(
-          of: find.text('Unvalidated'),
-          matching: find.byType(Chip),
+      final unvalidatedText = tester.widget<Text>(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Unvalidated'),
+            matching: find.byType(DecoratedBox),
+          ),
+          matching: find.text('Unvalidated'),
         ),
       );
-      final unvalidatedText = unvalidatedChip.label as Text;
       expect(unvalidatedText.style?.color, const Color(0xFF92400E));
 
       // Verify Validate & Edit buttons are visible within tablet viewport without horizontal clipping.
@@ -416,14 +453,142 @@ void main() {
       await _choose(tester, 'confirm-validation-score');
       await tester.pumpAndSettle();
 
-      final disagreeChip = tester.widget<Chip>(
-        find.ancestor(
-          of: find.text('Disagree'),
-          matching: find.byType(Chip),
+      final disagreeText = tester.widget<Text>(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Disagree'),
+            matching: find.byType(DecoratedBox),
+          ),
+          matching: find.text('Disagree'),
         ),
       );
-      expect((disagreeChip.label as Text).style?.color, AppTheme.errorDark);
+      expect(disagreeText.style?.color, AppTheme.errorDark);
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    '50-record table virtualizes rows via ListView.builder and renders before slow getConflicts resolves',
+    (tester) async {
+      final slowConflicts = Completer<List<ClinicalConflict>>();
+      final cases = List<ValidationCase>.generate(
+        50,
+        (i) => ValidationCase(
+          id: 'case-$i',
+          name: 'Patient ${i.toString().padLeft(2, '0')}',
+          initials: 'P$i',
+          age: 25 + (i % 40),
+          gender: i.isEven ? 'Male' : 'Female',
+          aiScore: 50 + (i % 50),
+          diagnosisDate: '2026-11-17',
+          diagnosedAt: DateTime.utc(2026, 11, 17, 1, 59 - i),
+          isPositive: i.isEven,
+          status: i < 25 ? 'pending' : 'agreed',
+          findings: const ValidationFindings(
+            consolidation: 1,
+            cavity: 2,
+            effusion: 3,
+            fibrotic: 4,
+            calcification: 5,
+          ),
+        ),
+      );
+      final repo = _ScaleAndConflictRepo(
+        cases: cases,
+        conflictsFuture: slowConflicts.future,
+      );
+      final auth = AuthProvider(_Auth(), initialProfile: _doctor);
+      addTearDown(auth.dispose);
+      tester.view.physicalSize = const Size(940, 768);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<ValidationRepository>.value(value: repo),
+            ChangeNotifierProvider.value(value: auth),
+            ChangeNotifierProvider(create: (_) => AppLanguage()),
+          ],
+          child: const MaterialApp(home: Scaffold(body: ValidationScreen())),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Local cases render immediately even while getConflicts() is still pending.
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('50 screenings'), findsOneWidget);
+      expect(find.byKey(const ValueKey('validation-case-case-0')), findsOneWidget);
+      // Offscreen rows at bottom of 50-item list are not eagerly built.
+      expect(find.byKey(const ValueKey('validation-case-case-49')), findsNothing);
+
+      // Instant search filters down to matching row on a single pump.
+      await tester.enterText(
+        find.byKey(const Key('validation-search')),
+        'Patient 49',
+      );
+      await tester.pump();
+      expect(find.text('1 screenings'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('validation-case-case-49')),
+        findsOneWidget,
+      );
+
+      // Late conflict resolution updates only the conflict banner.
+      slowConflicts.complete(const [
+        ClinicalConflict(
+          clientOpId: 'op-slow',
+          diagnosisId: 'case-0',
+          localStatus: 'pending',
+          localNote: null,
+          baseVersion: 1,
+          detail: 'version_conflict',
+          serverStatus: 'agreed',
+          serverVersion: 2,
+        ),
+      ]);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('validation-conflict-op-slow')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+}
+
+class _ScaleAndConflictRepo extends ValidationRepository
+    implements NumericValidationRepository {
+  _ScaleAndConflictRepo({
+    required this.cases,
+    required this.conflictsFuture,
+  });
+
+  final List<ValidationCase> cases;
+  final Future<List<ClinicalConflict>> conflictsFuture;
+
+  @override
+  Future<List<ValidationCase>> getCases() async => cases;
+
+  @override
+  Future<List<ClinicalConflict>> getConflicts() => conflictsFuture;
+
+  @override
+  Future<XrayImage?> loadCaseImage(String id) async => null;
+
+  @override
+  Future<void> submitScore({
+    required String id,
+    required int score,
+    String? status,
+    String? note,
+  }) async {}
+
+  @override
+  Future<ValidationSubmission> submitValidation({
+    required String id,
+    required String status,
+    String? note,
+  }) async => const ValidationSubmission(ValidationSubmissionState.queued);
 }

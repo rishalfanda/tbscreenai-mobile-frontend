@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/localization/app_language.dart';
@@ -19,14 +20,65 @@ class OfflineValidationScreen extends StatefulWidget {
 }
 
 class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
+  static const double _minTableWidth = 898.0;
+  static const int _flexName = 110;
+  static const int _flexDate = 128;
+  static const int _flexAiResult = 104;
+  static const int _flexStatus = 106;
+  static const int _flexRating = 86;
+  static const int _flexNotes = 96;
+  static const double _colActionsWidth = 204.0;
+
+  static final ButtonStyle _validateButtonStyle = FilledButton.styleFrom(
+    backgroundColor: AppTheme.navy,
+    foregroundColor: Colors.white,
+    minimumSize: const Size(0, 34),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+  );
+
+  static final ButtonStyle _editEnabledButtonStyle = OutlinedButton.styleFrom(
+    foregroundColor: AppTheme.navy,
+    side: const BorderSide(color: AppTheme.navy),
+    minimumSize: const Size(0, 34),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+  );
+
+  static final ButtonStyle _editDisabledButtonStyle = OutlinedButton.styleFrom(
+    foregroundColor: AppTheme.navy,
+    side: BorderSide(color: Colors.grey.shade400),
+    minimumSize: const Size(0, 34),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+  );
+
+  static final ButtonStyle _compactIconStyle = IconButton.styleFrom(
+    minimumSize: const Size(34, 34),
+    padding: const EdgeInsets.all(2),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+
   final ScrollController _horizontalScrollController = ScrollController();
   final ScrollController _verticalScrollController = ScrollController();
+  final ValueNotifier<List<ValidationCase>> _visibleNotifier =
+      ValueNotifier<List<ValidationCase>>(const []);
   List<ValidationCase> _cases = [];
+  Map<String, String> _caseNamesById = const {};
   List<ClinicalConflict> _conflicts = [];
   String _search = '', _status = 'all', _sort = 'pending';
+  List<ValidationCase>? _cachedSource;
+  String? _cachedSearch, _cachedStatus, _cachedSort;
   bool _loading = true;
   String? _error;
   bool _deleting = false;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -38,27 +90,52 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
   void dispose() {
     _horizontalScrollController.dispose();
     _verticalScrollController.dispose();
+    _visibleNotifier.dispose();
     super.dispose();
   }
 
-  Future<void> _load({bool openRequested = false}) async {
+  Future<void> _load({
+    bool openRequested = false,
+    bool includeConflicts = true,
+  }) async {
+    final generation = ++_loadGeneration;
     final auth = context.read<AuthProvider>();
     final profile = auth.profile;
     try {
       final repository = context.read<ValidationRepository>();
-      final results = await Future.wait([
-        repository.getCases(),
-        repository.getConflicts(),
-      ]);
-      final rows = results[0] as List<ValidationCase>;
-      final conflicts = results[1] as List<ClinicalConflict>;
-      if (!mounted || profile != auth.profile || !auth.isLoggedIn) return;
+      final Future<List<ClinicalConflict>>? conflictsFuture = includeConflicts
+          ? repository.getConflicts()
+          : null;
+      final rows = await repository.getCases();
+      if (!mounted ||
+          generation != _loadGeneration ||
+          profile != auth.profile ||
+          !auth.isLoggedIn) {
+        return;
+      }
+      _cases = rows;
+      _caseNamesById = {for (final row in rows) row.id: row.name};
+      _syncVisibleCases(force: true);
       setState(() {
-        _cases = rows;
-        _conflicts = conflicts;
         _loading = false;
         _error = null;
       });
+      if (conflictsFuture != null) {
+        unawaited(() async {
+          try {
+            final conflicts = await conflictsFuture;
+            if (!mounted ||
+                generation != _loadGeneration ||
+                profile != auth.profile ||
+                !auth.isLoggedIn) {
+              return;
+            }
+            setState(() => _conflicts = conflicts);
+          } catch (_) {
+            // Keep local cases visible even if conflict HTTP hydration fails.
+          }
+        }());
+      }
       if (openRequested && widget.caseId != null) {
         final requested = rows
             .where((row) => row.id == widget.caseId)
@@ -75,7 +152,9 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
         }
       }
     } catch (_) {
-      if (mounted && profile == auth.profile) {
+      if (mounted &&
+          generation == _loadGeneration &&
+          profile == auth.profile) {
         setState(() {
           _loading = false;
           _error = context.trRead(
@@ -105,7 +184,9 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
       barrierDismissible: false,
       builder: (_) => ValidationReviewDialog(row: row, readOnly: readOnly),
     );
-    if (changed == true && mounted) await _load();
+    if (changed == true && mounted) {
+      await _load(includeConflicts: _conflicts.isNotEmpty || row.hasConflict);
+    }
   }
 
   Future<void> _deleteValidation(ValidationCase row) async {
@@ -151,7 +232,7 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
     try {
       await (context.read<ValidationRepository>() as ValidationResetRepository)
           .resetValidation(row.id);
-      if (mounted) await _load();
+      if (mounted) await _load(includeConflicts: _conflicts.isNotEmpty);
     } catch (_) {
       if (mounted) {
         setState(
@@ -178,11 +259,25 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
     return newestFirst ? right.compareTo(left) : left.compareTo(right);
   }
 
-  List<ValidationCase> get _visible {
+  void _syncVisibleCases({bool force = false}) {
+    final normalizedSearch = _search.trim().toLowerCase();
+    if (!force &&
+        identical(_cachedSource, _cases) &&
+        _cachedSearch == normalizedSearch &&
+        _cachedStatus == _status &&
+        _cachedSort == _sort) {
+      return;
+    }
+    _cachedSource = _cases;
+    _cachedSearch = normalizedSearch;
+    _cachedStatus = _status;
+    _cachedSort = _sort;
+
     final rows = _cases
         .where(
           (row) =>
-              row.name.toLowerCase().contains(_search.trim().toLowerCase()) &&
+              (normalizedSearch.isEmpty ||
+                  row.name.toLowerCase().contains(normalizedSearch)) &&
               (_status == 'all' || row.status == _status),
         )
         .toList();
@@ -206,13 +301,38 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
       if (result == 0) result = _compareScreeningTime(a, b);
       return result == 0 ? a.id.compareTo(b.id) : result;
     });
-    return rows;
+    _visibleNotifier.value = List<ValidationCase>.unmodifiable(rows);
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    final rows = _visible;
+    final canDeleteRepo =
+        context.read<ValidationRepository>() is ValidationResetRepository;
+    final screeningsUnit = context.trRead('screening', 'screenings');
+    final noMatchingText = context.trRead(
+      'Tidak ada screening yang sesuai.',
+      'No matching screenings.',
+    );
+    final positiveLabel = context.trRead('Positif', 'Positive');
+    final negativeLabel = context.trRead('Negatif', 'Negative');
+    final validateLabel = context.trRead('Validasi', 'Validate');
+    final editLabel = context.trRead('Edit', 'Edit');
+    final viewTooltip = context.trRead('Lihat', 'View');
+    final deleteTooltip = context.trRead('Hapus', 'Delete');
+    final headerLabels = _ValidationHeaderLabels(
+      name: context.trRead('Nama pasien', 'Patient name'),
+      dateTime: context.trRead(
+        'Tanggal & jam screening (lokal)',
+        'Screening date & time (local)',
+      ),
+      aiResult: 'AI Screening Result',
+      validationStatus: 'Validation screening',
+      lesionRating: context.trRead('Rating lesi (0-10)', 'Lesion rating (0-10)'),
+      notes: 'Doctor notes',
+      actions: context.trRead('Aksi', 'Actions'),
+    );
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -239,7 +359,10 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
                     prefixIcon: const Icon(Icons.search),
                     border: const OutlineInputBorder(),
                   ),
-                  onChanged: (value) => setState(() => _search = value),
+                  onChanged: (value) {
+                    _search = value;
+                    _syncVisibleCases();
+                  },
                 ),
               ),
               SizedBox(
@@ -273,7 +396,10 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
                       child: Text('Disagree'),
                     ),
                   ],
-                  onChanged: (value) => setState(() => _status = value!),
+                  onChanged: (value) {
+                    _status = value ?? 'all';
+                    _syncVisibleCases();
+                  },
                 ),
               ),
               SizedBox(
@@ -317,7 +443,10 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
                       ),
                     ),
                   ],
-                  onChanged: (value) => setState(() => _sort = value!),
+                  onChanged: (value) {
+                    _sort = value ?? 'pending';
+                    _syncVisibleCases();
+                  },
                 ),
               ),
             ],
@@ -358,12 +487,7 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
                               : Icons.sync_problem,
                         ),
                         title: Text(
-                          _cases
-                                  .where(
-                                    (row) => row.id == conflict.diagnosisId,
-                                  )
-                                  .firstOrNull
-                                  ?.name ??
+                          _caseNamesById[conflict.diagnosisId] ??
                               context.trRead(
                                 'Screening ${conflict.diagnosisId}',
                                 'Screening ${conflict.diagnosisId}',
@@ -393,187 +517,244 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
               ),
             ),
           ],
-          Text('${rows.length} ${context.trRead("screening", "screenings")}'),
-          const SizedBox(height: 8),
           Expanded(
-            child: rows.isEmpty
-                ? Center(
-                    child: Text(
-                      context.trRead(
-                        'Tidak ada screening yang sesuai.',
-                        'No matching screenings.',
-                      ),
-                    ),
-                  )
-                : LayoutBuilder(
-                    builder: (context, constraints) => Scrollbar(
-                      controller: _horizontalScrollController,
-                      thumbVisibility: true,
-                      child: SingleChildScrollView(
-                        controller: _horizontalScrollController,
-                        scrollDirection: Axis.horizontal,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minWidth: constraints.maxWidth,
-                          ),
-                          child: SingleChildScrollView(
-                            controller: _verticalScrollController,
-                            child: DataTable(
-                              showCheckboxColumn: false,
-                              headingRowColor: WidgetStatePropertyAll(
-                                Theme.of(context).colorScheme.primaryContainer,
-                              ),
-                              headingTextStyle: Theme.of(context)
-                                  .textTheme
-                                  .titleSmall
-                                  ?.copyWith(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onPrimaryContainer,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                              dataTextStyle: Theme.of(context)
+            child: ValueListenableBuilder<List<ValidationCase>>(
+              valueListenable: _visibleNotifier,
+              builder: (context, rows, _) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('${rows.length} $screeningsUnit'),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: rows.isEmpty
+                        ? Center(child: Text(noMatchingText))
+                        : LayoutBuilder(
+                            builder: (context, constraints) {
+                              final tableWidth = math.max(
+                                _minTableWidth,
+                                constraints.maxWidth,
+                              );
+                              final textScale = MediaQuery.textScalerOf(
+                                context,
+                              ).scale(14.0);
+                              final rowHeight = math.max(
+                                72.0,
+                                40.0 + textScale * 2.4,
+                              );
+                              final dataTextStyle = Theme.of(context)
                                   .textTheme
                                   .bodyMedium
-                                  ?.copyWith(color: AppTheme.textPrimary),
-                              dataRowMinHeight: 64,
-                              dataRowMaxHeight: 84,
-                              horizontalMargin: 8,
-                              columnSpacing: 8,
-                              columns: [
-                                _buildColumn(
-                                  context.trRead('Nama pasien', 'Patient name'),
-                                  maxWidth: 100,
-                                ),
-                                _buildColumn(
-                                  context.trRead(
-                                    'Tanggal & jam screening (lokal)',
-                                    'Screening date & time (local)',
-                                  ),
-                                  maxWidth: 110,
-                                ),
-                                _buildColumn(
-                                  'AI Screening Result',
-                                  maxWidth: 96,
-                                ),
-                                _buildColumn(
-                                  'Validation screening',
-                                  maxWidth: 90,
-                                ),
-                                _buildColumn(
-                                  context.trRead(
-                                    'Rating lesi (0-10)',
-                                    'Lesion rating (0-10)',
-                                  ),
-                                  maxWidth: 90,
-                                ),
-                                _buildColumn('Doctor notes', maxWidth: 85),
-                                _buildColumn(context.trRead('Aksi', 'Actions')),
-                              ],
-                              rows: [
-                                for (final row in rows)
-                                  DataRow(
-                                    key: ValueKey('validation-case-${row.id}'),
-                                    onSelectChanged: (_) => _open(
-                                      row,
-                                      readOnly: row.hasConflict || row.isMock,
-                                    ),
-                                    cells: [
-                                      DataCell(
-                                        ConstrainedBox(
-                                          constraints: const BoxConstraints(
-                                            maxWidth: 100,
-                                          ),
-                                          child: Text(
-                                            row.name,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w600,
+                                  ?.copyWith(color: AppTheme.textPrimary);
+                              final dividerColor = Theme.of(
+                                context,
+                              ).dividerColor;
+                              return Scrollbar(
+                                controller: _horizontalScrollController,
+                                thumbVisibility: true,
+                                child: SingleChildScrollView(
+                                  controller: _horizontalScrollController,
+                                  scrollDirection: Axis.horizontal,
+                                  child: SizedBox(
+                                    width: tableWidth,
+                                    height: constraints.maxHeight,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        _buildHeaderRow(context, headerLabels),
+                                        Expanded(
+                                          child: Scrollbar(
+                                            controller:
+                                                _verticalScrollController,
+                                            child: ListView.builder(
+                                              controller:
+                                                  _verticalScrollController,
+                                              itemExtent: rowHeight,
+                                              itemCount: rows.length,
+                                              itemBuilder: (context, index) =>
+                                                  _buildRowTile(
+                                                    rows[index],
+                                                    dataTextStyle:
+                                                        dataTextStyle,
+                                                    dividerColor: dividerColor,
+                                                    canDeleteRepo:
+                                                        canDeleteRepo,
+                                                    positiveLabel:
+                                                        positiveLabel,
+                                                    negativeLabel:
+                                                        negativeLabel,
+                                                    validateLabel:
+                                                        validateLabel,
+                                                    editLabel: editLabel,
+                                                    viewTooltip: viewTooltip,
+                                                    deleteTooltip:
+                                                        deleteTooltip,
+                                                  ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                      DataCell(
-                                        ConstrainedBox(
-                                          constraints: const BoxConstraints(
-                                            maxWidth: 110,
-                                          ),
-                                          child: Text(
-                                            row.screeningDateTimeLabel,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        ConstrainedBox(
-                                          constraints: const BoxConstraints(
-                                            maxWidth: 96,
-                                          ),
-                                          child: Text(
-                                            '${row.isPositive == null
-                                                ? "-"
-                                                : row.isPositive!
-                                                ? context.trRead("Positif", "Positive")
-                                                : context.trRead("Negatif", "Negative")} / ${row.aiScore}%',
-                                            maxLines: 2,
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        _buildValidationStatusChip(row.status),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          row.lesionRating == null
-                                              ? '-'
-                                              : '${row.lesionRating}/10',
-                                        ),
-                                      ),
-                                      DataCell(
-                                        ConstrainedBox(
-                                          constraints: const BoxConstraints(
-                                            maxWidth: 90,
-                                          ),
-                                          child: Text(
-                                            row.validationNote ??
-                                                row.doctorNote ??
-                                                '-',
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(_buildActionsCell(context, row)),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                              ],
-                            ),
+                                ),
+                              );
+                            },
                           ),
-                        ),
-                      ),
-                    ),
                   ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  DataColumn _buildColumn(String label, {double? maxWidth}) {
-    final text = Text(label, softWrap: true, maxLines: 2);
-    return DataColumn(
-      label: maxWidth == null
-          ? text
-          : ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: maxWidth),
-              child: text,
-            ),
+  Widget _buildHeaderRow(
+    BuildContext context,
+    _ValidationHeaderLabels labels,
+  ) {
+    final theme = Theme.of(context);
+    final headerTextStyle = theme.textTheme.titleSmall?.copyWith(
+      color: theme.colorScheme.onPrimaryContainer,
+      fontWeight: FontWeight.w700,
+    );
+    return DecoratedBox(
+      key: const Key('validation-table-header'),
+      decoration: BoxDecoration(color: theme.colorScheme.primaryContainer),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: DefaultTextStyle(
+          style: headerTextStyle ?? const TextStyle(fontWeight: FontWeight.w700),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          child: Row(
+            children: [
+              Expanded(flex: _flexName, child: Text(labels.name)),
+              const SizedBox(width: 8),
+              Expanded(flex: _flexDate, child: Text(labels.dateTime)),
+              const SizedBox(width: 8),
+              Expanded(flex: _flexAiResult, child: Text(labels.aiResult)),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: _flexStatus,
+                child: Text(labels.validationStatus),
+              ),
+              const SizedBox(width: 8),
+              Expanded(flex: _flexRating, child: Text(labels.lesionRating)),
+              const SizedBox(width: 8),
+              Expanded(flex: _flexNotes, child: Text(labels.notes)),
+              const SizedBox(width: 8),
+              SizedBox(width: _colActionsWidth, child: Text(labels.actions)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildValidationStatusChip(String status) {
+  Widget _buildRowTile(
+    ValidationCase row, {
+    required TextStyle? dataTextStyle,
+    required Color dividerColor,
+    required bool canDeleteRepo,
+    required String positiveLabel,
+    required String negativeLabel,
+    required String validateLabel,
+    required String editLabel,
+    required String viewTooltip,
+    required String deleteTooltip,
+  }) {
+    final aiLabel = row.isPositive == null
+        ? '-'
+        : row.isPositive!
+        ? positiveLabel
+        : negativeLabel;
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        key: ValueKey('validation-case-${row.id}'),
+        onTap: () => _open(row, readOnly: row.hasConflict || row.isMock),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: dividerColor, width: 0.75)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: DefaultTextStyle(
+              style: dataTextStyle ?? const TextStyle(),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    flex: _flexName,
+                    child: Text(
+                      row.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: _flexDate,
+                    child: Text(
+                      row.screeningDateTimeLabel,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: _flexAiResult,
+                    child: Text('$aiLabel / ${row.aiScore}%', maxLines: 2),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: _flexStatus,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _buildValidationStatusPill(row.status),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: _flexRating,
+                    child: Text(
+                      row.lesionRating == null ? '-' : '${row.lesionRating}/10',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: _flexNotes,
+                    child: Text(
+                      row.validationNote ?? row.doctorNote ?? '-',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: _colActionsWidth,
+                    child: _buildActionsCell(
+                      row,
+                      canDeleteRepo: canDeleteRepo,
+                      validateLabel: validateLabel,
+                      editLabel: editLabel,
+                      viewTooltip: viewTooltip,
+                      deleteTooltip: deleteTooltip,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildValidationStatusPill(String status) {
     final (String label, Color fg, Color bg, Color border) = switch (status) {
       'agreed' => (
         'Agree',
@@ -594,37 +775,37 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
         AppTheme.warning.withValues(alpha: 0.50),
       ),
     };
-    return Chip(
-      backgroundColor: bg,
-      side: BorderSide(color: border),
-      visualDensity: VisualDensity.compact,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-      labelStyle: TextStyle(
-        color: fg,
-        fontWeight: FontWeight.w700,
-        fontSize: 12,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(8),
       ),
-      label: Text(
-        label,
-        style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: fg,
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildActionsCell(BuildContext context, ValidationCase row) {
+  Widget _buildActionsCell(
+    ValidationCase row, {
+    required bool canDeleteRepo,
+    required String validateLabel,
+    required String editLabel,
+    required String viewTooltip,
+    required String deleteTooltip,
+  }) {
     final canOpenForm = !row.hasConflict && !row.isMock;
     final canDelete =
-        !_deleting &&
-        !row.hasConflict &&
-        !row.isMock &&
-        context.read<ValidationRepository>() is ValidationResetRepository;
-    final compactIconStyle = IconButton.styleFrom(
-      minimumSize: const Size(34, 34),
-      padding: const EdgeInsets.all(2),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
+        !_deleting && !row.hasConflict && !row.isMock && canDeleteRepo;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -632,60 +813,34 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
         if (row.status == 'pending')
           FilledButton.icon(
             key: ValueKey('validate-${row.id}'),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.navy,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(0, 34),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              textStyle: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
+            style: _validateButtonStyle,
             onPressed: canOpenForm ? () => _open(row) : null,
             icon: const Icon(Icons.fact_check_outlined, size: 15),
-            label: Text(context.trRead('Validasi', 'Validate')),
+            label: Text(validateLabel),
           )
         else
           OutlinedButton.icon(
             key: ValueKey('edit-${row.id}'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppTheme.navy,
-              side: BorderSide(
-                color: canOpenForm ? AppTheme.navy : Colors.grey.shade400,
-              ),
-              minimumSize: const Size(0, 34),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              textStyle: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
+            style: canOpenForm
+                ? _editEnabledButtonStyle
+                : _editDisabledButtonStyle,
             onPressed: canOpenForm ? () => _open(row) : null,
             icon: const Icon(Icons.edit_outlined, size: 15),
-            label: Text(context.trRead('Edit', 'Edit')),
+            label: Text(editLabel),
           ),
         const SizedBox(width: 2),
         IconButton(
           key: ValueKey('view-${row.id}'),
-          style: compactIconStyle,
-          tooltip: context.trRead('Lihat', 'View'),
+          style: _compactIconStyle,
+          tooltip: viewTooltip,
           visualDensity: VisualDensity.compact,
           onPressed: () => _open(row, readOnly: true),
           icon: const Icon(Icons.visibility_outlined, size: 19),
         ),
         IconButton(
           key: ValueKey('delete-${row.id}'),
-          style: compactIconStyle,
-          tooltip: context.trRead('Hapus', 'Delete'),
+          style: _compactIconStyle,
+          tooltip: deleteTooltip,
           visualDensity: VisualDensity.compact,
           onPressed: canDelete ? () => _deleteValidation(row) : null,
           icon: const Icon(Icons.delete_outline, size: 19),
@@ -693,4 +848,24 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
       ],
     );
   }
+}
+
+class _ValidationHeaderLabels {
+  const _ValidationHeaderLabels({
+    required this.name,
+    required this.dateTime,
+    required this.aiResult,
+    required this.validationStatus,
+    required this.lesionRating,
+    required this.notes,
+    required this.actions,
+  });
+
+  final String name;
+  final String dateTime;
+  final String aiResult;
+  final String validationStatus;
+  final String lesionRating;
+  final String notes;
+  final String actions;
 }

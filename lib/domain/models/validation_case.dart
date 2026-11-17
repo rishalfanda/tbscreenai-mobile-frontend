@@ -26,6 +26,7 @@ class ValidationCase {
     required this.aiScore,
     required this.diagnosisDate,
     this.diagnosedAt,
+    String? screeningDateTimeLabel,
     required this.status,
     this.patientCode,
     this.heightCm,
@@ -46,7 +47,7 @@ class ValidationCase {
     this.xrayUrl,
     this.heatmapUrl,
     required this.findings,
-  });
+  }) : _screeningDateTimeLabel = screeningDateTimeLabel;
 
   final String? patientCode;
   final double? heightCm, weightKg;
@@ -67,15 +68,23 @@ class ValidationCase {
 
   /// Original screening instant, kept separate from display text.
   final DateTime? diagnosedAt;
+  final String? _screeningDateTimeLabel;
 
-  String get screeningDateTimeLabel => diagnosedAt == null
+  static String formatScreeningDateTimeLabel(
+    DateTime? diagnosedAt,
+    String diagnosisDate,
+  ) => diagnosedAt == null
       ? diagnosisDate
-      : diagnosedAt!
+      : diagnosedAt
             .toLocal()
             .toIso8601String()
             .replaceFirst('T', ' ')
             .split('.')
             .first;
+
+  String get screeningDateTimeLabel =>
+      _screeningDateTimeLabel ??
+      formatScreeningDateTimeLabel(diagnosedAt, diagnosisDate);
 
   /// "pending" | "agreed" | "disagreed"
   final String status;
@@ -105,6 +114,7 @@ class ValidationCase {
       aiScore: aiScore,
       diagnosisDate: diagnosisDate,
       diagnosedAt: diagnosedAt,
+      screeningDateTimeLabel: _screeningDateTimeLabel,
       status: status ?? this.status,
       patientCode: patientCode,
       heightCm: heightCm,

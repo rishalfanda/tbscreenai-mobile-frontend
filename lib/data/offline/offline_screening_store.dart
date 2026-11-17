@@ -275,7 +275,9 @@ class OfflineScreeningStore implements ScreeningStore {
     final imageReference = localArtifact == null
         ? row.imageReference!
         : 'local-encrypted://${row.id}';
-    final image = await _xrayStore.read(imageReference);
+    final image = localArtifact == null
+        ? await _xrayStore.read(imageReference)
+        : await _xrayStore.decodeArtifact(localArtifact);
     if (row.imageChecksum != image.checksumSha256) {
       throw StateError('Diagnosis and X-ray checksum do not match.');
     }
@@ -364,10 +366,10 @@ Future<SegmentationOverlays?> readStoredSegmentation(
       );
     }
   }
-  final xray = await store.read(refs['xray'] as String);
-  final lung = await store.read(refs['lung'] as String);
-  final lesion = await store.read(refs['lesion'] as String);
-  final lesionLayers = <String, Uint8List>{};
+  final xrayRef = refs['xray'] as String;
+  final lungRef = refs['lung'] as String;
+  final lesionRef = refs['lesion'] as String;
+  final layerRefsByKey = <String, String>{};
   final rawLayers = refs['lesion_layers'];
   if (rawLayers is Map) {
     for (final entry in rawLayers.entries) {
@@ -378,14 +380,23 @@ Future<SegmentationOverlays?> readStoredSegmentation(
           'Segmentation belongs to a different screening.',
         );
       }
-      final stored = await store.read(ref as String);
-      lesionLayers[safeKey] = stored.bytes;
+      layerRefsByKey[safeKey] = ref as String;
     }
   }
+  final images = await store.readMany([
+    xrayRef,
+    lungRef,
+    lesionRef,
+    ...layerRefsByKey.values,
+  ]);
+  final lesionLayers = <String, Uint8List>{
+    for (final entry in layerRefsByKey.entries)
+      entry.key: images[entry.value]!.bytes,
+  };
   return SegmentationOverlays(
-    xrayPng: xray.bytes,
-    lungPng: lung.bytes,
-    lesionPng: lesion.bytes,
+    xrayPng: images[xrayRef]!.bytes,
+    lungPng: images[lungRef]!.bytes,
+    lesionPng: images[lesionRef]!.bytes,
     lesionLayerPngs: lesionLayers,
     lungAreaPx: refs['lung_area_px'] as int,
     legend: [

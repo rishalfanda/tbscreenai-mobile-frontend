@@ -117,6 +117,13 @@ class OfflineValidationRepository extends ValidationRepository
     final generation = _db.sessionGeneration;
     if (owner == null || await _db.getSetting(kUserRole) != 'doctor') return;
     final hidden = Set<String>.from(await _readHiddenSet());
+    if (hidden.isEmpty) return;
+    final candidateOps = await _db.pendingDiagnosisMutationsFor(hidden);
+    if (candidateOps.isEmpty) return;
+    final opsByEntityId = <String, List<SyncQueueData>>{};
+    for (final op in candidateOps) {
+      (opsByEntityId[op.entityId] ??= <SyncQueueData>[]).add(op);
+    }
     for (final id in hidden.toList()) {
       await _db.transaction(() async {
         if (generation != _db.sessionGeneration ||
@@ -130,15 +137,7 @@ class OfflineValidationRepository extends ValidationRepository
             row.hasConflict) {
           return;
         }
-        final ops = (await _db.select(_db.syncQueue).get())
-            .where(
-              (op) =>
-                  op.entityId == id &&
-                  op.userId == owner.userId &&
-                  op.status != syncSynced &&
-                  op.operation != 'create',
-            )
-            .toList();
+        final ops = opsByEntityId[id] ?? const <SyncQueueData>[];
         bool legacyReset(SyncQueueData op) {
           final body = _map(op.payload);
           return op.operation == 'update' &&
@@ -168,11 +167,11 @@ class OfflineValidationRepository extends ValidationRepository
   Future<List<ValidationCase>> getCases() async {
     if (localOnly && _db.activeOwner == null) return const [];
     await _upgradeLegacyArchives();
-    var rows = await _db.allDiagnoses();
+    var rows = await _db.activeValidations();
     if (!localOnly && rows.isEmpty) {
       try {
         await _refresh();
-        rows = await _db.allDiagnoses();
+        rows = await _db.activeValidations();
       } catch (_) {
         // An empty offline state is honest; seeded mock cases are never used
         // in HTTP mode.
@@ -182,16 +181,21 @@ class OfflineValidationRepository extends ValidationRepository
     }
 
     final hidden = await _readHiddenSet();
+    final visibleRows = rows
+        .where((row) => !hidden.contains(row.id))
+        .toList(growable: false);
+    if (visibleRows.isEmpty) return const [];
     final patients = {
-      for (final patient in await _db.allPatients()) patient.id: patient,
+      for (final patient in await _db.patientsByIds([
+        for (final row in visibleRows) row.patientId,
+      ]))
+        patient.id: patient,
     };
-    return rows
-        .where(
-          (row) => row.validationDeletedAt == null && !hidden.contains(row.id),
-        )
+    return visibleRows
         .map((row) {
           final patient = _map(row.patientSnapshot);
           final cachedPatient = patients[row.patientId];
+          final clinical = _map(row.clinicalSnapshot);
           final name =
               patient['patient_name'] as String? ??
               cachedPatient?.name ??
@@ -203,25 +207,27 @@ class OfflineValidationRepository extends ValidationRepository
               cachedPatient?.gender ??
               'Not provided';
           final findings = _map(row.findings);
+          final diagnosisDate = row.diagnosedAt
+              .toLocal()
+              .toString()
+              .split(' ')
+              .first;
           return ValidationCase(
             id: row.id,
-            validationScore: _score(row),
+            validationScore: _scoreFromMap(row, clinical),
             lesionRating: row.lesionRating,
             validationDeletedAt: row.validationDeletedAt,
             validationDeletedBy: row.validationDeletedBy,
             validationNote: row.status != 'pending'
                 ? row.doctorNote
-                : (_map(row.clinicalSnapshot)['local_validation_v1']
-                          as Map?)?['note']
-                      as String?,
+                : (clinical['local_validation_v1'] as Map?)?['note'] as String?,
             patientCode:
                 patient['patient_code'] as String? ?? cachedPatient?.code,
             heightCm: (patient['height_cm'] as num?)?.toDouble(),
             weightKg: (patient['weight_kg'] as num?)?.toDouble(),
-            symptoms:
-                (_map(row.clinicalSnapshot)['symptoms'] as List? ?? const [])
-                    .whereType<String>()
-                    .toList(),
+            symptoms: (clinical['symptoms'] as List? ?? const [])
+                .whereType<String>()
+                .toList(),
             isPositive: row.isPositive,
             patientId: row.patientId,
             name: name,
@@ -230,11 +236,11 @@ class OfflineValidationRepository extends ValidationRepository
             gender: gender,
             aiScore: row.confidence,
             diagnosedAt: row.diagnosedAt,
-            diagnosisDate: row.diagnosedAt
-                .toLocal()
-                .toString()
-                .split(' ')
-                .first,
+            diagnosisDate: diagnosisDate,
+            screeningDateTimeLabel: ValidationCase.formatScreeningDateTimeLabel(
+              row.diagnosedAt,
+              diagnosisDate,
+            ),
             status: row.status,
             doctorNote: row.doctorNote,
             xrayUrl: row.imageReference,
@@ -254,9 +260,9 @@ class OfflineValidationRepository extends ValidationRepository
         .toList(growable: false);
   }
 
-  int? _score(LocalDiagnose row) {
+  int? _scoreFromMap(LocalDiagnose row, Map<String, dynamic> clinical) {
     if (row.status != 'pending') return row.validationScore;
-    final review = _map(row.clinicalSnapshot)['local_validation_v1'];
+    final review = clinical['local_validation_v1'];
     if (review is! Map || review['confirmed'] != true) return null;
     final score = review['score'];
     return score is int && score >= 0 && score <= 10 ? score : null;
@@ -275,7 +281,7 @@ class OfflineValidationRepository extends ValidationRepository
     }
     final artifact = await _db.findEncryptedArtifact(row.id);
     if (artifact == null) return null;
-    final image = await _xrayStore.read('local-encrypted://${row.id}');
+    final image = await _xrayStore.decodeArtifact(artifact);
     if (row.imageChecksum != null &&
         row.imageChecksum != image.checksumSha256) {
       throw const ValidationContractException(
@@ -340,13 +346,7 @@ class OfflineValidationRepository extends ValidationRepository
         );
       }
       if (row.validationDeletedAt != null) return;
-      final pending = (await _db.select(_db.syncQueue).get()).where(
-        (op) =>
-            op.entityId == id &&
-            op.entityType == 'diagnosis' &&
-            op.status != syncSynced &&
-            op.operation != 'create',
-      );
+      final pending = await _db.pendingDiagnosisMutationsFor([id]);
       if (pending.isNotEmpty) {
         throw const ValidationContractException(
           'Sinkronkan perubahan sebelumnya sebelum menghapus validasi.',
@@ -731,19 +731,12 @@ class OfflineValidationRepository extends ValidationRepository
 
   Future<void> _promoteLegacyRatingConflicts() async {
     if (await _db.getSetting(kUserRole) != 'doctor') return;
-    final operations = await _db.select(_db.syncQueue).get();
+    final operations = await _db.legacyRatingConflictCandidates();
     for (final op in operations) {
-      if (!_owns(op) ||
-          op.entityType != 'diagnosis' ||
-          op.operation != 'update' ||
-          op.status == syncSynced ||
-          op.status == syncConflict) {
-        continue;
-      }
+      if (!_owns(op)) continue;
       final payload = _map(op.payload);
       if (!payload.containsKey('validation_score') ||
-          payload.containsKey('lesion_rating') ||
-          op.retryCount == 0) {
+          payload.containsKey('lesion_rating')) {
         continue;
       }
       await _db.transaction(() async {

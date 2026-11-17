@@ -469,7 +469,46 @@ class AppDatabase extends _$AppDatabase {
 
   Future<int> countPatients() async => (await allPatients()).length;
 
+  Future<List<LocalPatient>> patientsByIds(Iterable<String> ids) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return const [];
+    final owner = _activeOwner;
+    final out = <LocalPatient>[];
+    const maxVars = 400;
+    for (var i = 0; i < list.length; i += maxVars) {
+      final slice = list.sublist(i, math.min(i + maxVars, list.length));
+      final query = select(localPatients)
+        ..where((t) => t.id.isIn(slice) & t.tombstone.equals(false));
+      if (owner != null) {
+        query.where(
+          (t) =>
+              t.tenantId.equals(owner.tenantId) &
+              t.userId.equals(owner.userId) &
+              t.deviceId.equals(owner.deviceId),
+        );
+      }
+      out.addAll(await query.get());
+    }
+    return out;
+  }
+
   // === Section: Diagnoses cache ===
+
+  Future<List<LocalDiagnose>> activeValidations() {
+    final query = select(localDiagnoses)
+      ..where((t) => t.tombstone.equals(false) & t.validationDeletedAt.isNull())
+      ..orderBy([(t) => OrderingTerm.desc(t.diagnosedAt)]);
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query.get();
+  }
 
   Future<List<LocalDiagnose>> allDiagnoses() {
     final query = select(localDiagnoses)
@@ -683,6 +722,31 @@ class AppDatabase extends _$AppDatabase {
       );
     }
     return query.getSingleOrNull();
+  }
+
+  Future<List<EncryptedXrayArtifact>> findEncryptedArtifacts(
+    Iterable<String> ids,
+  ) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return const [];
+    final owner = _activeOwner;
+    final out = <EncryptedXrayArtifact>[];
+    const maxVars = 400;
+    for (var i = 0; i < list.length; i += maxVars) {
+      final slice = list.sublist(i, math.min(i + maxVars, list.length));
+      final query = select(encryptedXrayArtifacts)
+        ..where((t) => t.id.isIn(slice));
+      if (owner != null) {
+        query.where(
+          (t) =>
+              t.tenantId.equals(owner.tenantId) &
+              t.userId.equals(owner.userId) &
+              t.deviceId.equals(owner.deviceId),
+        );
+      }
+      out.addAll(await query.get());
+    }
+    return out;
   }
 
   Future<void> _createArchiveIndexes() => customStatement(
@@ -1039,6 +1103,59 @@ class AppDatabase extends _$AppDatabase {
       );
     }
     return query.get();
+  }
+
+  Future<List<SyncQueueData>> legacyRatingConflictCandidates() {
+    final query = select(syncQueue)
+      ..where(
+        (t) =>
+            t.entityType.equals('diagnosis') &
+            t.operation.equals('update') &
+            t.status.equals(syncSynced).not() &
+            t.status.equals(syncConflict).not() &
+            t.retryCount.isBiggerThanValue(0),
+      );
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query.get();
+  }
+
+  Future<List<SyncQueueData>> pendingDiagnosisMutationsFor(
+    Iterable<String> diagnosisIds,
+  ) async {
+    final list = diagnosisIds.toSet().toList();
+    if (list.isEmpty) return const [];
+    final owner = _activeOwner;
+    final out = <SyncQueueData>[];
+    const maxVars = 400;
+    for (var i = 0; i < list.length; i += maxVars) {
+      final slice = list.sublist(i, math.min(i + maxVars, list.length));
+      final query = select(syncQueue)
+        ..where(
+          (t) =>
+              t.entityId.isIn(slice) &
+              t.entityType.equals('diagnosis') &
+              t.status.equals(syncSynced).not() &
+              t.operation.equals('create').not(),
+        );
+      if (owner != null) {
+        query.where(
+          (t) =>
+              t.tenantId.equals(owner.tenantId) &
+              t.userId.equals(owner.userId) &
+              t.deviceId.equals(owner.deviceId),
+        );
+      }
+      out.addAll(await query.get());
+    }
+    return out;
   }
 
   Future<List<String>> protectedEntityIds(String entityType) async {
