@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:cryptography/cryptography.dart';
 import 'package:dio/dio.dart';
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1756,6 +1756,269 @@ void main() {
       await seedDiag('d-4');
       await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(db.hiddenSettingReads, 2);
+    },
+  );
+
+  test(
+    '50-record outbox capture & restore externalizes binary BLOBs without JSON array bloat',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      final secure = MemorySecureTokenStorage();
+      final outbox = DeviceOperatorOutbox(db, secure);
+      addTearDown(db.close);
+
+      const owner = DataOwner(
+        tenantId: 'hosp-50',
+        userId: 'doc-50',
+        deviceId: 'dev-50',
+      );
+      await db.activateOwner(
+        db.sessionGeneration,
+        owner,
+        identitySettings: SettingsStore.identityEntries(
+          userId: 'doc-50',
+          tenantId: 'hosp-50',
+          role: 'doctor',
+          displayName: 'Dr. Scale',
+          email: 'scale@example.invalid',
+        ),
+      );
+
+      final largeBlob = Uint8List.fromList(
+        List<int>.generate(4096, (idx) => (idx * 31) & 0xff),
+      );
+      for (var i = 0; i < 50; i++) {
+        final pid = 'pat-$i';
+        final did = 'diag-$i';
+        final ts = DateTime.utc(2026, 11, 17, 0, i);
+        await db.upsertPatient(
+          LocalPatientsCompanion.insert(
+            id: pid,
+            code: 'P$i',
+            name: 'Scale Patient $i',
+            age: 35,
+            gender: 'Female',
+          ),
+        );
+        await db.upsertDiagnosis(
+          LocalDiagnosesCompanion.insert(
+            id: did,
+            patientId: pid,
+            isPositive: true,
+            confidence: 85,
+            modelVersion: 'v1',
+            diagnosedAt: ts,
+            clinicalSnapshot: Value(
+              jsonEncode({
+                'segmentation_v1': {
+                  'lesion_layers': {'cavity': '$did:lesion:cavity'},
+                },
+              }),
+            ),
+          ),
+        );
+        for (final aid in [
+          did,
+          '$did:xray',
+          '$did:lung',
+          '$did:lesion',
+          '$did:lesion:cavity',
+        ]) {
+          await db.upsertEncryptedArtifact(
+            EncryptedXrayArtifactsCompanion.insert(
+              id: aid,
+              cipherText: largeBlob,
+              nonce: Uint8List.fromList([1, 2, 3, 4]),
+              mac: Uint8List.fromList([5, 6, 7, 8]),
+              filename: '$aid.png',
+              mimeType: 'image/png',
+              source: 'onnx',
+              checksum: 'sum-$aid',
+              sizeBytes: largeBlob.length,
+              createdAt: ts,
+            ),
+          );
+        }
+        await db.enqueue(
+          SyncQueueCompanion.insert(
+            clientOpId: 'op-$i',
+            entityType: 'diagnosis',
+            entityId: did,
+            operation: 'create',
+            payload: '{}',
+            createdAt: ts,
+          ),
+        );
+      }
+
+      await outbox.captureDoctorQueue();
+
+      // Metadata-only outbox rows stay tiny in app_settings; BLOBs live in
+      // archived_xray_artifacts and survive session cleanup.
+      final archiveRows = await (db.select(
+        db.appSettings,
+      )..where((t) => t.key.like('${DeviceOperatorOutbox.prefix}%'))).get();
+      expect(archiveRows.length, 50);
+      for (final row in archiveRows) {
+        expect(row.value.length, lessThan(8192));
+        final decoded = jsonDecode(row.value) as Map<String, dynamic>;
+        expect(decoded.keys.first, 'tenant_id');
+      }
+      final archivedBlobs = await db.select(db.archivedXrayArtifacts).get();
+      expect(archivedBlobs.length, 250);
+
+      await db.clearSessionData();
+      expect(await db.findEncryptedArtifact('diag-49:lesion:cavity'), isNull);
+      expect((await db.select(db.archivedXrayArtifacts).get()).length, 250);
+
+      await db.activateOwner(
+        db.sessionGeneration,
+        owner,
+        identitySettings: SettingsStore.identityEntries(
+          userId: 'doc-50',
+          tenantId: 'hosp-50',
+          role: 'doctor',
+          displayName: 'Dr. Scale',
+          email: 'scale@example.invalid',
+        ),
+      );
+      await outbox.restoreDoctorQueue(scope: OutboxRestoreScope.pendingOnly);
+      expect(await db.countPatients(), 50);
+      expect((await db.pendingOps()).length, 50);
+      final restored = await db.findEncryptedArtifact('diag-49:lesion:cavity');
+      expect(restored, isNotNull);
+      expect(restored!.cipherText, largeBlob);
+
+      await outbox.remove('op-49');
+      expect(await db.findArchivedArtifacts('${DeviceOperatorOutbox.prefix}op-49'), isEmpty);
+    },
+  );
+
+  test(
+    'restoreDoctorQueue supports legacy inline [int, ...] archives and compacts them into ArchivedXrayArtifacts',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      final secure = MemorySecureTokenStorage();
+      final outbox = DeviceOperatorOutbox(db, secure);
+      addTearDown(db.close);
+
+      const owner = DataOwner(
+        tenantId: 'hosp-leg',
+        userId: 'doc-leg',
+        deviceId: 'dev-leg',
+      );
+      await db.activateOwner(db.sessionGeneration, owner);
+      await db.putSetting(kUserRole, 'doctor');
+
+      // Seed a legacy pre-v6 archive row directly into app_settings containing
+      // inline [int, ...] byte arrays encrypted with the outbox key.
+      final aes = AesGcm.with256bits();
+      final key = await aes.newSecretKey();
+      await secure.write(
+        'device_operator_outbox_aes_v1',
+        base64Encode(await key.extractBytes()),
+      );
+      final ts = DateTime.utc(2026, 11, 17, 1, 0).toIso8601String();
+      final legacyPayload = {
+        'op': {
+          'clientOpId': 'op-legacy',
+          'entityType': 'diagnosis',
+          'entityId': 'diag-legacy',
+          'operation': 'create',
+          'payload': '{}',
+          'status': syncPending,
+          'createdAt': ts,
+          'retryCount': 0,
+          'tenantId': 'hosp-leg',
+          'userId': 'doc-leg',
+          'deviceId': 'dev-leg',
+        },
+        'patient': {
+          'id': 'pat-legacy',
+          'code': 'PL',
+          'name': 'Legacy Patient',
+          'age': 45,
+          'gender': 'Male',
+          'status': 'Normal',
+          'history': '[]',
+          'tombstone': false,
+          'hasConflict': false,
+          'tenantId': 'hosp-leg',
+          'userId': 'doc-leg',
+          'deviceId': 'dev-leg',
+        },
+        'diagnosis': {
+          'id': 'diag-legacy',
+          'patientId': 'pat-legacy',
+          'isPositive': false,
+          'confidence': 20,
+          'modelVersion': 'v1',
+          'findings': '{}',
+          'status': 'pending',
+          'diagnosedAt': ts,
+          'hasConflict': false,
+          'tombstone': false,
+          'tenantId': 'hosp-leg',
+          'userId': 'doc-leg',
+          'deviceId': 'dev-leg',
+          'provenance': '{}',
+          'isMock': false,
+          'patientSnapshot': '{}',
+          'clinicalSnapshot': '{}',
+          'saveStatus': 'pending_sync',
+        },
+        'artifact': {
+          'id': 'diag-legacy',
+          'cipherText': List<int>.filled(2048, 77),
+          'nonce': [1, 2, 3],
+          'mac': [4, 5, 6],
+          'filename': 'legacy.png',
+          'mimeType': 'image/png',
+          'source': 'camera',
+          'checksum': 'sum-legacy',
+          'sizeBytes': 2048,
+          'tenantId': 'hosp-leg',
+          'userId': 'doc-leg',
+          'deviceId': 'dev-leg',
+          'createdAt': ts,
+        },
+      };
+      final box = await aes.encrypt(
+        utf8.encode(jsonEncode(legacyPayload)),
+        secretKey: key,
+      );
+      final legacyRowValue = jsonEncode({
+        'cipher': base64Encode(box.cipherText),
+        'nonce': base64Encode(box.nonce),
+        'mac': base64Encode(box.mac.bytes),
+        'tenant_id': 'hosp-leg',
+        'device_id': 'dev-leg',
+        'owner_id': 'doc-leg',
+      });
+      await db.putSetting(
+        '${DeviceOperatorOutbox.prefix}op-legacy',
+        legacyRowValue,
+      );
+
+      await outbox.restoreDoctorQueue(scope: OutboxRestoreScope.pendingOnly);
+
+      final restoredArtifact = await db.findEncryptedArtifact('diag-legacy');
+      expect(restoredArtifact, isNotNull);
+      expect(restoredArtifact!.cipherText.length, 2048);
+
+      // Legacy row should now be compacted: blobs in archived_xray_artifacts and
+      // slimmed row in app_settings without the inline integer array payload.
+      final compactedSetting = await db.getSetting(
+        '${DeviceOperatorOutbox.prefix}op-legacy',
+      );
+      expect(compactedSetting, isNotNull);
+      expect(compactedSetting!.length, lessThan(legacyRowValue.length ~/ 3));
+      expect(
+        (await db.findArchivedArtifacts(
+          '${DeviceOperatorOutbox.prefix}op-legacy',
+        )).single.cipherText.length,
+        2048,
+      );
     },
   );
 }

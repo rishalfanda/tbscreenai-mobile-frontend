@@ -45,7 +45,7 @@ class OperatorSyncService {
   }
 
   Future<void> _prepareImageRepairs() async {
-    final pending = await queued();
+    final pending = await _queuedMetadata();
     final actor = auth.profile!;
     final generation = db.sessionGeneration;
     void current() {
@@ -60,6 +60,7 @@ class OperatorSyncService {
       actor.tenantId,
       device,
       includeReceived: true,
+      includeArtifacts: false,
     );
     current();
     final occupied = {
@@ -69,21 +70,25 @@ class OperatorSyncService {
     };
     for (final entry in all) {
       final op = SyncQueueData.fromJson(entry['op'] as Map<String, dynamic>);
+      final artifact = (entry['artifact'] ?? entry['artifact_meta']) as Map?;
       if (op.status != syncSynced ||
           op.entityType != 'diagnosis' ||
           entry['retired'] == true ||
-          entry['artifact'] == null ||
+          artifact == null ||
           occupied.contains(op.entityId)) {
         continue;
       }
-      final artifact = entry['artifact'] as Map;
       final receipt = entry['image_receipt'] as Map?;
       final missingXray =
           entry['xray_synced'] != true ||
           receipt?['sha256'] != artifact['checksum'] ||
           receipt?['size_bytes'] != artifact['sizeBytes'];
       var missing = missingXray;
-      for (final raw in entry['segmentation_artifacts'] as List? ?? const []) {
+      for (final raw
+          in ((entry['segmentation_artifacts'] ??
+                  entry['segmentation_artifact_metas'])
+              as List? ??
+              const [])) {
         final id = (raw as Map)['id'];
         if (id == '${op.entityId}:lung' && entry['lung_map_synced'] != true ||
             id == '${op.entityId}:lesion' && entry['heatmap_synced'] != true) {
@@ -92,24 +97,27 @@ class OperatorSyncService {
       }
       if (!missing) continue;
       current();
-      await outbox.save({
-        ...entry,
-        'record_synced': true,
-        if (missingXray) 'xray_synced': false,
-        'op': {
-          ...op.toJson(),
-          'clientOpId': uuidV4(),
-          'status': syncPending,
-          'operation': 'create',
-          'payload': '{}',
+      await outbox.save(
+        {
+          ...entry,
+          'record_synced': true,
+          if (missingXray) 'xray_synced': false,
+          'op': {
+            ...op.toJson(),
+            'clientOpId': uuidV4(),
+            'status': syncPending,
+            'operation': 'create',
+            'payload': '{}',
+          },
         },
-      });
+        sourceArchiveKey: outbox.archiveKeyFor(entry),
+      );
       current();
       occupied.add(op.entityId);
     }
   }
 
-  Future<List<Map<String, dynamic>>> queued() async {
+  Future<List<Map<String, dynamic>>> queued({bool includeArtifacts = true}) async {
     if (!auth.isLoggedIn ||
         auth.mustChangePassword ||
         auth.mobileRole != MobileRole.technician) {
@@ -118,12 +126,19 @@ class OperatorSyncService {
     final actor = auth.profile;
     final generation = db.sessionGeneration;
     final device = await SettingsStore(db).readOrCreateDeviceId();
-    final entries = await outbox.entries(auth.tenantId, device);
+    final entries = await outbox.entries(
+      auth.tenantId,
+      device,
+      includeArtifacts: includeArtifacts,
+    );
     if (!identical(auth.profile, actor) || generation != db.sessionGeneration) {
       throw StateError('Session changed');
     }
     return entries;
   }
+
+  Future<List<Map<String, dynamic>>> _queuedMetadata() =>
+      queued(includeArtifacts: false);
 
   Future<int> queuedCount() async => (await queueSummary()).total;
 
@@ -151,7 +166,7 @@ class OperatorSyncService {
     _running = true;
     try {
       await prepareImageRepairs();
-      final entries = await queued();
+      final entries = await _queuedMetadata();
       final actor = auth.profile!;
       final generation = db.sessionGeneration;
       void current() {
@@ -317,13 +332,30 @@ class OperatorSyncService {
           if (op.entityType == 'diagnosis' && op.operation == 'create') {
             // Upload the original first: an unavailable map endpoint must not
             // prevent the original screening image reaching the server.
-            if (entry['artifact'] == null) {
+            final primaryMeta =
+                (entry['artifact'] ?? entry['artifact_meta']) as Map?;
+            if (primaryMeta == null) {
               throw const FormatException('Original X-ray archive is missing.');
             }
+            final opOwner =
+                (op.tenantId != null && op.userId != null && op.deviceId != null)
+                ? DataOwner(
+                    tenantId: op.tenantId!,
+                    userId: op.userId!,
+                    deviceId: op.deviceId!,
+                  )
+                : null;
             if (entry['xray_synced'] != true) {
-              final artifact = EncryptedXrayArtifact.fromJson(
-                (entry['artifact'] as Map).cast<String, dynamic>(),
+              final artifact = await outbox.loadArchivedArtifact(
+                entry,
+                op.entityId,
+                owner: opOwner,
               );
+              if (artifact == null) {
+                throw const FormatException(
+                  'Original X-ray archive is missing.',
+                );
+              }
               _checkArtifact(artifact, op, actor.tenantId, op.entityId);
               final image = await xray.decodeArtifact(artifact);
               current();
@@ -344,14 +376,27 @@ class OperatorSyncService {
             }
             var mapBlocked = false;
             for (final raw
-                in entry['segmentation_artifacts'] as List? ?? const []) {
-              final artifact = EncryptedXrayArtifact.fromJson(
-                (raw as Map).cast<String, dynamic>(),
-              );
-              final isLung = artifact.id == '${op.entityId}:lung';
-              if (!isLung && artifact.id != '${op.entityId}:lesion') continue;
+                in ((entry['segmentation_artifacts'] ??
+                        entry['segmentation_artifact_metas'])
+                    as List? ??
+                    const [])) {
+              final rawMap = raw as Map;
+              final artifactId = rawMap['id'] as String?;
+              if (artifactId == null) continue;
+              final isLung = artifactId == '${op.entityId}:lung';
+              if (!isLung && artifactId != '${op.entityId}:lesion') continue;
               final flag = isLung ? 'lung_map_synced' : 'heatmap_synced';
               if (entry[flag] == true) continue;
+              final artifact = await outbox.loadArchivedArtifact(
+                entry,
+                artifactId,
+                owner: opOwner,
+              );
+              if (artifact == null) {
+                throw const FormatException(
+                  'Segmentation archive is missing.',
+                );
+              }
               _checkArtifact(
                 artifact,
                 op,
@@ -475,6 +520,7 @@ class OperatorSyncService {
       auth.tenantId,
       device,
       includeReceived: true,
+      includeArtifacts: false,
     );
     current();
     final patients = <String>{}, diagnoses = <String>{};

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -53,6 +55,7 @@ class DataOwner {
 ///
 /// v2 adds explicit owner/version/retry metadata. v3 adds durable screening
 /// snapshots, encrypted X-ray artifacts and conflict-resolution audit events.
+/// v6 adds [ArchivedXrayArtifacts] for BLOB-native outbox artifact storage.
 /// Session secrets and artifact keys live in platform secure storage.
 @DriftDatabase(
   tables: [
@@ -60,6 +63,7 @@ class DataOwner {
     LocalDiagnoses,
     SyncQueue,
     EncryptedXrayArtifacts,
+    ArchivedXrayArtifacts,
     ClinicalAuditEvents,
     AppSettings,
   ],
@@ -80,7 +84,7 @@ class AppDatabase extends _$AppDatabase {
       );
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   int _sessionGeneration = 0;
   DataOwner? _activeOwner;
@@ -92,7 +96,10 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    onCreate: (m) => m.createAll(),
+    onCreate: (m) async {
+      await m.createAll();
+      await _createArchiveIndexes();
+    },
     onUpgrade: (m, from, to) async {
       if (from < 2) await _migrateV1ToV2(m);
       if (from < 3) await _migrateV2ToV3(m);
@@ -106,8 +113,16 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(localDiagnoses, localDiagnoses.validatedBy);
         await m.addColumn(localDiagnoses, localDiagnoses.validatedAt);
       }
+      if (from < 6) {
+        await m.createTable(archivedXrayArtifacts);
+        await _createArchiveIndexes();
+      }
     },
     beforeOpen: (details) async {
+      if (!kIsWeb) {
+        await customStatement('PRAGMA journal_mode = WAL;');
+        await customStatement('PRAGMA busy_timeout = 5000;');
+      }
       // A process crash can leave an op in sending. The same client_op_id is
       // safe to replay because the backend enforces idempotency.
       if (details.versionNow >= 2) {
@@ -670,6 +685,185 @@ class AppDatabase extends _$AppDatabase {
     return query.getSingleOrNull();
   }
 
+  Future<void> _createArchiveIndexes() => customStatement(
+    'CREATE INDEX IF NOT EXISTS idx_archived_xray_owner '
+    'ON archived_xray_artifacts (tenant_id, user_id, device_id, archive_key)',
+  );
+
+  /// Copies already-encrypted X-ray/overlay BLOBs inside SQLite from
+  /// [encryptedXrayArtifacts] into [archivedXrayArtifacts] without allocating
+  /// large byte buffers or JSON integer arrays in Dart.
+  Future<void> copyEncryptedArtifactsToArchive(
+    Map<String, List<String>> artifactIdsByArchiveKey,
+    DataOwner owner,
+  ) async {
+    const maxVars = 400;
+    for (final entry in artifactIdsByArchiveKey.entries) {
+      final ids = entry.value;
+      if (ids.isEmpty) continue;
+      for (var i = 0; i < ids.length; i += maxVars) {
+        final slice = ids.sublist(i, math.min(i + maxVars, ids.length));
+        final placeholders = List.filled(slice.length, '?').join(',');
+        await customInsert(
+          'INSERT OR REPLACE INTO archived_xray_artifacts ('
+          'archive_key, artifact_id, cipher_text, nonce, mac, filename, '
+          'mime_type, source, checksum, size_bytes, created_at, '
+          'tenant_id, user_id, device_id) '
+          'SELECT ?, id, cipher_text, nonce, mac, filename, '
+          'mime_type, source, checksum, size_bytes, created_at, '
+          'tenant_id, user_id, device_id '
+          'FROM encrypted_xray_artifacts '
+          'WHERE id IN ($placeholders) '
+          'AND tenant_id = ? AND user_id = ? AND device_id = ?',
+          variables: [
+            Variable.withString(entry.key),
+            for (final id in slice) Variable.withString(id),
+            Variable.withString(owner.tenantId),
+            Variable.withString(owner.userId),
+            Variable.withString(owner.deviceId),
+          ],
+          updates: {archivedXrayArtifacts},
+        );
+      }
+    }
+  }
+
+  /// Restores archived BLOBs directly into [encryptedXrayArtifacts] inside SQLite
+  /// for verified [artifactIdsByArchiveKey] entries owned by [owner].
+  Future<void> copyArchiveArtifactsToActive(
+    Map<String, List<String>> artifactIdsByArchiveKey,
+    DataOwner owner,
+  ) async {
+    const maxVars = 400;
+    for (final entry in artifactIdsByArchiveKey.entries) {
+      final ids = entry.value;
+      if (ids.isEmpty) continue;
+      for (var i = 0; i < ids.length; i += maxVars) {
+        final slice = ids.sublist(i, math.min(i + maxVars, ids.length));
+        final placeholders = List.filled(slice.length, '?').join(',');
+        await customInsert(
+          'INSERT OR REPLACE INTO encrypted_xray_artifacts ('
+          'id, cipher_text, nonce, mac, filename, '
+          'mime_type, source, checksum, size_bytes, created_at, '
+          'tenant_id, user_id, device_id) '
+          'SELECT artifact_id, cipher_text, nonce, mac, filename, '
+          'mime_type, source, checksum, size_bytes, created_at, '
+          'tenant_id, user_id, device_id '
+          'FROM archived_xray_artifacts '
+          'WHERE archive_key = ? AND artifact_id IN ($placeholders) '
+          'AND tenant_id = ? AND user_id = ? AND device_id = ?',
+          variables: [
+            Variable.withString(entry.key),
+            for (final id in slice) Variable.withString(id),
+            Variable.withString(owner.tenantId),
+            Variable.withString(owner.userId),
+            Variable.withString(owner.deviceId),
+          ],
+          updates: {encryptedXrayArtifacts},
+        );
+      }
+    }
+  }
+
+  Future<void> upsertArchivedArtifacts(
+    List<ArchivedXrayArtifactsCompanion> rows,
+  ) async {
+    if (rows.isEmpty) return;
+    await batch((b) {
+      b.insertAllOnConflictUpdate(archivedXrayArtifacts, rows);
+    });
+  }
+
+  Future<void> rekeyArchivedArtifacts({
+    required String fromKey,
+    required String toKey,
+    DataOwner? owner,
+  }) async {
+    if (fromKey == toKey) return;
+    final ownerSql = owner == null
+        ? ''
+        : ' AND tenant_id = ? AND user_id = ? AND device_id = ?';
+    await customInsert(
+      'INSERT OR REPLACE INTO archived_xray_artifacts ('
+      'archive_key, artifact_id, cipher_text, nonce, mac, filename, '
+      'mime_type, source, checksum, size_bytes, created_at, '
+      'tenant_id, user_id, device_id) '
+      'SELECT ?, artifact_id, cipher_text, nonce, mac, filename, '
+      'mime_type, source, checksum, size_bytes, created_at, '
+      'tenant_id, user_id, device_id '
+      'FROM archived_xray_artifacts '
+      'WHERE archive_key = ?$ownerSql',
+      variables: [
+        Variable.withString(toKey),
+        Variable.withString(fromKey),
+        if (owner != null) ...[
+          Variable.withString(owner.tenantId),
+          Variable.withString(owner.userId),
+          Variable.withString(owner.deviceId),
+        ],
+      ],
+      updates: {archivedXrayArtifacts},
+    );
+  }
+
+  Future<List<ArchivedXrayArtifact>> findArchivedArtifacts(
+    String archiveKey, {
+    List<String>? artifactIds,
+    DataOwner? owner,
+  }) async {
+    if (artifactIds != null && artifactIds.isEmpty) return const [];
+    final out = <ArchivedXrayArtifact>[];
+    if (artifactIds == null) {
+      final query = select(archivedXrayArtifacts)
+        ..where((t) => t.archiveKey.equals(archiveKey));
+      if (owner != null) {
+        query.where(
+          (t) =>
+              t.tenantId.equals(owner.tenantId) &
+              t.userId.equals(owner.userId) &
+              t.deviceId.equals(owner.deviceId),
+        );
+      }
+      out.addAll(await query.get());
+      return out;
+    }
+    const maxVars = 400;
+    for (var i = 0; i < artifactIds.length; i += maxVars) {
+      final slice = artifactIds.sublist(
+        i,
+        math.min(i + maxVars, artifactIds.length),
+      );
+      final query = select(archivedXrayArtifacts)
+        ..where(
+          (t) => t.archiveKey.equals(archiveKey) & t.artifactId.isIn(slice),
+        );
+      if (owner != null) {
+        query.where(
+          (t) =>
+              t.tenantId.equals(owner.tenantId) &
+              t.userId.equals(owner.userId) &
+              t.deviceId.equals(owner.deviceId),
+        );
+      }
+      out.addAll(await query.get());
+    }
+    return out;
+  }
+
+  Future<void> deleteArchivedArtifactsForKeys(List<String> archiveKeys) async {
+    if (archiveKeys.isEmpty) return;
+    const maxVars = 400;
+    for (var i = 0; i < archiveKeys.length; i += maxVars) {
+      final slice = archiveKeys.sublist(
+        i,
+        math.min(i + maxVars, archiveKeys.length),
+      );
+      await (delete(
+        archivedXrayArtifacts,
+      )..where((t) => t.archiveKey.isIn(slice))).go();
+    }
+  }
+
   // === Section: Clinical audit evidence ===
 
   Future<void> appendClinicalAudit(ClinicalAuditEventsCompanion event) {
@@ -970,6 +1164,7 @@ class AppDatabase extends _$AppDatabase {
     _activeOwner = null;
     await batch((b) {
       _addClinicalDataDeletes(b);
+      b.deleteWhere(archivedXrayArtifacts, (_) => const Constant(true));
       b.deleteWhere(appSettings, (_) => const Constant(true));
     });
   }

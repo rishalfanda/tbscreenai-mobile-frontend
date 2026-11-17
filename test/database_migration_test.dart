@@ -287,4 +287,62 @@ void main() {
       raw.close();
     }
   });
+
+  test(
+    'v5 to v6 creates archived_xray_artifacts table, enables WAL, and preserves v5 rows',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'tbscreen-v5-v6-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}${Platform.pathSeparator}v5.sqlite');
+      final first = AppDatabase(NativeDatabase(file));
+      await first.activateOwner(
+        first.sessionGeneration,
+        const DataOwner(tenantId: 't1', userId: 'u1', deviceId: 'd1'),
+      );
+      await first.upsertDiagnosis(
+        LocalDiagnosesCompanion.insert(
+          id: 'diag-v5',
+          patientId: 'pat-v5',
+          isPositive: false,
+          confidence: 42,
+          modelVersion: 'v1',
+          diagnosedAt: DateTime.utc(2026, 11, 17),
+        ),
+      );
+      await first.putSetting('device_operator_outbox_v1:op-v5', '{"cipher":"x"}');
+      await first.close();
+
+      // Downgrade DB back to v5 by dropping archived_xray_artifacts and setting PRAGMA user_version = 5.
+      final raw = sqlite3.open(file.path);
+      raw.execute('DROP TABLE IF EXISTS archived_xray_artifacts');
+      raw.execute('PRAGMA user_version = 5');
+      raw.close();
+
+      final upgraded = AppDatabase(NativeDatabase(file));
+      addTearDown(upgraded.close);
+
+      final diag = await upgraded.findDiagnosis('diag-v5');
+      expect(diag, isNotNull);
+      expect(diag!.confidence, 42);
+      expect(
+        await upgraded.getSetting('device_operator_outbox_v1:op-v5'),
+        '{"cipher":"x"}',
+      );
+      final tables = await upgraded
+          .customSelect(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'archived_xray_artifacts'",
+          )
+          .get();
+      expect(tables, hasLength(1));
+      final journalMode = await upgraded
+          .customSelect('PRAGMA journal_mode')
+          .getSingle();
+      expect(
+        journalMode.read<String>('journal_mode').toLowerCase(),
+        'wal',
+      );
+    },
+  );
 }

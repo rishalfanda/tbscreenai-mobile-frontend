@@ -1,6 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:drift/drift.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:myapp/data/local/app_database.dart';
@@ -70,9 +70,14 @@ class DeviceOperatorOutbox {
   final AppDatabase db;
   final SecureTokenStorage storage;
   final _aes = AesGcm.with256bits();
+  final Expando<String> _archiveKeyOfEntry = Expando<String>('archiveKey');
   static const prefix = 'device_operator_outbox_v1:';
   static const cachePrefix = 'doctor_received_cache_v1:';
   static const _keyName = 'device_operator_outbox_aes_v1';
+
+  String? archiveKeyFor(Map<String, dynamic> entry) =>
+      _archiveKeyOfEntry[entry];
+
   Future<SecretKey> _key({bool create = false}) async {
     final raw = await storage.read(_keyName);
     if (raw != null) {
@@ -100,15 +105,136 @@ class DeviceOperatorOutbox {
     Map<String, dynamic> encrypted,
   ) {
     final op = entry['op'] as Map;
+    // Place filterable metadata keys before 'cipher' so SQLite json_extract
+    // hits them at the start of each JSON row without scanning ciphertext.
     return jsonEncode({
-      ...encrypted,
       'tenant_id': op['tenantId'],
       'device_id': op['deviceId'],
       'owner_id': op['userId'],
       'op_status': op['status'],
       'entity_type': op['entityType'],
       'operation': op['operation'],
+      ...encrypted,
     });
+  }
+
+  static bool _hasInlineArtifactBytes(Map<String, dynamic> raw) =>
+      raw['cipherText'] != null && raw['nonce'] != null && raw['mac'] != null;
+
+  static Map<String, dynamic> _stripArtifactBytes(Map<String, dynamic> raw) {
+    return <String, dynamic>{
+      for (final entry in raw.entries)
+        if (entry.key != 'cipherText' &&
+            entry.key != 'nonce' &&
+            entry.key != 'mac')
+          entry.key: entry.value,
+    };
+  }
+
+  static Uint8List _toUint8List(Object? raw) {
+    if (raw is Uint8List) return raw;
+    if (raw is List) return Uint8List.fromList(raw.cast<int>());
+    if (raw is String) return base64Decode(raw);
+    throw const FormatException('Invalid artifact byte buffer');
+  }
+
+  static DateTime _parseDateTime(Object? raw) {
+    if (raw is DateTime) return raw.toUtc();
+    if (raw is int) return DateTime.fromMillisecondsSinceEpoch(raw, isUtc: true);
+    if (raw is String) return DateTime.parse(raw).toUtc();
+    throw const FormatException('Invalid artifact timestamp');
+  }
+
+  static ArchivedXrayArtifactsCompanion _toArchivedCompanion(
+    String archiveKey,
+    Map<String, dynamic> raw, {
+    required DataOwner fallbackOwner,
+  }) {
+    return ArchivedXrayArtifactsCompanion.insert(
+      archiveKey: archiveKey,
+      artifactId: raw['id'] as String,
+      cipherText: _toUint8List(raw['cipherText']),
+      nonce: _toUint8List(raw['nonce']),
+      mac: _toUint8List(raw['mac']),
+      filename: raw['filename'] as String,
+      mimeType: raw['mimeType'] as String,
+      source: raw['source'] as String,
+      checksum: raw['checksum'] as String,
+      sizeBytes: (raw['sizeBytes'] as num).toInt(),
+      createdAt: _parseDateTime(raw['createdAt']),
+      tenantId: (raw['tenantId'] as String?) ?? fallbackOwner.tenantId,
+      userId: (raw['userId'] as String?) ?? fallbackOwner.userId,
+      deviceId: (raw['deviceId'] as String?) ?? fallbackOwner.deviceId,
+    );
+  }
+
+  static Map<String, dynamic> _archivedRowToJson(ArchivedXrayArtifact row) => {
+    'id': row.artifactId,
+    'cipherText': row.cipherText,
+    'nonce': row.nonce,
+    'mac': row.mac,
+    'filename': row.filename,
+    'mimeType': row.mimeType,
+    'source': row.source,
+    'checksum': row.checksum,
+    'sizeBytes': row.sizeBytes,
+    'createdAt': row.createdAt.millisecondsSinceEpoch,
+    'tenantId': row.tenantId,
+    'userId': row.userId,
+    'deviceId': row.deviceId,
+  };
+
+  static EncryptedXrayArtifact _archivedRowToActive(ArchivedXrayArtifact row) =>
+      EncryptedXrayArtifact(
+        id: row.artifactId,
+        cipherText: row.cipherText,
+        nonce: row.nonce,
+        mac: row.mac,
+        filename: row.filename,
+        mimeType: row.mimeType,
+        source: row.source,
+        checksum: row.checksum,
+        sizeBytes: row.sizeBytes,
+        createdAt: row.createdAt,
+        tenantId: row.tenantId,
+        userId: row.userId,
+        deviceId: row.deviceId,
+      );
+
+  /// Loads a single [EncryptedXrayArtifact] on demand for an entry returned by
+  /// [entries] with `includeArtifacts: false` (or inline legacy entries).
+  Future<EncryptedXrayArtifact?> loadArchivedArtifact(
+    Map<String, dynamic> entry,
+    String artifactId, {
+    DataOwner? owner,
+  }) async {
+    final op = SyncQueueData.fromJson(entry['op'] as Map<String, dynamic>);
+    final primary = entry['artifact'];
+    if (primary is Map &&
+        primary['id'] == artifactId &&
+        _hasInlineArtifactBytes(primary.cast<String, dynamic>())) {
+      return EncryptedXrayArtifact.fromJson(primary.cast<String, dynamic>());
+    }
+    for (final raw
+        in (entry['segmentation_artifacts'] as List? ?? const [])) {
+      if (raw is Map &&
+          raw['id'] == artifactId &&
+          _hasInlineArtifactBytes(raw.cast<String, dynamic>())) {
+        return EncryptedXrayArtifact.fromJson(raw.cast<String, dynamic>());
+      }
+    }
+    final key =
+        _archiveKeyOfEntry[entry] ??
+        (op.status == syncSynced
+            ? '$cachePrefix${op.userId}:${op.entityType}:${op.entityId}'
+            : '$prefix${op.clientOpId}');
+    final rows = await db.findArchivedArtifacts(
+      key,
+      artifactIds: [artifactId],
+      owner: owner,
+    );
+    if (rows.isEmpty) return null;
+    return _archivedRowToActive(rows.first);
   }
 
   List<List<T>> _chunkItems<T>(List<T> items, {int itemsPerWorker = 8}) {
@@ -136,20 +262,95 @@ class DeviceOperatorOutbox {
     return out;
   }
 
-  Future<void> save(Map<String, dynamic> entry, {String? cacheKey}) async {
-    final id = (entry['op'] as Map)['clientOpId'] as String;
+  /// Extracts inline binary artifact payloads from [entry] into [outCompanions]
+  /// for [targetKey] and returns a slim copy carrying metadata only.
+  Map<String, dynamic> _extractSlimEntry(
+    Map<String, dynamic> entry,
+    String targetKey,
+    DataOwner fallbackOwner,
+    List<ArchivedXrayArtifactsCompanion> outCompanions,
+  ) {
+    final slim = Map<String, dynamic>.from(entry);
+    final rawArtifact = slim.remove('artifact');
+    if (rawArtifact is Map) {
+      final artifactMap = rawArtifact.cast<String, dynamic>();
+      slim['artifact_meta'] = _stripArtifactBytes(artifactMap);
+      if (_hasInlineArtifactBytes(artifactMap)) {
+        outCompanions.add(
+          _toArchivedCompanion(
+            targetKey,
+            artifactMap,
+            fallbackOwner: fallbackOwner,
+          ),
+        );
+      }
+    }
+    final rawOverlays = slim.remove('segmentation_artifacts');
+    if (rawOverlays is List) {
+      final metas = <Map<String, dynamic>>[];
+      for (final item in rawOverlays) {
+        final overlayMap = (item as Map).cast<String, dynamic>();
+        metas.add(_stripArtifactBytes(overlayMap));
+        if (_hasInlineArtifactBytes(overlayMap)) {
+          outCompanions.add(
+            _toArchivedCompanion(
+              targetKey,
+              overlayMap,
+              fallbackOwner: fallbackOwner,
+            ),
+          );
+        }
+      }
+      if (metas.isNotEmpty) {
+        slim['segmentation_artifact_metas'] = metas;
+      }
+    }
+    return slim;
+  }
+
+  Future<void> save(
+    Map<String, dynamic> entry, {
+    String? cacheKey,
+    String? sourceArchiveKey,
+  }) async {
+    final op = entry['op'] as Map;
+    final id = op['clientOpId'] as String;
+    final targetKey = cacheKey ?? '$prefix$id';
+    final originKey = sourceArchiveKey ?? _archiveKeyOfEntry[entry];
+    final opOwner = DataOwner(
+      tenantId: op['tenantId'] as String,
+      userId: op['userId'] as String,
+      deviceId: op['deviceId'] as String,
+    );
+    final artifactsToWrite = <ArchivedXrayArtifactsCompanion>[];
+    final slimEntry = _extractSlimEntry(
+      entry,
+      targetKey,
+      opOwner,
+      artifactsToWrite,
+    );
     final key = await _key(create: true);
     final encrypted = (await compute(_encryptArchiveBatch, {
-      'entries': [entry],
+      'entries': [slimEntry],
       'key': await key.extractBytes(),
     })).single;
-    await db.putSetting(
-      cacheKey ?? '$prefix$id',
-      _encodeArchiveRow(entry, encrypted),
-    );
+    final encoded = _encodeArchiveRow(slimEntry, encrypted);
+    await db.transaction(() async {
+      if (artifactsToWrite.isNotEmpty) {
+        await db.upsertArchivedArtifacts(artifactsToWrite);
+      } else if (originKey != null && originKey != targetKey) {
+        await db.rekeyArchivedArtifacts(
+          fromKey: originKey,
+          toKey: targetKey,
+          owner: opOwner,
+        );
+      }
+      await db.putSetting(targetKey, encoded);
+    });
   }
 
   Future<void> retainReceived(Map<String, dynamic> original) async {
+    final originKey = _archiveKeyOfEntry[original];
     final entry = Map<String, dynamic>.from(original);
     final op = Map<String, dynamic>.from(entry['op'] as Map);
     op['status'] = syncSynced;
@@ -164,6 +365,7 @@ class DeviceOperatorOutbox {
       entry,
       cacheKey:
           '$cachePrefix${op['userId']}:${op['entityType']}:${op['entityId']}',
+      sourceArchiveKey: originKey,
     );
   }
 
@@ -216,11 +418,13 @@ class DeviceOperatorOutbox {
           gone[key] == 'deleted' ||
           (patientId != null && gone['patient:$patientId'] == 'deleted');
       final missing = gone[key] == 'not_found' && !pending.contains(key);
+      final originKey = _archiveKeyOfEntry[entry];
       final cacheKey =
           '$cachePrefix${op.userId}:${op.entityType}:${op.entityId}';
       if (retired || (received && missing)) {
         if (received) {
           await db.deleteSetting(cacheKey);
+          await db.deleteArchivedArtifactsForKeys([cacheKey]);
         } else {
           entry['retired'] = true;
           entry['op'] = op
@@ -229,7 +433,7 @@ class DeviceOperatorOutbox {
                 detail: const Value('server_deleted'),
               )
               .toJson();
-          await save(entry);
+          await save(entry, sourceArchiveKey: originKey);
         }
         continue;
       }
@@ -326,7 +530,11 @@ class DeviceOperatorOutbox {
     if (legacy.isNotEmpty) {
       // One-time upgrade for existing encrypted archives; no patient data is
       // copied into the summary metadata.
-      for (final entry in await entries(tenantId, deviceId)) {
+      for (final entry in await entries(
+        tenantId,
+        deviceId,
+        includeArtifacts: false,
+      )) {
         final op = entry['op'] as Map;
         await db.customUpdate(
           "UPDATE app_settings SET value = json_set(value, '\$.tenant_id', ?, '\$.device_id', ?, '\$.owner_id', ?, '\$.op_status', ?, '\$.entity_type', ?, '\$.operation', ?) WHERE key = ?",
@@ -387,6 +595,7 @@ class DeviceOperatorOutbox {
     String? ownerId,
     bool includePending = true,
     bool includeReceived = false,
+    bool includeArtifacts = true,
   }) async {
     final keyClauses = <String>[
       if (includePending) 'key LIKE ?',
@@ -441,12 +650,75 @@ class DeviceOperatorOutbox {
         if (op.tenantId == tenantId &&
             op.deviceId == deviceId &&
             (ownerId == null || op.userId == ownerId)) {
+          _archiveKeyOfEntry[entry] = rowKey;
+          if (includeArtifacts) {
+            await _hydrateEntryArtifacts(
+              entry,
+              rowKey,
+              DataOwner(
+                tenantId: op.tenantId ?? tenantId,
+                userId: op.userId ?? '',
+                deviceId: op.deviceId ?? deviceId,
+              ),
+            );
+          }
           keyed.add((op.createdAt, entry));
         }
       }
     }
     keyed.sort((a, b) => a.$1.compareTo(b.$1));
     return [for (final item in keyed) item.$2];
+  }
+
+  Future<void> _hydrateEntryArtifacts(
+    Map<String, dynamic> entry,
+    String rowKey,
+    DataOwner owner,
+  ) async {
+    final primaryMeta = entry['artifact_meta'];
+    final overlayMetas = entry['segmentation_artifact_metas'];
+    final needPrimary = entry['artifact'] == null && primaryMeta is Map;
+    final needOverlays =
+        entry['segmentation_artifacts'] == null && overlayMetas is List;
+    if (!needPrimary && !needOverlays) return;
+
+    final requestedIds = <String>[
+      if (needPrimary && primaryMeta['id'] is String)
+        primaryMeta['id'] as String,
+      if (needOverlays)
+        for (final item in overlayMetas)
+          if (item is Map && item['id'] is String) item['id'] as String,
+    ];
+    if (requestedIds.isEmpty) return;
+
+    final byId = {
+      for (final row in await db.findArchivedArtifacts(
+        rowKey,
+        artifactIds: requestedIds,
+        owner: owner,
+      ))
+        row.artifactId: row,
+    };
+    if (needPrimary && primaryMeta['id'] is String) {
+      final row = byId[primaryMeta['id'] as String];
+      if (row != null) {
+        entry['artifact'] = _archivedRowToJson(row);
+      }
+    }
+    if (needOverlays) {
+      final list = <Map<String, dynamic>>[];
+      for (final item in overlayMetas) {
+        if (item is Map && item['id'] is String) {
+          final row = byId[item['id'] as String];
+          if (row != null) {
+            list.add(_archivedRowToJson(row));
+          }
+        }
+      }
+      if (list.isNotEmpty) {
+        entry['segmentation_artifacts'] = list;
+      }
+    }
   }
 
   Future<void> captureDoctorQueue() async {
@@ -596,31 +868,58 @@ class DeviceOperatorOutbox {
         artifactIds.addAll(overlaysForDiag);
       }
 
-      final artifactsById = <String, EncryptedXrayArtifact>{
-        for (final row in await _chunkedByIds(artifactIds, (slice) {
-          final q = db.select(db.encryptedXrayArtifacts)
-            ..where((t) => t.id.isIn(slice));
-          if (dbOwner != null) {
-            q.where(
-              (t) =>
-                  t.tenantId.equals(dbOwner.tenantId) &
-                  t.userId.equals(dbOwner.userId) &
-                  t.deviceId.equals(dbOwner.deviceId),
-            );
-          }
-          return q.get();
-        }))
-          row.id: row,
-      };
+      final artifactMetaById = <String, Map<String, dynamic>>{};
+      for (final sliceRow
+          in await _chunkedByIds(artifactIds, (slice) {
+            final placeholders = List.filled(slice.length, '?').join(',');
+            final ownerSql = dbOwner == null
+                ? ''
+                : ' AND tenant_id = ? AND user_id = ? AND device_id = ?';
+            return db.customSelect(
+              'SELECT id, filename, mime_type, source, checksum, size_bytes, '
+              'created_at, tenant_id, user_id, device_id '
+              'FROM encrypted_xray_artifacts '
+              'WHERE id IN ($placeholders)$ownerSql',
+              variables: [
+                for (final id in slice) Variable.withString(id),
+                if (dbOwner != null) ...[
+                  Variable.withString(dbOwner.tenantId),
+                  Variable.withString(dbOwner.userId),
+                  Variable.withString(dbOwner.deviceId),
+                ],
+              ],
+              readsFrom: {db.encryptedXrayArtifacts},
+            ).get();
+          })) {
+        final id = sliceRow.read<String>('id');
+        artifactMetaById[id] = {
+          'id': id,
+          'filename': sliceRow.read<String>('filename'),
+          'mimeType': sliceRow.read<String>('mime_type'),
+          'source': sliceRow.read<String>('source'),
+          'checksum': sliceRow.read<String>('checksum'),
+          'sizeBytes': sliceRow.read<int>('size_bytes'),
+          'createdAt': sliceRow
+              .read<DateTime>('created_at')
+              .toUtc()
+              .millisecondsSinceEpoch,
+          'tenantId': sliceRow.readNullable<String>('tenant_id'),
+          'userId': sliceRow.readNullable<String>('user_id'),
+          'deviceId': sliceRow.readNullable<String>('device_id'),
+        };
+      }
 
       final entriesToSave = <Map<String, dynamic>>[];
       final keysToDelete = <String>[];
+      final artifactIdsByArchiveKey = <String, List<String>>{};
       for (final op in activeOps) {
         final diagnosis = op.entityType == 'diagnosis'
             ? diagnosesById[op.entityId]
             : null;
         final patient = patientsById[diagnosis?.patientId ?? op.entityId];
-        final artifact = diagnosis == null ? null : artifactsById[diagnosis.id];
+        final artifactMeta = diagnosis == null
+            ? null
+            : artifactMetaById[diagnosis.id];
         if ((diagnosis != null &&
                 (diagnosis.tenantId != owner.tenantId ||
                     diagnosis.userId != owner.userId ||
@@ -629,44 +928,53 @@ class DeviceOperatorOutbox {
                 (patient.tenantId != owner.tenantId ||
                     patient.userId != owner.userId ||
                     patient.deviceId != owner.deviceId)) ||
-            (artifact != null &&
-                (artifact.tenantId != owner.tenantId ||
-                    artifact.userId != owner.userId ||
-                    artifact.deviceId != owner.deviceId))) {
+            (artifactMeta != null &&
+                (artifactMeta['tenantId'] != owner.tenantId ||
+                    artifactMeta['userId'] != owner.userId ||
+                    artifactMeta['deviceId'] != owner.deviceId))) {
           throw StateError('Clinical snapshot ownership mismatch');
         }
         final imagePending =
             op.status == syncSynced &&
             op.entityType == 'diagnosis' &&
             op.operation == 'create' &&
-            artifact != null;
+            artifactMeta != null;
         if (op.status == syncSynced && !imagePending) {
           keysToDelete.add('$prefix${op.clientOpId}');
           continue;
         }
         final serialized = op.toJson();
         if (imagePending) serialized['status'] = syncPending;
-        final overlays = <Map<String, dynamic>>[];
+        final archiveKey = '$prefix${op.clientOpId}';
+        final archiveArtifactIds = <String>[
+          if (artifactMeta != null) diagnosis!.id,
+        ];
+        final overlayMetas = <Map<String, dynamic>>[];
         if (diagnosis != null) {
           for (final artifactId
               in overlayOrderByDiag[diagnosis.id] ?? const <String>[]) {
-            final overlay = artifactsById[artifactId];
+            final overlay = artifactMetaById[artifactId];
             if (overlay == null) continue;
-            if (overlay.tenantId != owner.tenantId ||
-                overlay.userId != owner.userId ||
-                overlay.deviceId != owner.deviceId) {
+            if (overlay['tenantId'] != owner.tenantId ||
+                overlay['userId'] != owner.userId ||
+                overlay['deviceId'] != owner.deviceId) {
               throw StateError('Segmentation ownership mismatch');
             }
-            overlays.add(overlay.toJson());
+            overlayMetas.add(overlay);
+            archiveArtifactIds.add(artifactId);
           }
+        }
+        if (archiveArtifactIds.isNotEmpty) {
+          artifactIdsByArchiveKey[archiveKey] = archiveArtifactIds;
         }
         entriesToSave.add({
           'op': serialized,
-          if (overlays.isNotEmpty) 'segmentation_artifacts': overlays,
+          if (overlayMetas.isNotEmpty)
+            'segmentation_artifact_metas': overlayMetas,
           if (imagePending) 'record_synced': true,
           'patient': patient?.toJson(),
           'diagnosis': diagnosis?.toJson(),
-          'artifact': artifact?.toJson(),
+          'artifact_meta': ?artifactMeta,
         });
       }
 
@@ -693,10 +1001,17 @@ class DeviceOperatorOutbox {
             );
           }
         }
+        if (artifactIdsByArchiveKey.isNotEmpty) {
+          await db.copyEncryptedArtifactsToArchive(
+            artifactIdsByArchiveKey,
+            owner,
+          );
+        }
         await db.putSettings(encodedRows);
       }
       if (keysToDelete.isNotEmpty) {
         await db.deleteSettings(keysToDelete);
+        await db.deleteArchivedArtifactsForKeys(keysToDelete);
       }
     });
   }
@@ -717,116 +1032,229 @@ class DeviceOperatorOutbox {
       ownerId: owner.userId,
       includePending: scope != OutboxRestoreScope.receivedOnly,
       includeReceived: scope != OutboxRestoreScope.pendingOnly,
+      includeArtifacts: false,
     );
     if (saved.isEmpty || generation != db.sessionGeneration) return;
-    await db.writeForSession(generation, () async {
-      final needsExistingLookup = saved.any(
-        (entry) =>
-            entry['retired'] != true &&
-            (entry['op'] as Map)['status'] == syncSynced,
-      );
-      final existingPatients = needsExistingLookup
-          ? <String>{
-              for (final row
-                  in await (db.select(db.localPatients)..where(
-                        (t) =>
-                            t.tenantId.equals(owner.tenantId) &
-                            t.userId.equals(owner.userId) &
-                            t.deviceId.equals(owner.deviceId),
-                      ))
-                      .get())
-                row.id,
-            }
-          : <String>{};
-      final existingDiagnoses = needsExistingLookup
-          ? <String>{
-              for (final row
-                  in await (db.select(db.localDiagnoses)..where(
-                        (t) =>
-                            t.tenantId.equals(owner.tenantId) &
-                            t.userId.equals(owner.userId) &
-                            t.deviceId.equals(owner.deviceId),
-                      ))
-                      .get())
-                row.id,
-            }
-          : <String>{};
-      final patients = <String, LocalPatientsCompanion>{};
-      final diagnoses = <String, LocalDiagnosesCompanion>{};
-      final artifacts = <String, EncryptedXrayArtifactsCompanion>{};
-      final operations = <String, SyncQueueCompanion>{};
-      final conflictPatientIds = <String>{};
-      final conflictDiagnosisIds = <String>{};
-      final failedDiagnosisIds = <String>{};
 
-      for (final entry in saved) {
-        if (entry['retired'] == true) continue;
-        final archivedOp = SyncQueueData.fromJson(
-          entry['op'] as Map<String, dynamic>,
-        );
-        final received = archivedOp.status == syncSynced;
-        if (entry['patient'] != null) {
-          final patientMap = entry['patient'] as Map<String, dynamic>;
-          final patientId = patientMap['id'] as String;
-          if (!received || !existingPatients.contains(patientId)) {
-            patients[patientId] = LocalPatient.fromJson(
-              patientMap,
-            ).toCompanion(true);
-            existingPatients.add(patientId);
+    final keyBytes = saved.any(
+      (entry) =>
+          entry['artifact'] is Map || entry['segmentation_artifacts'] is List,
+    )
+        ? await (await _key()).extractBytes()
+        : null;
+
+    final chunkSize = scope == OutboxRestoreScope.receivedOnly
+        ? 15
+        : saved.length;
+    final legacyToCompact =
+        <(String archiveKey, Map<String, dynamic> slimEntry)>[];
+    final legacyCompanions = <ArchivedXrayArtifactsCompanion>[];
+
+    final needsExistingLookup = saved.any(
+      (entry) =>
+          entry['retired'] != true &&
+          (entry['op'] as Map)['status'] == syncSynced,
+    );
+    final existingPatients = needsExistingLookup
+        ? <String>{
+            for (final row
+                in await (db.select(db.localPatients)..where(
+                      (t) =>
+                          t.tenantId.equals(owner.tenantId) &
+                          t.userId.equals(owner.userId) &
+                          t.deviceId.equals(owner.deviceId),
+                    ))
+                    .get())
+              row.id,
           }
-        }
-        if (entry['diagnosis'] != null) {
-          final diagMap = entry['diagnosis'] as Map<String, dynamic>;
-          final diagId = diagMap['id'] as String;
-          if (!received || !existingDiagnoses.contains(diagId)) {
-            diagnoses[diagId] = LocalDiagnose.fromJson(
-              diagMap,
-            ).toCompanion(true);
-            existingDiagnoses.add(diagId);
+        : <String>{};
+    final existingDiagnoses = needsExistingLookup
+        ? <String>{
+            for (final row
+                in await (db.select(db.localDiagnoses)..where(
+                      (t) =>
+                          t.tenantId.equals(owner.tenantId) &
+                          t.userId.equals(owner.userId) &
+                          t.deviceId.equals(owner.deviceId),
+                    ))
+                    .get())
+              row.id,
           }
-        }
-        if (entry['artifact'] != null) {
-          final artifactMap = entry['artifact'] as Map<String, dynamic>;
-          final artifact = EncryptedXrayArtifact.fromJson(artifactMap);
-          artifacts[artifact.id] = artifact.toCompanion(true);
-        }
-        for (final raw
-            in (entry['segmentation_artifacts'] as List? ?? const [])) {
-          final overlay = EncryptedXrayArtifact.fromJson(
-            (raw as Map).cast<String, dynamic>(),
+        : <String>{};
+
+    for (var start = 0; start < saved.length; start += chunkSize) {
+      if (generation != db.sessionGeneration) return;
+      final slice = saved.sublist(
+        start,
+        math.min(start + chunkSize, saved.length),
+      );
+      await db.writeForSession(generation, () async {
+        final patients = <String, LocalPatientsCompanion>{};
+        final diagnoses = <String, LocalDiagnosesCompanion>{};
+        final artifacts = <String, EncryptedXrayArtifactsCompanion>{};
+        final operations = <String, SyncQueueCompanion>{};
+        final conflictPatientIds = <String>{};
+        final conflictDiagnosisIds = <String>{};
+        final failedDiagnosisIds = <String>{};
+        final archiveArtifactIdsByKey = <String, List<String>>{};
+
+        for (final entry in slice) {
+          if (entry['retired'] == true) continue;
+          final archivedOp = SyncQueueData.fromJson(
+            entry['op'] as Map<String, dynamic>,
           );
-          if (overlay.tenantId != owner.tenantId ||
-              overlay.userId != owner.userId ||
-              overlay.deviceId != owner.deviceId) {
-            throw StateError('Segmentation ownership mismatch');
+          final archiveKey =
+              _archiveKeyOfEntry[entry] ??
+              (archivedOp.status == syncSynced
+                  ? '$cachePrefix${archivedOp.userId}:${archivedOp.entityType}:${archivedOp.entityId}'
+                  : '$prefix${archivedOp.clientOpId}');
+          final received = archivedOp.status == syncSynced;
+          if (entry['patient'] != null) {
+            final patientMap = entry['patient'] as Map<String, dynamic>;
+            final patientId = patientMap['id'] as String;
+            if (!received || !existingPatients.contains(patientId)) {
+              patients[patientId] = LocalPatient.fromJson(
+                patientMap,
+              ).toCompanion(true);
+              existingPatients.add(patientId);
+            }
           }
-          artifacts[overlay.id] = overlay.toCompanion(true);
+          if (entry['diagnosis'] != null) {
+            final diagMap = entry['diagnosis'] as Map<String, dynamic>;
+            final diagId = diagMap['id'] as String;
+            if (!received || !existingDiagnoses.contains(diagId)) {
+              diagnoses[diagId] = LocalDiagnose.fromJson(
+                diagMap,
+              ).toCompanion(true);
+              existingDiagnoses.add(diagId);
+            }
+          }
+
+          var hadInlineArtifact = false;
+          final archiveIds = <String>[];
+          if (entry['artifact'] != null) {
+            final artifactMap = (entry['artifact'] as Map)
+                .cast<String, dynamic>();
+            final artifact = EncryptedXrayArtifact.fromJson(artifactMap);
+            artifacts[artifact.id] = artifact.toCompanion(true);
+            hadInlineArtifact = true;
+          } else if (entry['artifact_meta'] is Map) {
+            final meta = (entry['artifact_meta'] as Map)
+                .cast<String, dynamic>();
+            if (meta['tenantId'] != owner.tenantId ||
+                meta['userId'] != owner.userId ||
+                meta['deviceId'] != owner.deviceId) {
+              throw StateError('Clinical snapshot ownership mismatch');
+            }
+            archiveIds.add(meta['id'] as String);
+          }
+
+          if (entry['segmentation_artifacts'] is List) {
+            for (final raw in entry['segmentation_artifacts'] as List) {
+              final overlay = EncryptedXrayArtifact.fromJson(
+                (raw as Map).cast<String, dynamic>(),
+              );
+              if (overlay.tenantId != owner.tenantId ||
+                  overlay.userId != owner.userId ||
+                  overlay.deviceId != owner.deviceId) {
+                throw StateError('Segmentation ownership mismatch');
+              }
+              artifacts[overlay.id] = overlay.toCompanion(true);
+              hadInlineArtifact = true;
+            }
+          } else if (entry['segmentation_artifact_metas'] is List) {
+            for (final raw in entry['segmentation_artifact_metas'] as List) {
+              final meta = (raw as Map).cast<String, dynamic>();
+              if (meta['tenantId'] != owner.tenantId ||
+                  meta['userId'] != owner.userId ||
+                  meta['deviceId'] != owner.deviceId) {
+                throw StateError('Segmentation ownership mismatch');
+              }
+              archiveIds.add(meta['id'] as String);
+            }
+          }
+
+          if (archiveIds.isNotEmpty) {
+            archiveArtifactIdsByKey[archiveKey] = archiveIds;
+          }
+          if (hadInlineArtifact) {
+            final slim = _extractSlimEntry(
+              entry,
+              archiveKey,
+              owner,
+              legacyCompanions,
+            );
+            legacyToCompact.add((archiveKey, slim));
+          }
+
+          operations[archivedOp.clientOpId] = archivedOp.toCompanion(true);
+          if (archivedOp.status == syncConflict) {
+            if (archivedOp.entityType == 'patient') {
+              conflictPatientIds.add(archivedOp.entityId);
+            } else {
+              conflictDiagnosisIds.add(archivedOp.entityId);
+              failedDiagnosisIds.remove(archivedOp.entityId);
+            }
+          } else if (archivedOp.entityType == 'diagnosis' &&
+              archivedOp.status == syncPermanentFailure) {
+            failedDiagnosisIds.add(archivedOp.entityId);
+          }
         }
-        operations[archivedOp.clientOpId] = archivedOp.toCompanion(true);
-        if (archivedOp.status == syncConflict) {
-          if (archivedOp.entityType == 'patient') {
-            conflictPatientIds.add(archivedOp.entityId);
-          } else {
-            conflictDiagnosisIds.add(archivedOp.entityId);
-            failedDiagnosisIds.remove(archivedOp.entityId);
-          }
-        } else if (archivedOp.entityType == 'diagnosis' &&
-            archivedOp.status == syncPermanentFailure) {
-          failedDiagnosisIds.add(archivedOp.entityId);
+
+        await db.applyOutboxRestoreBatch(
+          patients: patients.values.toList(),
+          diagnoses: diagnoses.values.toList(),
+          artifacts: artifacts.values.toList(),
+          operations: operations.values.toList(),
+          conflictPatientIds: conflictPatientIds.toList(),
+          conflictDiagnosisIds: conflictDiagnosisIds.toList(),
+          failedDiagnosisIds: failedDiagnosisIds.toList(),
+        );
+        if (archiveArtifactIdsByKey.isNotEmpty) {
+          await db.copyArchiveArtifactsToActive(archiveArtifactIdsByKey, owner);
+        }
+      });
+      if (start + chunkSize < saved.length) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    // One-time lazy compaction for legacy inline [int, ...] outbox rows
+    // runs isolate encryption outside SQLite write transactions.
+    if (legacyToCompact.isNotEmpty &&
+        keyBytes != null &&
+        generation == db.sessionGeneration) {
+      final compactChunks = _chunkItems(legacyToCompact, itemsPerWorker: 4);
+      final encryptedChunks = await Future.wait([
+        for (final chunk in compactChunks)
+          compute(_encryptArchiveBatch, {
+            'entries': [for (final item in chunk) item.$2],
+            'key': keyBytes,
+          }),
+      ]);
+      final updates = <String, String>{};
+      for (var c = 0; c < compactChunks.length; c++) {
+        final chunk = compactChunks[c];
+        final encryptedList = encryptedChunks[c];
+        for (var i = 0; i < chunk.length; i++) {
+          updates[chunk[i].$1] = _encodeArchiveRow(
+            chunk[i].$2,
+            encryptedList[i],
+          );
         }
       }
-
-      await db.applyOutboxRestoreBatch(
-        patients: patients.values.toList(),
-        diagnoses: diagnoses.values.toList(),
-        artifacts: artifacts.values.toList(),
-        operations: operations.values.toList(),
-        conflictPatientIds: conflictPatientIds.toList(),
-        conflictDiagnosisIds: conflictDiagnosisIds.toList(),
-        failedDiagnosisIds: failedDiagnosisIds.toList(),
-      );
-    });
+      await db.writeForSession(generation, () async {
+        await db.upsertArchivedArtifacts(legacyCompanions);
+        await db.putSettings(updates);
+      });
+    }
   }
 
-  Future<void> remove(String opId) => db.deleteSetting('$prefix$opId');
+  Future<void> remove(String opId) async {
+    final key = '$prefix$opId';
+    await db.transaction(() async {
+      await db.deleteSetting(key);
+      await db.deleteArchivedArtifactsForKeys([key]);
+    });
+  }
 }

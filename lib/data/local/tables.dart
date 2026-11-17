@@ -145,6 +145,30 @@ class EncryptedXrayArtifacts extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Encrypted X-ray/overlay binary blobs held for the device outbox and
+/// retained received cache. Payloads remain AES-256-GCM encrypted using
+/// the hardware-backed clinical X-ray key; storing them as raw SQLite BLOBs
+/// avoids multi-megabyte JSON integer-array expansion and double encryption.
+class ArchivedXrayArtifacts extends Table {
+  TextColumn get archiveKey => text()();
+  TextColumn get artifactId => text()();
+  BlobColumn get cipherText => blob()();
+  BlobColumn get nonce => blob()();
+  BlobColumn get mac => blob()();
+  TextColumn get filename => text()();
+  TextColumn get mimeType => text()();
+  TextColumn get source => text()();
+  TextColumn get checksum => text()();
+  IntColumn get sizeBytes => integer()();
+  DateTimeColumn get createdAt => dateTime()();
+  TextColumn get tenantId => text()();
+  TextColumn get userId => text()();
+  TextColumn get deviceId => text()();
+
+  @override
+  Set<Column> get primaryKey => {archiveKey, artifactId};
+}
+
 /// Append-only local audit evidence for explicit conflict decisions.
 class ClinicalAuditEvents extends Table {
   TextColumn get id => text()();
