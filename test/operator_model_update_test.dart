@@ -373,6 +373,42 @@ void main() {
       expect(await store.activeVersion(), isNull);
     });
 
+    test('C2: ModelStore.activeBundleDir resolves rootProvider only once per lookup', () async {
+      final tempDir = await Directory.systemTemp.createTemp('model_store_root_once_');
+      addTearDown(() => tempDir.delete(recursive: true));
+
+      var rootCalls = 0;
+      final store = ModelStore(
+        rootProvider: () async {
+          rootCalls++;
+          return tempDir;
+        },
+      );
+
+      // 1. No ACTIVE pointer yet.
+      expect(await store.activeBundleDir(), isNull);
+      expect(rootCalls, 1);
+
+      // 2. Verified active bundle.
+      final bundleDir = Directory('${tempDir.path}${Platform.pathSeparator}verified-bundle');
+      await bundleDir.create(recursive: true);
+      await File('${bundleDir.path}${Platform.pathSeparator}manifest.json').writeAsString('{}');
+      await File('${bundleDir.path}${Platform.pathSeparator}verified.json').writeAsString('{}');
+      await File('${tempDir.path}${Platform.pathSeparator}ACTIVE').writeAsString('verified-bundle');
+
+      rootCalls = 0;
+      final found = await store.activeBundleDir();
+      expect(found?.path, bundleDir.path);
+      expect(rootCalls, 1);
+
+      // 3. Unverified bundle clears ACTIVE pointer still within 1 root lookup.
+      await File('${bundleDir.path}${Platform.pathSeparator}verified.json').delete();
+      rootCalls = 0;
+      expect(await store.activeBundleDir(), isNull);
+      expect(rootCalls, 1);
+      expect(await File('${tempDir.path}${Platform.pathSeparator}ACTIVE').exists(), isFalse);
+    });
+
     test('ModelStore findNewestVerifiedBundleKey returns newest verified model by released_utc', () async {
       final tempDir = await Directory.systemTemp.createTemp('model_store_find_newest_');
       addTearDown(() => tempDir.delete(recursive: true));

@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,9 +17,12 @@ import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/settings_store.dart';
 import 'package:myapp/data/mock/mock_validation_repository.dart';
 import 'package:myapp/data/offline/device_operator_outbox.dart';
+import 'package:myapp/data/offline/offline_validation_repository.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
+import 'package:myapp/data/secure/device_identity_store.dart';
 import 'package:myapp/data/secure/doctor_session_store.dart';
 import 'package:myapp/data/secure/secure_token_storage.dart';
+import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/domain/repositories/auth_repository.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
@@ -58,13 +63,11 @@ class _AuthAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
-String _liveJwt() {
+String _liveJwt({String sub = 'doctor-b', String tenantId = 'hospital-a'}) {
   final exp = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
   final header = base64Url.encode(utf8.encode('{"alg":"HS256","typ":"JWT"}'));
   final body = base64Url.encode(
-    utf8.encode(
-      jsonEncode({'sub': 'doctor-b', 'tenant_id': 'hospital-a', 'exp': exp}),
-    ),
+    utf8.encode(jsonEncode({'sub': sub, 'tenant_id': tenantId, 'exp': exp})),
   );
   return '$header.$body.sig';
 }
@@ -253,7 +256,10 @@ void main() {
 
       await tester.pumpWidget(_wrapAuth(const LoginScreen(), auth, language));
       expect(find.byType(AuthErrorBanner), findsOneWidget);
-      expect(find.text('Your session ended. Please sign in again.'), findsOneWidget);
+      expect(
+        find.text('Your session ended. Please sign in again.'),
+        findsOneWidget,
+      );
 
       await tester.enterText(find.byType(TextFormField).at(0), 'a@b.c');
       await tester.pump();
@@ -435,10 +441,7 @@ void main() {
             Provider<OnnxInferenceEngine>.value(value: engine),
           ],
           child: const MaterialApp(
-            home: AppShell(
-              location: '/dashboard',
-              child: Text('Dashboard'),
-            ),
+            home: AppShell(location: '/dashboard', child: Text('Dashboard')),
           ),
         ),
       );
@@ -574,7 +577,9 @@ void main() {
       final device = (await client.deviceIdentity.read())!;
 
       final exp = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
-      final header = base64Url.encode(utf8.encode('{"alg":"HS256","typ":"JWT"}'));
+      final header = base64Url.encode(
+        utf8.encode('{"alg":"HS256","typ":"JWT"}'),
+      );
       final body = base64Url.encode(
         utf8.encode(
           jsonEncode({'sub': 'doc-1', 'tenant_id': 'hosp-1', 'exp': exp}),
@@ -769,7 +774,9 @@ void main() {
       });
 
       final exp = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
-      final header = base64Url.encode(utf8.encode('{"alg":"HS256","typ":"JWT"}'));
+      final header = base64Url.encode(
+        utf8.encode('{"alg":"HS256","typ":"JWT"}'),
+      );
       final body = base64Url.encode(
         utf8.encode(
           jsonEncode({'sub': 'doc-1', 'tenant_id': 'hosp-1', 'exp': exp}),
@@ -797,7 +804,10 @@ void main() {
       });
 
       // Seed an encrypted outbox row without its AES key so restoreDoctorQueue throws.
-      await db.putSetting('${DeviceOperatorOutbox.prefix}stale', '{"cipher":"x"}');
+      await db.putSetting(
+        '${DeviceOperatorOutbox.prefix}stale',
+        '{"cipher":"x"}',
+      );
 
       final repo = HttpAuthRepository(
         client,
@@ -891,7 +901,10 @@ void main() {
       await tester.pumpWidget(
         _wrapAuth(const ChangePasswordScreen(), forcedAuth, language),
       );
-      expect(find.byKey(const Key('change-password-back-button')), findsNothing);
+      expect(
+        find.byKey(const Key('change-password-back-button')),
+        findsNothing,
+      );
       expect(
         find.byKey(const Key('change-password-cancel-button')),
         findsNothing,
@@ -961,17 +974,833 @@ void main() {
       expect(router.routeInformationProvider.value.uri.path, '/users');
     },
   );
+
+  test(
+    'C1: login restores pending ops synchronously, defers received cache to background, and rapid logout cancels cleanly',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      final secure = MemorySecureTokenStorage();
+      final settings = SettingsStore(db);
+      final outbox = DeviceOperatorOutbox(db, secure);
+      final client = ApiClient(
+        baseUrl: 'https://synthetic.invalid/api/v1',
+        settings: settings,
+        secureStorage: secure,
+      );
+      addTearDown(() async {
+        await client.close();
+        await db.close();
+      });
+
+      final deviceId = await settings.readOrCreateDeviceId();
+      const docOwner = DataOwner(
+        tenantId: 'hosp-1',
+        userId: 'doc-1',
+        deviceId: 'unused',
+      );
+      await db.activateOwner(
+        db.sessionGeneration,
+        DataOwner(
+          tenantId: docOwner.tenantId,
+          userId: docOwner.userId,
+          deviceId: deviceId,
+        ),
+      );
+      await db.putSetting(kUserRole, 'health_worker');
+      final ts1 = DateTime.utc(2026, 11, 16, 1, 0).toIso8601String();
+      final ts2 = DateTime.utc(2026, 11, 16, 1, 5).toIso8601String();
+      await outbox.save({
+        'op': {
+          'clientOpId': 'op-pending-1',
+          'entityType': 'patient',
+          'entityId': 'pat-pending',
+          'operation': 'create',
+          'payload': '{}',
+          'status': syncPending,
+          'createdAt': ts1,
+          'retryCount': 0,
+          'tenantId': 'hosp-1',
+          'userId': 'doc-1',
+          'deviceId': deviceId,
+        },
+        'patient': {
+          'id': 'pat-pending',
+          'code': 'P-PEND',
+          'name': 'Pending Patient',
+          'age': 31,
+          'gender': 'Male',
+          'status': 'Normal',
+          'history': '[]',
+          'tombstone': false,
+          'hasConflict': false,
+          'tenantId': 'hosp-1',
+          'userId': 'doc-1',
+          'deviceId': deviceId,
+        },
+      });
+      await outbox.retainReceived({
+        'op': {
+          'clientOpId': 'op-received-1',
+          'entityType': 'patient',
+          'entityId': 'pat-received',
+          'operation': 'create',
+          'payload': '{}',
+          'status': syncSynced,
+          'createdAt': ts2,
+          'retryCount': 0,
+          'tenantId': 'hosp-1',
+          'userId': 'doc-1',
+          'deviceId': deviceId,
+        },
+        'patient': {
+          'id': 'pat-received',
+          'code': 'P-RECV',
+          'name': 'Received Patient',
+          'age': 45,
+          'gender': 'Female',
+          'status': 'Normal',
+          'history': '[]',
+          'tombstone': false,
+          'hasConflict': false,
+          'tenantId': 'hosp-1',
+          'userId': 'doc-1',
+          'deviceId': deviceId,
+        },
+      });
+      await db.clearSessionData();
+
+      client.dio.httpClientAdapter = _AuthAdapter((options) {
+        if (options.path == '/auth/login') {
+          return (
+            200,
+            {
+              'access_token': _liveJwt(sub: 'doc-1', tenantId: 'hosp-1'),
+              'refresh_token': 'ref-doc-1',
+              'user': {
+                'id': 'doc-1',
+                'tenant_id': 'hosp-1',
+                'full_name': 'Clinician HW',
+                'email': 'hw@example.invalid',
+                'role': 'health_worker',
+              },
+            },
+          );
+        }
+        return (200, {'ok': true});
+      });
+
+      final repo = HttpAuthRepository(
+        client,
+        settings: settings,
+        db: db,
+        outbox: outbox,
+        doctorSession: DoctorSessionStore(secure),
+        hasActiveModel: () async => true,
+      );
+
+      // Direct repo.login executes only the pendingOutbox phase.
+      await repo.login(email: 'hw@example.invalid', password: 'secret');
+      expect((await db.findPatient('pat-pending'))?.name, 'Pending Patient');
+      expect(await db.findPatient('pat-received'), isNull);
+
+      await repo.hydrateReceivedCache();
+      expect((await db.findPatient('pat-received'))?.name, 'Received Patient');
+
+      // AuthProvider.login schedules background hydration automatically.
+      await repo.logout();
+      expect(await db.countPatients(), 0);
+      final auth = AuthProvider(repo, hasActiveModel: () async => true);
+      addTearDown(auth.dispose);
+
+      await auth.login(email: 'hw@example.invalid', password: 'secret');
+      final deadline = DateTime.now().add(const Duration(seconds: 2));
+      while (await db.findPatient('pat-received') == null &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect((await db.findPatient('pat-pending'))?.name, 'Pending Patient');
+      expect((await db.findPatient('pat-received'))?.name, 'Received Patient');
+
+      // Rapid logout cancels/aborts in-flight hydration without leaking rows.
+      await auth.logout();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(auth.isLoggedIn, isFalse);
+      expect(await db.countPatients(), 0);
+
+      await auth.login(email: 'hw@example.invalid', password: 'secret');
+      await auth.logout();
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(auth.isLoggedIn, isFalse);
+      expect(await db.countPatients(), 0);
+    },
+  );
+
+  test(
+    'C1: entries SQL-filters foreign owners and restoreDoctorQueue batches conflicts, failures, and overlays',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      final secure = MemorySecureTokenStorage();
+      final outbox = DeviceOperatorOutbox(db, secure);
+      addTearDown(db.close);
+
+      const owner1 = DataOwner(
+        tenantId: 'hosp-1',
+        userId: 'doc-1',
+        deviceId: 'dev-1',
+      );
+      await db.activateOwner(db.sessionGeneration, owner1);
+      await db.putSetting(kUserRole, 'doctor');
+
+      final now = DateTime.utc(2026, 11, 16, 2, 0).toIso8601String();
+      await outbox.save({
+        'op': {
+          'clientOpId': 'op-conflict',
+          'entityType': 'diagnosis',
+          'entityId': 'diag-1',
+          'operation': 'update',
+          'payload': '{}',
+          'status': syncConflict,
+          'createdAt': now,
+          'retryCount': 1,
+          'tenantId': 'hosp-1',
+          'userId': 'doc-1',
+          'deviceId': 'dev-1',
+        },
+        'patient': {
+          'id': 'pat-1',
+          'code': 'P1',
+          'name': 'Batched Patient',
+          'age': 40,
+          'gender': 'Male',
+          'status': 'Normal',
+          'history': '[]',
+          'tombstone': false,
+          'hasConflict': false,
+          'tenantId': 'hosp-1',
+          'userId': 'doc-1',
+          'deviceId': 'dev-1',
+        },
+        'diagnosis': {
+          'id': 'diag-1',
+          'patientId': 'pat-1',
+          'isPositive': true,
+          'confidence': 88,
+          'modelVersion': 'v1',
+          'findings': '{}',
+          'status': 'pending',
+          'diagnosedAt': now,
+          'hasConflict': false,
+          'tombstone': false,
+          'tenantId': 'hosp-1',
+          'userId': 'doc-1',
+          'deviceId': 'dev-1',
+          'provenance': '{}',
+          'isMock': false,
+          'patientSnapshot': '{}',
+          'clinicalSnapshot': '{}',
+          'saveStatus': 'unsaved',
+        },
+        'artifact': {
+          'id': 'diag-1',
+          'cipherText': [1, 2, 3],
+          'nonce': [4, 5, 6],
+          'mac': [7, 8, 9],
+          'filename': 'xray.png',
+          'mimeType': 'image/png',
+          'source': 'camera',
+          'checksum': 'sum1',
+          'sizeBytes': 10,
+          'tenantId': 'hosp-1',
+          'userId': 'doc-1',
+          'deviceId': 'dev-1',
+          'createdAt': now,
+        },
+        'segmentation_artifacts': [
+          {
+            'id': 'diag-1:lung',
+            'cipherText': [10, 11, 12],
+            'nonce': [13, 14, 15],
+            'mac': [16, 17, 18],
+            'filename': 'lung.png',
+            'mimeType': 'image/png',
+            'source': 'onnx',
+            'checksum': 'sum2',
+            'sizeBytes': 5,
+            'tenantId': 'hosp-1',
+            'userId': 'doc-1',
+            'deviceId': 'dev-1',
+            'createdAt': now,
+          },
+        ],
+      });
+
+      // Seed a permanent-failure diagnosis op to verify batched failed saveStatus.
+      await outbox.save({
+        'op': {
+          'clientOpId': 'op-failed',
+          'entityType': 'diagnosis',
+          'entityId': 'diag-failed',
+          'operation': 'create',
+          'payload': '{}',
+          'status': syncPermanentFailure,
+          'createdAt': now,
+          'retryCount': 3,
+          'tenantId': 'hosp-1',
+          'userId': 'doc-1',
+          'deviceId': 'dev-1',
+        },
+        'diagnosis': {
+          'id': 'diag-failed',
+          'patientId': 'pat-1',
+          'isPositive': false,
+          'confidence': 42,
+          'modelVersion': 'v1',
+          'findings': '{}',
+          'status': 'pending',
+          'diagnosedAt': now,
+          'hasConflict': false,
+          'tombstone': false,
+          'tenantId': 'hosp-1',
+          'userId': 'doc-1',
+          'deviceId': 'dev-1',
+          'provenance': '{}',
+          'isMock': false,
+          'patientSnapshot': '{}',
+          'clinicalSnapshot': '{}',
+          'saveStatus': 'unsaved',
+        },
+      });
+
+      // Seed a foreign owner's corrupted ciphertext with valid JSON routing metadata;
+      // doc-1 queries must filter it out in SQL before attempting decryption.
+      await db.putSetting(
+        '${DeviceOperatorOutbox.prefix}foreign-op',
+        jsonEncode({
+          'cipher': 'invalid',
+          'nonce': 'invalid',
+          'mac': 'invalid',
+          'tenant_id': 'hosp-1',
+          'device_id': 'dev-1',
+          'owner_id': 'doc-2',
+        }),
+      );
+      await outbox.retainReceived({
+        'op': {
+          'clientOpId': 'op-doc1-recv',
+          'entityType': 'patient',
+          'entityId': 'pat-2',
+          'operation': 'create',
+          'payload': '{}',
+          'status': syncSynced,
+          'createdAt': now,
+          'retryCount': 0,
+          'tenantId': 'hosp-1',
+          'userId': 'doc-1',
+          'deviceId': 'dev-1',
+        },
+        'patient': {
+          'id': 'pat-2',
+          'code': 'P2',
+          'name': 'Doc1 Received',
+          'age': 29,
+          'gender': 'Female',
+          'status': 'Normal',
+          'history': '[]',
+          'tombstone': false,
+          'hasConflict': false,
+          'tenantId': 'hosp-1',
+          'userId': 'doc-1',
+          'deviceId': 'dev-1',
+        },
+      });
+
+      final pendingOnly = await outbox.entries(
+        'hosp-1',
+        'dev-1',
+        ownerId: 'doc-1',
+        includePending: true,
+        includeReceived: false,
+      );
+      expect(pendingOnly.length, 2);
+      expect(
+        pendingOnly.map((e) => (e['op'] as Map)['clientOpId']),
+        containsAll(['op-conflict', 'op-failed']),
+      );
+
+      final receivedOnly = await outbox.entries(
+        'hosp-1',
+        'dev-1',
+        ownerId: 'doc-1',
+        includePending: false,
+        includeReceived: true,
+      );
+      expect(receivedOnly.length, 1);
+      expect((receivedOnly.single['op'] as Map)['clientOpId'], 'op-doc1-recv');
+
+      await db.clearSessionData();
+      await db.activateOwner(db.sessionGeneration, owner1);
+      await db.putSetting(kUserRole, 'doctor');
+      await outbox.restoreDoctorQueue(scope: OutboxRestoreScope.pendingOnly);
+
+      final restoredDiag = (await db.findDiagnosis('diag-1'))!;
+      expect(restoredDiag.hasConflict, isTrue);
+      expect(restoredDiag.saveStatus, 'conflict');
+      expect((await db.findDiagnosis('diag-failed'))?.saveStatus, 'failed');
+      expect(await db.findEncryptedArtifact('diag-1'), isNotNull);
+      expect(await db.findEncryptedArtifact('diag-1:lung'), isNotNull);
+      expect(await db.findPatient('pat-2'), isNull);
+
+      await outbox.restoreDoctorQueue(scope: OutboxRestoreScope.receivedOnly);
+      expect((await db.findPatient('pat-2'))?.name, 'Doc1 Received');
+    },
+  );
+
+  test(
+    'C2: AuthProvider.login runs hasActiveModel once for clinicians, skips it for technicians, and preserves fallback when repo lacks gate',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      final secure = MemorySecureTokenStorage();
+      final settings = SettingsStore(db);
+      final client = ApiClient(
+        baseUrl: 'https://synthetic.invalid/api/v1',
+        settings: settings,
+        secureStorage: secure,
+      );
+      addTearDown(() async {
+        await client.close();
+        await db.close();
+      });
+
+      var currentRole = 'doctor';
+      client.dio.httpClientAdapter = _AuthAdapter((options) {
+        if (options.path == '/auth/login') {
+          return (
+            200,
+            {
+              'access_token': _liveJwt(),
+              'refresh_token': 'ref-token',
+              'user': {
+                'id': 'doctor-b',
+                'tenant_id': 'hospital-a',
+                'full_name': 'User B',
+                'email': 'user-b@example.invalid',
+                'role': currentRole,
+              },
+            },
+          );
+        }
+        return (200, {'ok': true});
+      });
+
+      var checkCalls = 0;
+      var modelPresent = true;
+      Future<bool> hasActiveModel() async {
+        checkCalls++;
+        return modelPresent;
+      }
+
+      // 1. Repository with hasActiveModel wired: clinician triggers check once; technician 0 times.
+      final gatedRepo = HttpAuthRepository(
+        client,
+        settings: settings,
+        db: db,
+        doctorSession: DoctorSessionStore(secure),
+        hasActiveModel: hasActiveModel,
+      );
+      final authGated = AuthProvider(gatedRepo, hasActiveModel: hasActiveModel);
+      addTearDown(authGated.dispose);
+
+      await authGated.login(email: 'user-b@example.invalid', password: 'pw');
+      expect(checkCalls, 1);
+      await authGated.logout();
+
+      currentRole = 'technician';
+      await authGated.login(email: 'user-b@example.invalid', password: 'pw');
+      expect(checkCalls, 1);
+      await authGated.logout();
+
+      // Clinician without model still fails closed with NoActiveModelException after 1 check.
+      currentRole = 'doctor';
+      modelPresent = false;
+      await expectLater(
+        authGated.login(email: 'user-b@example.invalid', password: 'pw'),
+        throwsA(isA<NoActiveModelException>()),
+      );
+      expect(checkCalls, 2);
+      expect(authGated.sessionRefusalCode, 'no_active_model');
+
+      // 2. Repository without hasActiveModel: AuthProvider fallback still enforces the gate.
+      final ungatedRepo = HttpAuthRepository(
+        client,
+        settings: settings,
+        db: db,
+      );
+      final authFallback = AuthProvider(
+        ungatedRepo,
+        hasActiveModel: hasActiveModel,
+      );
+      addTearDown(authFallback.dispose);
+
+      await expectLater(
+        authFallback.login(email: 'user-b@example.invalid', password: 'pw'),
+        throwsA(isA<NoActiveModelException>()),
+      );
+      expect(checkCalls, 3);
+      expect(authFallback.sessionRefusalCode, 'no_active_model');
+    },
+  );
+
+  test(
+    'C3: DeviceIdentityStore caches valid identity across login/requests, clears on clearRegistration, and skips redundant doctor session writes',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      final spyStorage = _CountingSecureStorage();
+      final settings = SettingsStore(db);
+      final client = ApiClient(
+        baseUrl: 'https://synthetic.invalid/api/v1',
+        settings: settings,
+        secureStorage: spyStorage,
+      );
+      addTearDown(() async {
+        await client.close();
+        await db.close();
+      });
+
+      await client.deviceIdentity.saveActivation({
+        'device_id': 'dev-1',
+        'tenant_id': 'hosp-1',
+        'credential': 'cred-1',
+        'label': 'Tablet 1',
+        'status': 'active',
+      });
+      spyStorage.resetCounts();
+
+      var role = 'technician';
+      var mustChangePassword = false;
+      client.dio.httpClientAdapter = _AuthAdapter((options) {
+        if (options.path == '/auth/login') {
+          return (
+            200,
+            {
+              'access_token': _liveJwt(sub: 'user-1', tenantId: 'hosp-1'),
+              'refresh_token': 'ref-1',
+              'user': {
+                'id': 'user-1',
+                'tenant_id': 'hosp-1',
+                'full_name': 'User One',
+                'email': 'u1@example.invalid',
+                'role': role,
+                'must_change_password': mustChangePassword,
+              },
+            },
+          );
+        }
+        return (200, {'items': []});
+      });
+
+      final doctorSession = DoctorSessionStore(spyStorage);
+      final repo = HttpAuthRepository(
+        client,
+        settings: settings,
+        db: db,
+        doctorSession: doctorSession,
+        hasActiveModel: () async => true,
+      );
+
+      // Technician login never saves doctor_offline_session_v1 and reads cached device identity 0 extra times.
+      await repo.login(email: 'u1@example.invalid', password: 'pw');
+      await client.dio.get<Map<String, dynamic>>('/patients');
+      expect(spyStorage.readsByKey['registered_tablet_identity_v1'] ?? 0, 0);
+      expect(spyStorage.writesByKey[DoctorSessionStore.key] ?? 0, 0);
+      expect(await settings.readRole(), 'technician');
+      expect(await settings.readSessionOwner(), 'hosp-1:user-1');
+
+      // Forced-password-change clinician also skips writing offline doctor session.
+      role = 'doctor';
+      mustChangePassword = true;
+      spyStorage.resetCounts();
+      await repo.login(email: 'u1@example.invalid', password: 'pw');
+      expect(spyStorage.writesByKey[DoctorSessionStore.key] ?? 0, 0);
+
+      // Full clinician login persists doctor session + tokens alongside batched identity settings.
+      mustChangePassword = false;
+      spyStorage.resetCounts();
+      await repo.login(email: 'u1@example.invalid', password: 'pw');
+      expect(spyStorage.writesByKey[DoctorSessionStore.key], 1);
+      expect(spyStorage.writesByKey[kSecureAccessToken], 1);
+      expect(spyStorage.writesByKey[kSecureRefreshToken], 1);
+      expect(spyStorage.readsByKey['registered_tablet_identity_v1'] ?? 0, 0);
+      expect(await settings.readDisplayName(), 'User One');
+      expect(await settings.readEmail(), 'u1@example.invalid');
+
+      // Re-reading from a cold store caches after 1 read, and clearRegistration invalidates the cache.
+      final coldStore = DeviceIdentityStore(spyStorage);
+      spyStorage.resetCounts();
+      expect((await coldStore.read())?.id, 'dev-1');
+      expect((await coldStore.read())?.id, 'dev-1');
+      expect(spyStorage.readsByKey['registered_tablet_identity_v1'], 1);
+      await coldStore.clearRegistration();
+      expect(await coldStore.read(), isNull);
+    },
+  );
+
+  test(
+    'C3: captureDoctorQueue exits fast on empty queue and batch-encrypts multi-chunk pending ops with overlays',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      final spyStorage = _CountingSecureStorage();
+      final outbox = DeviceOperatorOutbox(db, spyStorage);
+      addTearDown(db.close);
+
+      const owner = DataOwner(
+        tenantId: 'hosp-1',
+        userId: 'doc-1',
+        deviceId: 'dev-1',
+      );
+      await db.activateOwner(
+        db.sessionGeneration,
+        owner,
+        identitySettings: SettingsStore.identityEntries(
+          userId: 'doc-1',
+          tenantId: 'hosp-1',
+          role: 'doctor',
+          displayName: 'Dr. Batch',
+          email: 'batch@example.invalid',
+        ),
+      );
+
+      // Empty queue must return without reading or creating the AES outbox key.
+      await outbox.captureDoctorQueue();
+      expect(spyStorage.readsByKey['device_operator_outbox_aes_v1'] ?? 0, 0);
+
+      // Seed 10 pending patient+diagnosis+overlay ops (>4 batch threshold).
+      for (var i = 0; i < 10; i++) {
+        final pid = 'pat-$i';
+        final did = 'diag-$i';
+        final ts = DateTime.utc(2026, 11, 16, 3, i);
+        await db.upsertPatient(
+          LocalPatientsCompanion.insert(
+            id: pid,
+            code: 'C$i',
+            name: 'Patient $i',
+            age: 30 + i,
+            gender: 'Male',
+          ),
+        );
+        await db.upsertDiagnosis(
+          LocalDiagnosesCompanion.insert(
+            id: did,
+            patientId: pid,
+            isPositive: true,
+            confidence: 90,
+            modelVersion: 'v1',
+            diagnosedAt: ts,
+            clinicalSnapshot: Value(
+              jsonEncode({
+                'segmentation_v1': {
+                  'lesion_layers': {'cavity': 'diag-$i:lesion:cavity'},
+                },
+              }),
+            ),
+          ),
+        );
+        for (final aid in [
+          did,
+          '$did:xray',
+          '$did:lung',
+          '$did:lesion:cavity',
+        ]) {
+          await db.upsertEncryptedArtifact(
+            EncryptedXrayArtifactsCompanion.insert(
+              id: aid,
+              cipherText: Uint8List.fromList([1, 2, i]),
+              nonce: Uint8List.fromList([3, 4, i]),
+              mac: Uint8List.fromList([5, 6, i]),
+              filename: '$aid.png',
+              mimeType: 'image/png',
+              source: 'onnx',
+              checksum: 'sum-$aid',
+              sizeBytes: 3,
+              createdAt: ts,
+            ),
+          );
+        }
+        await db.enqueue(
+          SyncQueueCompanion.insert(
+            clientOpId: 'op-$i',
+            entityType: 'diagnosis',
+            entityId: did,
+            operation: 'create',
+            payload: '{}',
+            createdAt: ts,
+          ),
+        );
+      }
+
+      spyStorage.resetCounts();
+      await outbox.captureDoctorQueue();
+      expect(spyStorage.readsByKey['device_operator_outbox_aes_v1'], 1);
+
+      final archived = await outbox.entries(
+        'hosp-1',
+        'dev-1',
+        ownerId: 'doc-1',
+      );
+      expect(archived.length, 10);
+
+      await db.clearSessionData();
+      await db.activateOwner(
+        db.sessionGeneration,
+        owner,
+        identitySettings: SettingsStore.identityEntries(
+          userId: 'doc-1',
+          tenantId: 'hosp-1',
+          role: 'doctor',
+          displayName: 'Dr. Batch',
+          email: 'batch@example.invalid',
+        ),
+      );
+      await outbox.restoreDoctorQueue(scope: OutboxRestoreScope.pendingOnly);
+      expect(await db.countPatients(), 10);
+      expect((await db.pendingOps()).length, 10);
+      expect(await db.findEncryptedArtifact('diag-9:lesion:cavity'), isNotNull);
+    },
+  );
+
+  test(
+    'C4: OfflineValidationRepository.watchPendingCount caches hidden reviews per owner and invalidates on sessionGeneration change',
+    () async {
+      final db = _CountingHiddenDb();
+      final secure = MemorySecureTokenStorage();
+      final settings = SettingsStore(db);
+      final client = ApiClient(
+        baseUrl: 'https://synthetic.invalid/api/v1',
+        settings: settings,
+        secureStorage: secure,
+      );
+      addTearDown(() async {
+        await client.close();
+        await db.close();
+      });
+
+      const owner1 = DataOwner(
+        tenantId: 'hosp-1',
+        userId: 'doc-1',
+        deviceId: 'dev-1',
+      );
+      await db.activateOwner(
+        db.sessionGeneration,
+        owner1,
+        identitySettings: SettingsStore.identityEntries(
+          userId: 'doc-1',
+          tenantId: 'hosp-1',
+          role: 'doctor',
+          displayName: 'Doc 1',
+          email: 'doc1@example.invalid',
+        ),
+      );
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(db: db, client: client, settings: settings),
+        localOnly: true,
+      );
+
+      final emitted = <int>[];
+      final sub = repo.watchPendingCount().listen(emitted.add);
+      addTearDown(sub.cancel);
+
+      Future<void> seedDiag(String id, {String? patientId}) async {
+        await db.upsertPatient(
+          LocalPatientsCompanion.insert(
+            id: patientId ?? 'pat-$id',
+            code: 'C-$id',
+            name: 'Pat $id',
+            age: 30,
+            gender: 'Male',
+          ),
+        );
+        await db.upsertDiagnosis(
+          LocalDiagnosesCompanion.insert(
+            id: id,
+            patientId: patientId ?? 'pat-$id',
+            isPositive: true,
+            confidence: 80,
+            modelVersion: 'v1',
+            diagnosedAt: DateTime.utc(2026, 11, 16, 4),
+            serverVersion: const Value(1),
+            isMock: const Value(false),
+          ),
+        );
+      }
+
+      // Trigger multiple local_diagnoses emissions within the same session.
+      await seedDiag('d-1');
+      await seedDiag('d-2');
+      await seedDiag('d-3');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(emitted.last, 3);
+      // deleted_validation_v1:... setting should be queried only once despite 3+ emissions.
+      expect(db.hiddenSettingReads, 1);
+
+      // Resetting/hiding a review updates the cache cleanly without re-reading SQLite.
+      await repo.submitScore(id: 'd-2', score: 5, status: 'pending');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(emitted.last, 2);
+      expect(db.hiddenSettingReads, 1);
+
+      // Session switch/logout bumps sessionGeneration and invalidates the cache.
+      await db.clearSessionData();
+      await db.activateOwner(db.sessionGeneration, owner1);
+      await seedDiag('d-4');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(db.hiddenSettingReads, 2);
+    },
+  );
+}
+
+class _CountingHiddenDb extends AppDatabase {
+  _CountingHiddenDb() : super(NativeDatabase.memory());
+
+  int hiddenSettingReads = 0;
+
+  @override
+  Future<String?> getSetting(String key) {
+    if (key.startsWith('deleted_validation_v1:')) {
+      hiddenSettingReads++;
+    }
+    return super.getSetting(key);
+  }
 }
 
 class _CountingSecureStorage extends MemorySecureTokenStorage {
   final Map<String, int> readsByKey = {};
+  final Map<String, int> writesByKey = {};
+  final Map<String, int> deletesByKey = {};
 
-  void resetCounts() => readsByKey.clear();
+  void resetCounts() {
+    readsByKey.clear();
+    writesByKey.clear();
+    deletesByKey.clear();
+  }
 
   @override
   Future<String?> read(String key) {
     readsByKey[key] = (readsByKey[key] ?? 0) + 1;
     return super.read(key);
+  }
+
+  @override
+  Future<void> write(String key, String value) {
+    writesByKey[key] = (writesByKey[key] ?? 0) + 1;
+    return super.write(key, value);
+  }
+
+  @override
+  Future<void> delete(String key) {
+    deletesByKey[key] = (deletesByKey[key] ?? 0) + 1;
+    return super.delete(key);
   }
 }
 

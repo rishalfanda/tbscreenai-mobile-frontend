@@ -51,12 +51,15 @@ class OfflineValidationRepository extends ValidationRepository
   final ApiClient _client;
   final SyncEngine _syncEngine;
   Future<void>? _refreshInFlight;
+  String? _cachedHiddenKey;
+  int? _cachedHiddenGeneration;
+  Set<String>? _cachedHiddenReviews;
 
   @override
   Stream<int> watchPendingCount() =>
       _db.watchDiagnoses().asyncMap((rows) async {
         final generation = _db.sessionGeneration;
-        final hidden = await _hiddenReviews();
+        final hidden = await _readHiddenSet();
         if (generation != _db.sessionGeneration) return 0;
         return rows
             .where(
@@ -73,18 +76,47 @@ class OfflineValidationRepository extends ValidationRepository
   String _hiddenKey(DataOwner owner) =>
       'deleted_validation_v1:${base64Url.encode(utf8.encode(jsonEncode([owner.tenantId, owner.userId, owner.deviceId])))}';
 
-  Future<Set<String>> _hiddenReviews() async {
+  Future<Set<String>> _readHiddenSet() async {
     final owner = _db.activeOwner;
-    if (owner == null) return {};
-    final raw = await _db.getSetting(_hiddenKey(owner));
-    return raw == null ? {} : (jsonDecode(raw) as List).cast<String>().toSet();
+    if (owner == null) return const <String>{};
+    final key = _hiddenKey(owner);
+    final generation = _db.sessionGeneration;
+    final cached = _cachedHiddenReviews;
+    if (cached != null &&
+        _cachedHiddenKey == key &&
+        _cachedHiddenGeneration == generation) {
+      return cached;
+    }
+    final raw = await _db.getSetting(key);
+    final decoded = raw == null
+        ? const <String>{}
+        : Set<String>.unmodifiable((jsonDecode(raw) as List).cast<String>());
+    if (generation == _db.sessionGeneration &&
+        identical(owner, _db.activeOwner)) {
+      _cachedHiddenKey = key;
+      _cachedHiddenGeneration = generation;
+      _cachedHiddenReviews = decoded;
+    }
+    return decoded;
+  }
+
+  Future<void> _saveHiddenReviews(DataOwner owner, Set<String> hidden) async {
+    final key = _hiddenKey(owner);
+    final generation = _db.sessionGeneration;
+    await _db.putSetting(key, jsonEncode(hidden.toList()));
+    if (generation == _db.sessionGeneration &&
+        identical(owner, _db.activeOwner)) {
+      _cachedHiddenKey = key;
+      _cachedHiddenGeneration = generation;
+      _cachedHiddenReviews = Set<String>.unmodifiable(hidden);
+    }
   }
 
   Future<void> _upgradeLegacyArchives() async {
     final owner = _db.activeOwner;
     final generation = _db.sessionGeneration;
     if (owner == null || await _db.getSetting(kUserRole) != 'doctor') return;
-    final hidden = await _hiddenReviews();
+    final hidden = Set<String>.from(await _readHiddenSet());
     for (final id in hidden.toList()) {
       await _db.transaction(() async {
         if (generation != _db.sessionGeneration ||
@@ -127,7 +159,7 @@ class OfflineValidationRepository extends ValidationRepository
         }
         await resetValidation(id);
         hidden.remove(id);
-        await _db.putSetting(_hiddenKey(owner), jsonEncode(hidden.toList()));
+        await _saveHiddenReviews(owner, hidden);
       });
     }
   }
@@ -149,7 +181,7 @@ class OfflineValidationRepository extends ValidationRepository
       unawaited(_refresh().catchError((_) {}));
     }
 
-    final hidden = await _hiddenReviews();
+    final hidden = await _readHiddenSet();
     final patients = {
       for (final patient in await _db.allPatients()) patient.id: patient,
     };
@@ -447,8 +479,8 @@ class OfflineValidationRepository extends ValidationRepository
       final snapshot = _map(row.clinicalSnapshot);
       if (resetting) {
         snapshot.remove('local_validation_v1');
-        final hidden = (await _hiddenReviews())..add(id);
-        await _db.putSetting(_hiddenKey(owner), jsonEncode(hidden.toList()));
+        final hidden = Set<String>.from(await _readHiddenSet())..add(id);
+        await _saveHiddenReviews(owner, hidden);
       } else {
         snapshot['local_validation_v1'] = review;
       }

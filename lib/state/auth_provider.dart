@@ -115,6 +115,11 @@ class AuthProvider extends ChangeNotifier {
     }
     _profile = updated;
     _notifyIfAlive();
+    _scheduleReceivedCacheHydration(generation);
+  }
+
+  void _scheduleReceivedCacheHydration(int generation) {
+    unawaited(_hydrateReceivedCacheIfEligible(generation));
   }
 
   /// A new login waits for cleanup; a logout invalidates any pending login.
@@ -134,7 +139,12 @@ class AuthProvider extends ChangeNotifier {
       );
       _ensureCurrent(generation);
 
-      if (profile.mobileRole == MobileRole.clinician &&
+      final repo = _authRepository;
+      final alreadyGated =
+          repo is ModelGatedAuthRepository &&
+          (repo as ModelGatedAuthRepository).enforcesActiveModelOnLogin;
+      if (!alreadyGated &&
+          profile.mobileRole == MobileRole.clinician &&
           _hasActiveModel != null) {
         final hasModel = await _hasActiveModel();
         _ensureCurrent(generation);
@@ -149,6 +159,7 @@ class AuthProvider extends ChangeNotifier {
       sessionRefusalCode = null;
       _status = AuthStatus.authenticated;
       _notifyIfAlive();
+      _scheduleReceivedCacheHydration(generation);
     } catch (error) {
       if (!_disposed && generation == _generation) {
         sessionRefusalCode = error is NoActiveModelException
@@ -162,6 +173,24 @@ class AuthProvider extends ChangeNotifier {
         _notifyIfAlive();
       }
       rethrow;
+    }
+  }
+
+  Future<void> _hydrateReceivedCacheIfEligible(int generation) async {
+    final repo = _authRepository;
+    if (_disposed ||
+        generation != _generation ||
+        !isLoggedIn ||
+        mustChangePassword ||
+        mobileRole != MobileRole.clinician ||
+        repo is! ReceivedCacheHydratingRepository) {
+      return;
+    }
+    try {
+      await (repo as ReceivedCacheHydratingRepository).hydrateReceivedCache();
+    } catch (_) {
+      // Stale session switches, rapid logout, or DB teardown are expected to
+      // abort background cache hydration safely without escaping the zone.
     }
   }
 

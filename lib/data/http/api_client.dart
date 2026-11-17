@@ -98,8 +98,10 @@ class TokenStore {
         throw StateError('Session changed before saving tokens');
       }
       try {
-        await _secureStorage.write(kSecureRefreshToken, refresh);
-        await _secureStorage.write(kSecureAccessToken, access);
+        await Future.wait([
+          _secureStorage.write(kSecureRefreshToken, refresh),
+          _secureStorage.write(kSecureAccessToken, access),
+        ]);
         if (generation != expectedGeneration) {
           throw StateError('Session changed while saving tokens');
         }
@@ -173,15 +175,14 @@ class TokenStore {
   Future<void> _deleteSecureValues() async {
     Object? firstError;
     StackTrace? firstStack;
-    for (final key in [kSecureAccessToken, kSecureRefreshToken]) {
-      try {
-        await _secureStorage.delete(key);
-      } catch (error, stack) {
-        firstError ??= error;
-        firstStack ??= stack;
-      }
-    }
-    if (firstError != null) Error.throwWithStackTrace(firstError, firstStack!);
+    await Future.wait([
+      for (final key in [kSecureAccessToken, kSecureRefreshToken])
+        _secureStorage.delete(key).catchError((Object error, StackTrace stack) {
+          firstError ??= error;
+          firstStack ??= stack;
+        }),
+    ]);
+    if (firstError != null) Error.throwWithStackTrace(firstError!, firstStack!);
   }
 
   bool _matchesOwnerAndExpiry(

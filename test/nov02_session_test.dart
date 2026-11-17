@@ -56,10 +56,11 @@ class _Adapter implements HttpClientAdapter {
 }
 
 void main() {
-  for (final role in ['doctor', 'technician']) {
+  for (final role in ['doctor', 'health_worker', 'user', 'technician']) {
+    final isClinician = role != 'technician';
     for (final modelReady in [false, true]) {
       test(
-        '$role session restores offline only for a doctor with modelReady=$modelReady',
+        '$role session restores offline only for clinician roles with modelReady=$modelReady',
         () async {
           final db = AppDatabase(NativeDatabase.memory());
           final secrets = MemorySecureTokenStorage();
@@ -105,15 +106,15 @@ void main() {
             hasActiveModel: () async => modelReady,
           );
           await auth.restoreSession();
-          expect(auth.isLoggedIn, role == 'doctor' && modelReady);
+          expect(auth.isLoggedIn, isClinician && modelReady);
           expect(
             secondAdapter.calls,
             0,
             reason:
                 'Offline restore must not call the server or expire on local token time',
           );
-          if (role == 'doctor' && modelReady) {
-            expect(auth.role, 'doctor');
+          if (isClinician && modelReady) {
+            expect(auth.role, role);
             expect(db.activeOwner!.userId, 'synthetic-user');
             await auth.logout();
             expect(

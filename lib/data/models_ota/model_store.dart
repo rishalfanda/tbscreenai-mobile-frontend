@@ -20,7 +20,7 @@ import 'package:myapp/domain/models/available_model_bundle.dart';
 /// on-disk layout. Stateless: every method reads/writes the filesystem.
 class ModelStore {
   ModelStore({Future<Directory> Function()? rootProvider})
-      : _rootProvider = rootProvider;
+    : _rootProvider = rootProvider;
 
   final Future<Directory> Function()? _rootProvider;
 
@@ -69,18 +69,25 @@ class ModelStore {
     return d;
   }
 
-  Future<File> _pointerFile(String name) async =>
-      File('${(await _root()).path}${Platform.pathSeparator}$name');
+  File _pointerFileAt(Directory root, String name) =>
+      File('${root.path}${Platform.pathSeparator}$name');
 
-  Future<String?> _readPointer(String name) async {
-    final f = await _pointerFile(name);
+  Future<String?> _readPointerAt(Directory root, String name) async {
+    final f = _pointerFileAt(root, name);
     if (!await f.exists()) return null;
     final v = (await f.readAsString()).trim();
     return v.isEmpty ? null : v;
   }
 
-  Future<void> _writePointer(String name, String? value) async {
-    final f = await _pointerFile(name);
+  Future<String?> _readPointer(String name) async =>
+      _readPointerAt(await _root(), name);
+
+  Future<void> _writePointerAt(
+    Directory root,
+    String name,
+    String? value,
+  ) async {
+    final f = _pointerFileAt(root, name);
     if (value == null) {
       if (await f.exists()) await f.delete();
       return;
@@ -91,27 +98,47 @@ class ModelStore {
     await tmp.rename(f.path);
   }
 
+  Future<void> _writePointer(String name, String? value) async =>
+      _writePointerAt(await _root(), name, value);
+
   Future<String?> activeVersion() => _readPointer('ACTIVE');
   Future<String?> previousVersion() => _readPointer('PREVIOUS');
 
+  Directory _versionDirAt(Directory root, String version) =>
+      Directory('${root.path}${Platform.pathSeparator}$version');
+
   Future<Directory> versionDir(String version) async =>
-      Directory('${(await _root()).path}${Platform.pathSeparator}$version');
+      _versionDirAt(await _root(), version);
 
   /// Directory of the active bundle, or `null` if none / unverified / its files are missing.
   Future<Directory?> activeBundleDir() async {
-    final v = await activeVersion();
+    final root = await _root();
+    final v = await _readPointerAt(root, 'ACTIVE');
     if (v == null) return null;
 
-    final status = await getBundleStatus(v);
-    if (status != ModelBundleStatus.verified) {
-      await clearActive();
+    final d = _versionDirAt(root, v);
+    if (!await d.exists()) {
+      await _writePointerAt(root, 'ACTIVE', null);
       return null;
     }
 
-    final d = await versionDir(v);
     final manifest = File('${d.path}${Platform.pathSeparator}manifest.json');
-    if (!await d.exists() || !await manifest.exists()) {
-      await clearActive();
+    final verifiedFile = File(
+      '${d.path}${Platform.pathSeparator}verified.json',
+    );
+    final checks = await Future.wait<bool>([
+      manifest.exists(),
+      verifiedFile.exists(),
+    ]);
+    if (!checks[0]) {
+      await _writePointerAt(root, 'ACTIVE', null);
+      return null;
+    }
+    if (checks[1]) return d;
+
+    final status = (await _readBundleMetaAt(d))?['status'] as String?;
+    if (status != ModelBundleStatus.verified.name) {
+      await _writePointerAt(root, 'ACTIVE', null);
       return null;
     }
     return d;
@@ -188,7 +215,9 @@ class ModelStore {
     final d = await versionDir(bundleKey);
     if (!await d.exists()) return ModelBundleStatus.notDownloaded;
 
-    final verifiedFile = File('${d.path}${Platform.pathSeparator}verified.json');
+    final verifiedFile = File(
+      '${d.path}${Platform.pathSeparator}verified.json',
+    );
     if (await verifiedFile.exists()) {
       return ModelBundleStatus.verified;
     }
@@ -230,8 +259,9 @@ class ModelStore {
 
     if (status != ModelBundleStatus.verified) {
       final d = await versionDir(bundleKey);
-      final verifiedFile =
-          File('${d.path}${Platform.pathSeparator}verified.json');
+      final verifiedFile = File(
+        '${d.path}${Platform.pathSeparator}verified.json',
+      );
       if (await verifiedFile.exists()) {
         await verifiedFile.delete();
       }
@@ -270,8 +300,10 @@ class ModelStore {
   }
 
   /// Reads cached metadata for an installed bundle.
-  Future<Map<String, dynamic>?> readBundleMeta(String bundleKey) async {
-    final d = await versionDir(bundleKey);
+  Future<Map<String, dynamic>?> readBundleMeta(String bundleKey) async =>
+      _readBundleMetaAt(await versionDir(bundleKey));
+
+  Future<Map<String, dynamic>?> _readBundleMetaAt(Directory d) async {
     final f = File('${d.path}${Platform.pathSeparator}$_metaFile');
     if (!await f.exists()) return null;
     try {
@@ -289,15 +321,17 @@ class ModelStore {
   }
 
   Future<Directory> _incomingRoot() async {
-    final d =
-        Directory('${(await _root()).path}${Platform.pathSeparator}$_incoming');
+    final d = Directory(
+      '${(await _root()).path}${Platform.pathSeparator}$_incoming',
+    );
     if (!await d.exists()) await d.create(recursive: true);
     return d;
   }
 
   Future<void> wipeIncoming() async {
-    final d =
-        Directory('${(await _root()).path}${Platform.pathSeparator}$_incoming');
+    final d = Directory(
+      '${(await _root()).path}${Platform.pathSeparator}$_incoming',
+    );
     if (await d.exists()) await d.delete(recursive: true);
   }
 

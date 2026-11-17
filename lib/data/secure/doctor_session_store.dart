@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:myapp/domain/models/access_scope.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 import 'secure_token_storage.dart';
 
@@ -33,7 +34,8 @@ class DoctorSessionStore {
     String deviceId,
     String apiBase,
   ) async {
-    if (profile.role != 'doctor' || profile.mustChangePassword) {
+    if (profile.mobileRole != MobileRole.clinician ||
+        profile.mustChangePassword) {
       await clear();
       return;
     }
@@ -59,8 +61,10 @@ class DoctorSessionStore {
     final raw = await storage.read(key);
     if (raw == null) return null;
     final data = jsonDecode(raw);
+    final role = data is Map ? data['role'] : null;
     if (data is! Map ||
-        data['role'] != 'doctor' ||
+        role is! String ||
+        MobileRole.parse(role) != MobileRole.clinician ||
         data['device_id'] != deviceId ||
         data['api_base'] != apiBase ||
         [
@@ -76,7 +80,7 @@ class DoctorSessionStore {
       tenantId: data['tenant_id'] as String,
       displayName: data['name'] as String,
       email: data['email'] as String,
-      role: 'doctor',
+      role: role,
     );
   }
 

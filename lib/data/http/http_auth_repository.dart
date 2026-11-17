@@ -17,7 +17,9 @@ class HttpAuthRepository
     implements
         AuthRepository,
         PasswordChangeRepository,
-        PersistentDoctorAuthRepository {
+        PersistentDoctorAuthRepository,
+        ReceivedCacheHydratingRepository,
+        ModelGatedAuthRepository {
   HttpAuthRepository(
     this._client, {
     SettingsStore? settings,
@@ -42,6 +44,9 @@ class HttpAuthRepository
   UserProfile? _identity;
 
   @override
+  bool get enforcesActiveModelOnLogin => _hasActiveModel != null;
+
+  @override
   Future<UserProfile> login({
     required String email,
     required String password,
@@ -54,10 +59,12 @@ class HttpAuthRepository
     final clearingTokens = _client.tokens.clear();
     final cleanup = _cleanup;
     if (cleanup != null) await cleanup;
-    await clearingDoctorSession;
-    await clearingTokens;
     _ensureCurrent(operation);
-    await _outbox?.captureDoctorQueue();
+    await Future.wait<void>([
+      ?clearingDoctorSession,
+      clearingTokens,
+      ?_outbox?.captureDoctorQueue(),
+    ]);
     _ensureCurrent(operation);
 
     final tokenGeneration = _client.tokens.generation;
@@ -107,17 +114,21 @@ class HttpAuthRepository
       mustChangePassword: user['must_change_password'] == true,
     );
 
-    if (profile.mobileRole == MobileRole.clinician && _hasActiveModel != null) {
-      final hasModel = await _hasActiveModel();
-      _ensureCurrent(operation, tokenGeneration: tokenGeneration);
-      if (!hasModel) {
-        await _trackCleanup(() => _revokeServerSession(access));
-        throw const NoActiveModelException();
-      }
-    }
-
-    final device = await _client.deviceIdentity.read();
+    final checkModel =
+        profile.mobileRole == MobileRole.clinician && _hasActiveModel != null;
+    final deviceFuture = _client.deviceIdentity.read();
+    final modelFuture = checkModel
+        ? _hasActiveModel()
+        : Future<bool>.value(true);
+    final checks = await Future.wait<Object?>([modelFuture, deviceFuture]);
     _ensureCurrent(operation, tokenGeneration: tokenGeneration);
+
+    final hasModel = checks[0] as bool;
+    final device = checks[1] as DeviceIdentity?;
+    if (!hasModel) {
+      await _trackCleanup(() => _revokeServerSession(access));
+      throw const NoActiveModelException();
+    }
     if (device != null && device.tenantId != profile.tenantId) {
       await _trackCleanup(() => _revokeServerSession(access));
       throw const FormatException(
@@ -135,32 +146,46 @@ class HttpAuthRepository
         await database.activateOwner(
           database.sessionGeneration,
           DataOwner(tenantId: tenantId, userId: userId, deviceId: deviceId),
+          identitySettings: SettingsStore.identityEntries(
+            userId: userId,
+            tenantId: tenantId,
+            role: role,
+            displayName: displayName,
+            email: userEmail,
+          ),
         );
         _ensureCurrent(operation, tokenGeneration: tokenGeneration);
-        await settings.saveIdentity(
-          userId: userId,
-          tenantId: tenantId,
-          role: role,
-          displayName: displayName,
-          email: userEmail,
-        );
-        if (!profile.mustChangePassword) await _outbox?.restoreDoctorQueue();
+        if (!profile.mustChangePassword) {
+          await _outbox?.restoreDoctorQueue(
+            scope: OutboxRestoreScope.pendingOnly,
+          );
+        }
       }
 
       _ensureCurrent(operation, tokenGeneration: tokenGeneration);
-      await _client.tokens.update(access: access, refresh: refresh);
+      final shouldSaveDoctorSession =
+          _doctorSession != null &&
+          profile.mobileRole == MobileRole.clinician &&
+          !profile.mustChangePassword &&
+          device != null &&
+          device.tenantId == profile.tenantId;
+      await Future.wait<void>([
+        _client.tokens.update(access: access, refresh: refresh),
+        if (shouldSaveDoctorSession)
+          _doctorSession.save(profile, device.id, _client.baseUrl),
+      ]);
       _ensureCurrent(operation);
     } catch (_) {
       // A newer login or logout owns cleanup. A failure in the current login
       // must fail closed and remove any partially activated local owner.
       if (operation == _operation) {
-        await _client.tokens.clear();
-        await _db?.clearSessionData();
+        await Future.wait<void>([
+          _client.tokens.clear(),
+          ?_doctorSession?.clear(),
+          ?_db?.clearSessionData(),
+        ]);
       }
       rethrow;
-    }
-    if (device != null && device.tenantId == profile.tenantId) {
-      await _doctorSession?.save(profile, device.id, _client.baseUrl);
     }
     _ensureCurrent(operation);
     _identity = profile;
@@ -196,7 +221,8 @@ class HttpAuthRepository
       if (profile == null ||
           profile.tenantId != device.tenantId ||
           owner != '${profile.tenantId}:${profile.userId}' ||
-          role != 'doctor') {
+          MobileRole.parse(role) != MobileRole.clinician ||
+          profile.role != role) {
         await _doctorSession.clear();
         await _client.tokens.clear();
         return null;
@@ -302,13 +328,26 @@ class HttpAuthRepository
     _ensureCurrent(operation);
     _identity = updated;
     try {
-      await _outbox?.restoreDoctorQueue();
+      await _outbox?.restoreDoctorQueue(scope: OutboxRestoreScope.pendingOnly);
     } catch (_) {
       // Password and tokens are already committed on server and secure storage;
       // retain the updated session rather than misreporting password failure.
     }
     _ensureCurrent(operation);
     return updated;
+  }
+
+  @override
+  Future<void> hydrateReceivedCache() async {
+    final operation = _operation;
+    final identity = _identity;
+    if (identity == null ||
+        identity.mustChangePassword ||
+        identity.mobileRole != MobileRole.clinician) {
+      return;
+    }
+    await _outbox?.restoreDoctorQueue(scope: OutboxRestoreScope.receivedOnly);
+    _ensureCurrent(operation);
   }
 
   @override

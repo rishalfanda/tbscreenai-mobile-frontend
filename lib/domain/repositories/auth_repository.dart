@@ -28,3 +28,11 @@ abstract interface class PasswordChangeRepository {
 abstract interface class PersistentDoctorAuthRepository {
   Future<UserProfile?> restoreDoctorSession({DeviceIdentity? knownDevice});
 }
+
+abstract interface class ReceivedCacheHydratingRepository {
+  Future<void> hydrateReceivedCache();
+}
+
+abstract interface class ModelGatedAuthRepository {
+  bool get enforcesActiveModelOnLogin;
+}

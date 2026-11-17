@@ -231,25 +231,51 @@ class AppDatabase extends _$AppDatabase {
     updates: {appSettings},
   );
 
+  static const List<String> _identitySettingKeys = [
+    kSessionOwner,
+    kUserId,
+    kTenantId,
+    kUserRole,
+    kUserDisplayName,
+    kUserEmail,
+  ];
+
   /// Authenticates first, then switches the local owner atomically. A failed
   /// login never destroys the previous owner's offline work.
-  Future<void> activateOwner(int generation, DataOwner owner) {
+  Future<void> activateOwner(
+    int generation,
+    DataOwner owner, {
+    Map<String, String>? identitySettings,
+  }) {
+    final settingsToWrite = <String, String>{
+      ...?identitySettings,
+      kSessionOwner: owner.key,
+      kDeviceId: owner.deviceId,
+    };
+    _assertNoSessionSecrets(settingsToWrite.keys);
     return writeForSession(generation, () async {
       final previous = await getSetting(kSessionOwner);
-      if (previous != null && previous != owner.key) {
-        await _deleteClinicalData();
-        await _deleteIdentitySettings();
-      } else if (previous == owner.key) {
+      if (previous == owner.key) {
         await _claimUnattributedRows(owner);
       }
-      if (previous != owner.key) {
-        // A delta cursor belongs to exactly one account. A new owner must
-        // start with a full pull or it can silently miss older records.
-        await deleteSetting(kLastSyncAt);
-      }
       _activeOwner = owner;
-      await putSetting(kSessionOwner, owner.key);
-      await putSetting(kDeviceId, owner.deviceId);
+      await batch((b) {
+        if (previous != null && previous != owner.key) {
+          _addClinicalDataDeletes(b);
+          b.deleteWhere(
+            appSettings,
+            (t) => t.key.isIn(const [..._identitySettingKeys, kLastSyncAt]),
+          );
+        } else if (previous != owner.key) {
+          // A delta cursor belongs to exactly one account. A new owner must
+          // start with a full pull or it can silently miss older records.
+          b.deleteWhere(appSettings, (t) => t.key.equals(kLastSyncAt));
+        }
+        b.insertAllOnConflictUpdate(appSettings, [
+          for (final entry in settingsToWrite.entries)
+            AppSettingsCompanion.insert(key: entry.key, value: entry.value),
+        ]);
+      });
     });
   }
 
@@ -264,6 +290,14 @@ class AppDatabase extends _$AppDatabase {
 
   // === Section: Settings ===
 
+  void _assertNoSessionSecrets(Iterable<String> keys) {
+    for (final key in keys) {
+      if (key == kAccessToken || key == kRefreshToken) {
+        throw ArgumentError('Session secrets are forbidden in SQLite');
+      }
+    }
+  }
+
   Future<String?> getSetting(String key) async {
     final row = await (select(
       appSettings,
@@ -271,17 +305,39 @@ class AppDatabase extends _$AppDatabase {
     return row?.value;
   }
 
+  Future<Map<String, String>> getSettings(List<String> keys) async {
+    if (keys.isEmpty) return const {};
+    final rows = await (select(
+      appSettings,
+    )..where((t) => t.key.isIn(keys))).get();
+    return {for (final row in rows) row.key: row.value};
+  }
+
   Future<void> putSetting(String key, String value) {
-    if (key == kAccessToken || key == kRefreshToken) {
-      throw ArgumentError('Session secrets are forbidden in SQLite');
-    }
+    _assertNoSessionSecrets([key]);
     return into(appSettings).insertOnConflictUpdate(
       AppSettingsCompanion.insert(key: key, value: value),
     );
   }
 
+  Future<void> putSettings(Map<String, String> entries) async {
+    if (entries.isEmpty) return;
+    _assertNoSessionSecrets(entries.keys);
+    await batch((b) {
+      b.insertAllOnConflictUpdate(appSettings, [
+        for (final entry in entries.entries)
+          AppSettingsCompanion.insert(key: entry.key, value: entry.value),
+      ]);
+    });
+  }
+
   Future<void> deleteSetting(String key) {
     return (delete(appSettings)..where((t) => t.key.equals(key))).go();
+  }
+
+  Future<void> deleteSettings(List<String> keys) async {
+    if (keys.isEmpty) return;
+    await (delete(appSettings)..where((t) => t.key.isIn(keys))).go();
   }
 
   // === Section: Patients cache ===
@@ -642,6 +698,107 @@ class AppDatabase extends _$AppDatabase {
     return into(syncQueue).insertOnConflictUpdate(_ownOperation(op));
   }
 
+  /// Atomically upserts restored outbox entities and conflict/failure flags.
+  Future<void> applyOutboxRestoreBatch({
+    List<LocalPatientsCompanion> patients = const [],
+    List<LocalDiagnosesCompanion> diagnoses = const [],
+    List<EncryptedXrayArtifactsCompanion> artifacts = const [],
+    List<SyncQueueCompanion> operations = const [],
+    List<String> conflictPatientIds = const [],
+    List<String> conflictDiagnosisIds = const [],
+    List<String> failedDiagnosisIds = const [],
+  }) async {
+    if (patients.isEmpty &&
+        diagnoses.isEmpty &&
+        artifacts.isEmpty &&
+        operations.isEmpty &&
+        conflictPatientIds.isEmpty &&
+        conflictDiagnosisIds.isEmpty &&
+        failedDiagnosisIds.isEmpty) {
+      return;
+    }
+    final ownedPatients = [for (final row in patients) _ownPatient(row)];
+    final ownedDiagnoses = [for (final row in diagnoses) _ownDiagnosis(row)];
+    final ownedArtifacts = [for (final row in artifacts) _ownArtifact(row)];
+    final ownedOperations = [for (final row in operations) _ownOperation(row)];
+    final owner = _activeOwner;
+
+    Expression<bool> ownedIds(
+      List<String> ids,
+      GeneratedColumn<String> idColumn,
+      GeneratedColumn<String> tenantColumn,
+      GeneratedColumn<String> userColumn,
+      GeneratedColumn<String> deviceColumn,
+    ) {
+      Expression<bool> pred = idColumn.isIn(ids);
+      if (owner != null) {
+        pred =
+            pred &
+            tenantColumn.equals(owner.tenantId) &
+            userColumn.equals(owner.userId) &
+            deviceColumn.equals(owner.deviceId);
+      }
+      return pred;
+    }
+
+    await batch((b) {
+      if (ownedPatients.isNotEmpty) {
+        b.insertAllOnConflictUpdate(localPatients, ownedPatients);
+      }
+      if (ownedDiagnoses.isNotEmpty) {
+        b.insertAllOnConflictUpdate(localDiagnoses, ownedDiagnoses);
+      }
+      if (ownedArtifacts.isNotEmpty) {
+        b.insertAllOnConflictUpdate(encryptedXrayArtifacts, ownedArtifacts);
+      }
+      if (ownedOperations.isNotEmpty) {
+        b.insertAllOnConflictUpdate(syncQueue, ownedOperations);
+      }
+      if (conflictPatientIds.isNotEmpty) {
+        b.update(
+          localPatients,
+          const LocalPatientsCompanion(hasConflict: Value(true)),
+          where: (t) => ownedIds(
+            conflictPatientIds,
+            t.id,
+            t.tenantId,
+            t.userId,
+            t.deviceId,
+          ),
+        );
+      }
+      if (conflictDiagnosisIds.isNotEmpty) {
+        b.update(
+          localDiagnoses,
+          const LocalDiagnosesCompanion(
+            hasConflict: Value(true),
+            saveStatus: Value('conflict'),
+          ),
+          where: (t) => ownedIds(
+            conflictDiagnosisIds,
+            t.id,
+            t.tenantId,
+            t.userId,
+            t.deviceId,
+          ),
+        );
+      }
+      if (failedDiagnosisIds.isNotEmpty) {
+        b.update(
+          localDiagnoses,
+          const LocalDiagnosesCompanion(saveStatus: Value('failed')),
+          where: (t) => ownedIds(
+            failedDiagnosisIds,
+            t.id,
+            t.tenantId,
+            t.userId,
+            t.deviceId,
+          ),
+        );
+      }
+    });
+  }
+
   Future<List<SyncQueueData>> pendingOps() => opsReadyForPush(manual: true);
 
   Future<List<SyncQueueData>> opsReadyForPush({
@@ -798,10 +955,12 @@ class AppDatabase extends _$AppDatabase {
   Future<void> clearSessionData() async {
     _sessionGeneration++;
     _activeOwner = null;
-    await transaction(() async {
-      await _deleteClinicalData();
-      await _deleteIdentitySettings();
-      await deleteSetting(kLastSyncAt);
+    await batch((b) {
+      _addClinicalDataDeletes(b);
+      b.deleteWhere(
+        appSettings,
+        (t) => t.key.isIn(const [..._identitySettingKeys, kLastSyncAt]),
+      );
     });
   }
 
@@ -809,31 +968,18 @@ class AppDatabase extends _$AppDatabase {
   Future<void> clearAll() async {
     _sessionGeneration++;
     _activeOwner = null;
-    await transaction(() async {
-      await _deleteClinicalData();
-      await delete(appSettings).go();
+    await batch((b) {
+      _addClinicalDataDeletes(b);
+      b.deleteWhere(appSettings, (_) => const Constant(true));
     });
   }
 
-  Future<void> _deleteClinicalData() => batch((b) {
+  void _addClinicalDataDeletes(Batch b) {
     b.deleteWhere(localPatients, (_) => const Constant(true));
     b.deleteWhere(localDiagnoses, (_) => const Constant(true));
     b.deleteWhere(syncQueue, (_) => const Constant(true));
     b.deleteWhere(encryptedXrayArtifacts, (_) => const Constant(true));
     b.deleteWhere(clinicalAuditEvents, (_) => const Constant(true));
-  });
-
-  Future<void> _deleteIdentitySettings() async {
-    for (final key in [
-      kSessionOwner,
-      kUserId,
-      kTenantId,
-      kUserRole,
-      kUserDisplayName,
-      kUserEmail,
-    ]) {
-      await deleteSetting(key);
-    }
   }
 
   Future<void> _claimUnattributedRows(DataOwner owner) async {
