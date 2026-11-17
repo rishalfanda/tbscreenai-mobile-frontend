@@ -228,7 +228,7 @@ class DeviceBackupRestoreService {
     var locallyApplied = false;
     try {
       final staged = await _readStage();
-      if (staged != null) return _finishStaged(context, staged);
+      if (staged != null) return await _finishStaged(context, staged);
       await _ensureEmpty(context);
       plan = await _jsonRequest('GET', '/restores/pending');
       await _assertCurrent(context);
@@ -440,7 +440,7 @@ class DeviceBackupRestoreService {
         );
       });
       locallyApplied = true;
-      return _finishStaged(context, (await _readStage())!);
+      return await _finishStaged(context, (await _readStage())!);
     } catch (error) {
       final id = plan?['restore_id'] as String?;
       if (id != null && !locallyApplied) {
