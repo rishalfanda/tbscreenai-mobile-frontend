@@ -31,11 +31,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) {
+    final auth = context.read<AuthProvider>();
+    if (auth.isBusy || _isSubmitting || !_formKey.currentState!.validate()) {
       return;
     }
 
-    final auth = context.read<AuthProvider>();
     auth.clearSessionRefusal();
     setState(() {
       _isSubmitting = true;
@@ -93,6 +93,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!auth.deviceActivated) {
       return const TabletActivationScreen();
     }
+    final busy = _isSubmitting || auth.isBusy;
     final refusalCode = auth.sessionRefusalCode;
     final bannerMessage = _submitError != null
         ? context.trRead(_submitError!.id, _submitError!.en)
@@ -128,7 +129,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   TextFormField(
                     controller: _emailController,
-                    enabled: !_isSubmitting,
+                    enabled: !busy,
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
                     autofillHints: const [AutofillHints.email],
@@ -152,7 +153,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   SecretFormField(
                     controller: _passwordController,
                     label: context.trRead('Password', 'Password'),
-                    enabled: !_isSubmitting,
+                    enabled: !busy,
                     autofillHints: const [AutofillHints.password],
                     textInputAction: TextInputAction.done,
                     onChanged: (_) => _clearErrorOnEdit(),
@@ -162,15 +163,15 @@ class _LoginScreenState extends State<LoginScreen> {
                             'Password is required',
                           )
                         : null,
-                    onSubmitted: (_) => _isSubmitting ? null : _submit(),
+                    onSubmitted: (_) => busy ? null : _submit(),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: _isSubmitting ? null : _submit,
-              child: _isSubmitting
+              onPressed: busy ? null : _submit,
+              child: busy
                   ? const SizedBox(
                       width: 22,
                       height: 22,

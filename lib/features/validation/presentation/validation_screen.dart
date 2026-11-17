@@ -20,7 +20,7 @@ class ValidationScreen extends StatelessWidget {
     final repo = context.read<ValidationRepository>();
     if (repo is NumericValidationRepository) {
       final auth = context.watch<AuthProvider>();
-      if (!auth.isLoggedIn ||
+      if ((!auth.isLoggedIn && auth.status != AuthStatus.loggingOut) ||
           auth.mustChangePassword ||
           auth.role != 'doctor') {
         return const Center(child: Text('Sesi dokter diperlukan.'));

@@ -46,6 +46,9 @@ class AppRouter {
         if (state.uri.path == '/activate-tablet') {
           return isLoggedIn ? authProvider.mobileRole.home : null;
         }
+        if (authProvider.status == AuthStatus.loggingOut) {
+          return null;
+        }
 
         if (!isLoggedIn && !isLoggingIn) {
           return '/login';

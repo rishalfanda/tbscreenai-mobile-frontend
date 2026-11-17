@@ -15,6 +15,7 @@ import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/http/http_auth_repository.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/settings_store.dart';
+import 'package:myapp/data/mock/mock_dashboard_repository.dart';
 import 'package:myapp/data/mock/mock_validation_repository.dart';
 import 'package:myapp/data/offline/device_operator_outbox.dart';
 import 'package:myapp/data/offline/offline_validation_repository.dart';
@@ -25,13 +26,16 @@ import 'package:myapp/data/secure/secure_token_storage.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/domain/repositories/auth_repository.dart';
+import 'package:myapp/domain/repositories/dashboard_repository.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
+import 'package:myapp/features/account/presentation/account_screen.dart';
 import 'package:myapp/features/auth/presentation/auth_frame.dart';
 import 'package:myapp/features/auth/presentation/change_password_screen.dart';
 import 'package:myapp/features/auth/presentation/login_screen.dart';
 import 'package:myapp/features/auth/presentation/tablet_activation_screen.dart';
 import 'package:myapp/features/shared/presentation/app_shell.dart';
 import 'package:myapp/state/auth_provider.dart';
+import 'package:myapp/state/dashboard_provider.dart';
 import 'package:myapp/state/institution_provider.dart';
 
 class _LoopbackHttp extends HttpOverrides {}
@@ -448,6 +452,8 @@ void main() {
 
       await tester.tap(find.byIcon(Icons.logout));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-logout-button')));
+      await tester.pumpAndSettle();
 
       expect(auth.status, AuthStatus.loggedOut);
       expect(auth.sessionRefusalCode, 'logout_cleanup_failed');
@@ -468,6 +474,8 @@ void main() {
         _wrapAuth(const ChangePasswordScreen(), auth2, language),
       );
       await tester.tap(find.text('Sign out'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-logout-button')));
       await tester.pumpAndSettle();
       expect(auth2.status, AuthStatus.loggedOut);
       expect(auth2.sessionRefusalCode, 'logout_cleanup_failed');
@@ -2021,12 +2029,257 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'Logout confirmation dialog cancels cleanly and blocks UI with loading indicator until logout finishes before navigating to /login',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      const profile = UserProfile(
+        userId: 'doc-logout',
+        tenantId: 'hosp-1',
+        displayName: 'Dr. Logout',
+        email: 'logout@example.invalid',
+        role: 'doctor',
+      );
+      Completer<void>? pendingLogout;
+      var logoutCalls = 0;
+      final repo = _FakeAuthRepo(
+        onLogin: () async => profile,
+        onLogout: () {
+          logoutCalls++;
+          pendingLogout = Completer<void>();
+          return pendingLogout!.future;
+        },
+      );
+      final auth = AuthProvider(repo, initialProfile: profile);
+      final router = AppRouter.create(auth);
+      final language = AppLanguage();
+      final engine = OnnxInferenceEngine();
+      final dashboardRepo = MockDashboardRepository();
+      addTearDown(() async {
+        router.dispose();
+        auth.dispose();
+        language.dispose();
+        await engine.dispose();
+      });
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: auth),
+            ChangeNotifierProvider.value(value: language),
+            Provider<ValidationRepository>.value(
+              value: MockValidationRepository(),
+            ),
+            Provider<DashboardRepository>.value(value: dashboardRepo),
+            ChangeNotifierProvider(
+              create: (_) => DashboardProvider(dashboardRepo),
+            ),
+            Provider<OnnxInferenceEngine>.value(value: engine),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Starts on /dashboard for clinician.
+      expect(find.byIcon(Icons.logout), findsOneWidget);
+      expect(find.byType(LoginScreen), findsNothing);
+
+      // 1. Tapping logout shows confirmation dialog; Cancel leaves user signed in.
+      await tester.tap(find.byIcon(Icons.logout));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('logout-confirmation-dialog')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('cancel-logout-button')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('logout-confirmation-dialog')), findsNothing);
+      expect(logoutCalls, 0);
+      expect(auth.status, AuthStatus.authenticated);
+      expect(find.byType(LoginScreen), findsNothing);
+
+      // 2. Confirming shows blocking loading dialog and holds route until logout completes.
+      await tester.tap(find.byIcon(Icons.logout));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-logout-button')));
+      await tester.pump();
+      await tester.pump();
+
+      expect(logoutCalls, 1);
+      expect(auth.status, AuthStatus.loggingOut);
+      expect(find.byKey(const Key('logout-loading-dialog')), findsOneWidget);
+      expect(find.byType(LoginScreen), findsNothing);
+
+      // Tapping outside barrier while logging out cannot dismiss the blocking dialog.
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pump();
+      expect(find.byKey(const Key('logout-loading-dialog')), findsOneWidget);
+      expect(find.byType(LoginScreen), findsNothing);
+
+      // Completing logout dismisses loading dialog and navigates to /login.
+      pendingLogout!.complete();
+      await tester.pumpAndSettle();
+      expect(auth.status, AuthStatus.loggedOut);
+      expect(find.byKey(const Key('logout-loading-dialog')), findsNothing);
+      expect(find.byType(LoginScreen), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'AccountScreen Sign Out confirms, blocks during logout cleanup failure, then navigates to /login with error banner',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      const profile = UserProfile(
+        userId: 'mgr-1',
+        tenantId: 'hosp-1',
+        displayName: 'Manager One',
+        email: 'mgr@example.invalid',
+        role: 'management',
+      );
+      final pendingError = Completer<void>();
+      final repo = _FakeAuthRepo(
+        onLogin: () async => profile,
+        onLogout: () => pendingError.future,
+      );
+      final auth = AuthProvider(repo, initialProfile: profile);
+      final router = AppRouter.create(auth);
+      final language = AppLanguage();
+      final engine = OnnxInferenceEngine();
+      addTearDown(() async {
+        router.dispose();
+        auth.dispose();
+        language.dispose();
+        await engine.dispose();
+      });
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: auth),
+            ChangeNotifierProvider.value(value: language),
+            Provider<ValidationRepository>.value(
+              value: MockValidationRepository(),
+            ),
+            Provider<OnnxInferenceEngine>.value(value: engine),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AccountScreen), findsOneWidget);
+      await tester.tap(find.text('Sign Out'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('logout-confirmation-dialog')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('confirm-logout-button')));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const Key('logout-loading-dialog')), findsOneWidget);
+      expect(find.byType(LoginScreen), findsNothing);
+
+      pendingError.completeError(StateError('Outbox key missing'));
+      await tester.pumpAndSettle();
+
+      expect(auth.status, AuthStatus.loggedOut);
+      expect(find.byKey(const Key('logout-loading-dialog')), findsNothing);
+      expect(find.byType(LoginScreen), findsOneWidget);
+      expect(find.byType(AuthErrorBanner), findsOneWidget);
+    },
+  );
+
+  test(
+    'HttpAuthRepository.login skips redundant Keystore deletes and captureDoctorQueue after a completed logout',
+    () async {
+      final db = _CountingHiddenDb();
+      final spyStorage = _CountingSecureStorage();
+      final settings = SettingsStore(db);
+      final client = ApiClient(
+        baseUrl: 'https://synthetic.invalid/api/v1',
+        settings: settings,
+        secureStorage: spyStorage,
+      );
+      addTearDown(() async {
+        await client.close();
+        await db.close();
+      });
+
+      await client.deviceIdentity.saveActivation({
+        'device_id': 'dev-1',
+        'tenant_id': 'hosp-1',
+        'credential': 'cred-1',
+        'label': 'Tablet 1',
+        'status': 'active',
+      });
+      client.dio.httpClientAdapter = _AuthAdapter((o) {
+        if (o.path == '/auth/logout') return (204, <String, dynamic>{});
+        if (o.path == '/auth/login') {
+          return (
+            200,
+            {
+              'access_token': 'tok-a',
+              'refresh_token': 'ref-a',
+              'user': {
+                'id': 'doc-1',
+                'tenant_id': 'hosp-1',
+                'full_name': 'Dr. Fast',
+                'email': 'fast@example.invalid',
+                'role': 'doctor',
+              },
+            },
+          );
+        }
+        return (404, <String, dynamic>{});
+      });
+
+      final repo = HttpAuthRepository(
+        client,
+        settings: settings,
+        db: db,
+        outbox: DeviceOperatorOutbox(db, spyStorage),
+        doctorSession: DoctorSessionStore(spyStorage),
+        hasActiveModel: () async => true,
+      );
+
+      // Cold login still runs pre-HTTP clears / captureDoctorQueue check.
+      await repo.login(email: 'fast@example.invalid', password: 'pw');
+      expect(spyStorage.deletesByKey[kSecureAccessToken], 1);
+      expect(spyStorage.deletesByKey[kSecureRefreshToken], 1);
+      expect(spyStorage.deletesByKey[DoctorSessionStore.key], 1);
+      expect(db.identityBatchReads, 1);
+
+      // Completed logout sets _sessionCleared; next login skips redundant deletes & captureDoctorQueue.
+      await repo.logout();
+      spyStorage.resetCounts();
+      db.identityBatchReads = 0;
+
+      await repo.login(email: 'fast@example.invalid', password: 'pw');
+      expect(spyStorage.deletesByKey[kSecureAccessToken] ?? 0, 0);
+      expect(spyStorage.deletesByKey[kSecureRefreshToken] ?? 0, 0);
+      expect(spyStorage.deletesByKey[DoctorSessionStore.key] ?? 0, 0);
+      expect(db.identityBatchReads, 0);
+    },
+  );
 }
 
 class _CountingHiddenDb extends AppDatabase {
   _CountingHiddenDb() : super(NativeDatabase.memory());
 
   int hiddenSettingReads = 0;
+  int identityBatchReads = 0;
 
   @override
   Future<String?> getSetting(String key) {
@@ -2034,6 +2287,14 @@ class _CountingHiddenDb extends AppDatabase {
       hiddenSettingReads++;
     }
     return super.getSetting(key);
+  }
+
+  @override
+  Future<Map<String, String>> getSettings(List<String> keys) {
+    if (keys.contains(kUserRole) && keys.contains(kDeviceId)) {
+      identityBatchReads++;
+    }
+    return super.getSettings(keys);
   }
 }
 

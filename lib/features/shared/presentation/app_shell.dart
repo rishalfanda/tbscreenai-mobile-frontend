@@ -12,6 +12,7 @@ import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
+import 'package:myapp/features/auth/presentation/logout_confirmation_dialog.dart';
 import 'package:myapp/state/auth_provider.dart';
 import 'package:myapp/domain/models/access_scope.dart';
 
@@ -423,11 +424,7 @@ class _NavRail extends StatelessWidget {
                     color: Colors.white,
                     onPressed: auth?.isBusy == true
                         ? null
-                        : () => unawaited(
-                            context.read<AuthProvider>().logout().catchError(
-                              (Object _) {},
-                            ),
-                          ),
+                        : () => unawaited(confirmAndLogout(context)),
                     icon: const Icon(Icons.logout),
                   ),
                 ],

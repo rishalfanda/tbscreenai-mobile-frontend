@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/localization/language_toggle.dart';
 import 'package:myapp/features/auth/presentation/auth_frame.dart';
+import 'package:myapp/features/auth/presentation/logout_confirmation_dialog.dart';
 import 'package:myapp/state/auth_provider.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
@@ -257,11 +259,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                       TextButton(
                         onPressed: _busy || auth.isBusy
                             ? null
-                            : () async {
-                                try {
-                                  await context.read<AuthProvider>().logout();
-                                } catch (_) {}
-                              },
+                            : () => unawaited(confirmAndLogout(context)),
                         child: Text(context.trRead('Keluar', 'Sign out')),
                       ),
                     ],

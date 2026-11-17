@@ -129,8 +129,10 @@ class AuthProvider extends ChangeNotifier {
     _profile = null;
     _status = AuthStatus.authenticating;
     _notifyIfAlive();
-    await _logoutInProgress;
-    _ensureCurrent(generation);
+    if (_logoutInProgress != null) {
+      await _logoutInProgress;
+      _ensureCurrent(generation);
+    }
 
     try {
       final profile = await _authRepository.login(

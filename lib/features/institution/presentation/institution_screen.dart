@@ -23,7 +23,8 @@ class InstitutionScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final actor = auth.profile;
-    if (!auth.isLoggedIn || actor?.mobileRole != MobileRole.technician) {
+    if ((!auth.isLoggedIn && auth.status != AuthStatus.loggingOut) ||
+        actor?.mobileRole != MobileRole.technician) {
       return const SizedBox.shrink();
     }
     if (actor == null) return const SizedBox.shrink();

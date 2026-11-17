@@ -42,6 +42,7 @@ class HttpAuthRepository
   int _operation = 0;
   Future<void>? _cleanup;
   UserProfile? _identity;
+  bool _sessionCleared = false;
 
   @override
   bool get enforcesActiveModelOnLogin => _hasActiveModel != null;
@@ -51,21 +52,29 @@ class HttpAuthRepository
     required String email,
     required String password,
   }) async {
-    // Invalidate in-flight work immediately, but retain the previous owner's
-    // cache until the replacement account has authenticated successfully.
+    // Invalidate in-flight work immediately. When cleanup already completed
+    // via a finished logout before reaching /login, skip redundant Keystore/DB
+    // cleanup work and proceed directly to /auth/login.
     final operation = ++_operation;
     _identity = null;
-    final clearingDoctorSession = _doctorSession?.clear();
-    final clearingTokens = _client.tokens.clear();
     final cleanup = _cleanup;
-    if (cleanup != null) await cleanup;
-    _ensureCurrent(operation);
-    await Future.wait<void>([
-      ?clearingDoctorSession,
-      clearingTokens,
-      ?_outbox?.captureDoctorQueue(),
-    ]);
-    _ensureCurrent(operation);
+    final alreadyCleared =
+        _sessionCleared && cleanup == null && !_client.tokens.hasSession;
+    _sessionCleared = false;
+    if (alreadyCleared) {
+      _ensureCurrent(operation);
+    } else {
+      final clearingDoctorSession = _doctorSession?.clear();
+      final clearingTokens = _client.tokens.clear();
+      if (cleanup != null) await cleanup;
+      _ensureCurrent(operation);
+      await Future.wait<void>([
+        ?clearingDoctorSession,
+        clearingTokens,
+        ?_outbox?.captureDoctorQueue(),
+      ]);
+      _ensureCurrent(operation);
+    }
 
     final tokenGeneration = _client.tokens.generation;
     final response = await _client.dio.post<Map<String, dynamic>>(
@@ -197,6 +206,7 @@ class HttpAuthRepository
     DeviceIdentity? knownDevice,
   }) async {
     final operation = ++_operation;
+    _sessionCleared = false;
     final db = _db;
     final settings = _settings;
     if (_doctorSession == null || db == null || settings == null) {
@@ -436,6 +446,8 @@ class HttpAuthRepository
   }
 
   Future<void> _clearSession({Future<void>? serverLogout}) {
+    final clearOperation = _operation;
+    _sessionCleared = false;
     final clearedTokens = _client.tokens.clear();
     final clearedDoctorSession = _doctorSession?.clear();
 
@@ -445,6 +457,9 @@ class HttpAuthRepository
         await clearedTokens;
         await clearedDoctorSession;
         await _db?.clearSessionData();
+        if (clearOperation == _operation && !_client.tokens.hasSession) {
+          _sessionCleared = true;
+        }
       }();
       await Future.wait<void>([localCleanup, ?serverLogout], eagerError: false);
     }
