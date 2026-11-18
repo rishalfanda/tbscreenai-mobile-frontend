@@ -33,7 +33,8 @@ class OfflineValidationRepository extends ValidationRepository
         SegmentationValidationRepository,
         ValidationResetRepository,
         LesionRatingValidationRepository,
-        NumericValidationConflictRepository {
+        NumericValidationConflictRepository,
+        ValidationChangesRepository {
   OfflineValidationRepository({
     required AppDatabase db,
     required ApiClient client,
@@ -54,6 +55,13 @@ class OfflineValidationRepository extends ValidationRepository
   String? _cachedHiddenKey;
   int? _cachedHiddenGeneration;
   Set<String>? _cachedHiddenReviews;
+
+  @override
+  Stream<void> watchChanges() => _db
+      .tableUpdates(
+        TableUpdateQuery.onAllTables([_db.localPatients, _db.localDiagnoses]),
+      )
+      .map((_) {});
 
   @override
   Stream<int> watchPendingCount() =>

@@ -6,6 +6,7 @@ import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/validation_case.dart';
 import 'package:myapp/domain/models/clinical_conflict.dart';
+import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
 import 'package:myapp/state/auth_provider.dart';
 import 'validation_review_dialog.dart';
@@ -79,25 +80,72 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
   String? _error;
   bool _deleting = false;
   int _loadGeneration = 0;
+  bool _loadInFlight = false;
+  bool _pendingBackgroundReload = false;
+  bool _handledRequestedCase = false;
+  late final AuthProvider _auth;
+  late final UserProfile? _loadedProfile;
+  int _lastHydrationRevision = 0;
+  StreamSubscription<void>? _changesSubscription;
 
   @override
   void initState() {
     super.initState();
+    _auth = context.read<AuthProvider>();
+    _loadedProfile = _auth.profile;
+    _lastHydrationRevision = _auth.receivedCacheRevision;
+    _auth.addListener(_onAuthChanged);
+    final repo = context.read<ValidationRepository>();
+    if (repo is ValidationChangesRepository) {
+      _changesSubscription = (repo as ValidationChangesRepository)
+          .watchChanges()
+          .listen((_) => _scheduleBackgroundReload());
+    }
     unawaited(_load(openRequested: true));
   }
 
   @override
   void dispose() {
+    _auth.removeListener(_onAuthChanged);
+    unawaited(_changesSubscription?.cancel() ?? Future<void>.value());
     _horizontalScrollController.dispose();
     _verticalScrollController.dispose();
     _visibleNotifier.dispose();
     super.dispose();
   }
 
+  void _onAuthChanged() {
+    if (!mounted || !_auth.isLoggedIn || _auth.profile != _loadedProfile) {
+      return;
+    }
+    if (_auth.receivedCacheRevision != _lastHydrationRevision) {
+      _lastHydrationRevision = _auth.receivedCacheRevision;
+      _scheduleBackgroundReload();
+    }
+  }
+
+  void _scheduleBackgroundReload() {
+    if (!mounted || !_auth.isLoggedIn || _auth.profile != _loadedProfile) {
+      return;
+    }
+    if (_loadInFlight) {
+      _pendingBackgroundReload = true;
+      return;
+    }
+    unawaited(
+      _load(
+        openRequested: !_handledRequestedCase && widget.caseId != null,
+        includeConflicts: false,
+      ),
+    );
+  }
+
   Future<void> _load({
     bool openRequested = false,
     bool includeConflicts = true,
   }) async {
+    _loadInFlight = true;
+    _pendingBackgroundReload = false;
     final generation = ++_loadGeneration;
     final auth = context.read<AuthProvider>();
     final profile = auth.profile;
@@ -136,13 +184,15 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
           }
         }());
       }
-      if (openRequested && widget.caseId != null) {
+      if (openRequested && widget.caseId != null && !_handledRequestedCase) {
         final requested = rows
             .where((row) => row.id == widget.caseId)
             .firstOrNull;
         if (requested != null) {
+          _handledRequestedCase = true;
           await _open(requested);
-        } else {
+        } else if (!auth.isHydratingReceivedCache) {
+          _handledRequestedCase = true;
           setState(
             () => _error = context.trRead(
               'Screening tidak tersedia di perangkat ini.',
@@ -162,6 +212,22 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
             'Unable to load validation data.',
           );
         });
+      }
+    } finally {
+      if (generation == _loadGeneration) {
+        _loadInFlight = false;
+        if (_pendingBackgroundReload &&
+            mounted &&
+            _auth.isLoggedIn &&
+            _auth.profile == _loadedProfile) {
+          _pendingBackgroundReload = false;
+          unawaited(
+            _load(
+              openRequested: !_handledRequestedCase && widget.caseId != null,
+              includeConflicts: false,
+            ),
+          );
+        }
       }
     }
   }

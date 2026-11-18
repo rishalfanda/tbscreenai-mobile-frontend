@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:myapp/domain/models/models.dart';
 import 'package:myapp/domain/repositories/dashboard_repository.dart';
@@ -8,6 +9,15 @@ class DashboardProvider extends ChangeNotifier {
   DashboardProvider(this._repository, {AuthProvider? session})
     : _session = session {
     if (isLive) {
+      if (_repository is DeviceDashboardSource) {
+        _deviceChanges = (_repository as DeviceDashboardSource)
+            .watchChanges()
+            .listen((_) {
+              if (_owner != null && !_disposed) {
+                unawaited(_scheduleDeviceRefresh());
+              }
+            });
+      }
       _session?.addListener(_sessionChanged);
       _sessionChanged();
     } else {
@@ -17,11 +27,16 @@ class DashboardProvider extends ChangeNotifier {
 
   final DashboardRepository _repository;
   final AuthProvider? _session;
+  StreamSubscription<void>? _deviceChanges;
   DashboardSnapshot? _snapshot;
   String? _owner;
   String? _error;
   int _generation = 0;
   bool _disposed = false;
+  bool _deviceRefreshInFlight = false;
+  bool _pendingDeviceRefresh = false;
+  bool get isOffline => _repository is DeviceDashboardSource;
+  // Real snapshot data; this does not imply an HTTP connection.
   bool get isLive => _repository is DashboardSnapshotRepository;
   DashboardSnapshot? get snapshot => _snapshot;
   String? get error => _error;
@@ -60,6 +75,48 @@ class DashboardProvider extends ChangeNotifier {
     _systemStatuses = const [];
     _isLoading = false;
     _error = null;
+    _pendingDeviceRefresh = false;
+  }
+
+  Future<void> _scheduleDeviceRefresh() async {
+    if (_disposed || _owner == null || !isLive) return;
+    if (_snapshot == null && !_isLoading) {
+      return refresh();
+    }
+    if (_deviceRefreshInFlight) {
+      _pendingDeviceRefresh = true;
+      return;
+    }
+    _deviceRefreshInFlight = true;
+    try {
+      do {
+        _pendingDeviceRefresh = false;
+        final generation = _generation;
+        if (_disposed || _owner == null) return;
+        try {
+          final result = await (_repository as DashboardSnapshotRepository)
+              .load(
+                days: days,
+                tzOffsetMinutes: DateTime.now().timeZoneOffset.inMinutes,
+              );
+          if (_disposed || generation != _generation || _owner == null) return;
+          _snapshot = result;
+          _metrics = result.metrics;
+          _recentActivities = result.activities;
+          _trendData = result.trend;
+          _error = null;
+        } catch (_) {
+          if (_disposed || generation != _generation || _owner == null) return;
+          _error = isOffline
+              ? 'Dashboard lokal tidak dapat dimuat. Coba lagi.'
+              : 'Dashboard tidak dapat dimuat. Periksa koneksi dan coba lagi.';
+        }
+        _isLoading = false;
+        notifyListeners();
+      } while (_pendingDeviceRefresh && !_disposed && _owner != null);
+    } finally {
+      _deviceRefreshInFlight = false;
+    }
   }
 
   Future<void> refresh() async {
@@ -81,7 +138,9 @@ class DashboardProvider extends ChangeNotifier {
       _trendData = result.trend;
     } catch (_) {
       if (_disposed || generation != _generation) return;
-      _error = 'Dashboard tidak dapat dimuat. Periksa koneksi dan coba lagi.';
+      _error = isOffline
+          ? 'Dashboard lokal tidak dapat dimuat. Coba lagi.'
+          : 'Dashboard tidak dapat dimuat. Periksa koneksi dan coba lagi.';
     }
     if (_disposed || generation != _generation) return;
     _isLoading = false;
@@ -93,6 +152,7 @@ class DashboardProvider extends ChangeNotifier {
     _disposed = true;
     _generation++;
     _session?.removeListener(_sessionChanged);
+    _deviceChanges?.cancel();
     super.dispose();
   }
 

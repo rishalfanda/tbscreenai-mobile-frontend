@@ -590,6 +590,106 @@ void main() {
       expect(spyDb.batchArtifactReads, 1);
     },
   );
+
+  test(
+    'EncryptedXrayStore clears failed in-flight key read so retries succeed after storage recovers',
+    () async {
+      final spyDb = _SpyArtifactDatabase();
+      addTearDown(spyDb.close);
+      await spyDb.activateOwner(
+        spyDb.sessionGeneration,
+        const DataOwner(tenantId: 'h1', userId: 'u1', deviceId: 'dev1'),
+      );
+      final spyStorage = _FlakyXrayStorage();
+      final seedStore = EncryptedXrayStore(
+        db: spyDb,
+        secureStorage: spyStorage,
+      );
+      final image = XrayImage.placeholder('retry.png');
+      final ref = await seedStore.persist(artifactId: 'diag-retry', image: image);
+
+      final coldStore = EncryptedXrayStore(
+        db: spyDb,
+        secureStorage: spyStorage,
+      );
+      spyStorage.resetReads();
+      spyStorage.failNextKeyRead = true;
+
+      // First attempt fails when secure storage errors.
+      await expectLater(
+        coldStore.read(ref),
+        throwsA(isA<StateError>()),
+      );
+      expect(spyStorage.readsByKey['clinical_xray_aes_key_v1'], 1);
+
+      // Retry after storage recovers must re-read the key instead of replaying the stale failure.
+      final restored = await coldStore.read(ref);
+      expect(restored.checksumSha256, image.checksumSha256);
+      expect(spyStorage.readsByKey['clinical_xray_aes_key_v1'], 2);
+
+      // Subsequent read uses the now-cached key.
+      await coldStore.read(ref);
+      expect(spyStorage.readsByKey['clinical_xray_aes_key_v1'], 2);
+    },
+  );
+
+  test(
+    'OfflineValidationRepository.watchChanges emits when applyOutboxRestoreBatch writes patients and diagnoses',
+    () async {
+      final spyDb = _SpyArtifactDatabase();
+      addTearDown(spyDb.close);
+      await spyDb.activateOwner(
+        spyDb.sessionGeneration,
+        const DataOwner(tenantId: _tenant, userId: _doctor, deviceId: 'dev1'),
+      );
+      final client = ApiClient(
+        baseUrl: 'https://synthetic.invalid/api/v1',
+        secureStorage: MemorySecureTokenStorage(),
+      );
+      final repo = OfflineValidationRepository(
+        db: spyDb,
+        client: client,
+        syncEngine: SyncEngine(
+          db: spyDb,
+          client: client,
+          settings: SettingsStore(spyDb),
+        ),
+        localOnly: true,
+      );
+
+      var emissions = 0;
+      final sub = repo.watchChanges().listen((_) => emissions++);
+      addTearDown(sub.cancel);
+
+      expect(await repo.getCases(), isEmpty);
+
+      await spyDb.applyOutboxRestoreBatch(
+        patients: [
+          LocalPatientsCompanion.insert(
+            id: _patient,
+            code: 'P-WATCH',
+            name: 'Watched Patient',
+            age: 42,
+            gender: 'Male',
+          ),
+        ],
+        diagnoses: [
+          LocalDiagnosesCompanion.insert(
+            id: _diagnosis,
+            patientId: _patient,
+            isPositive: true,
+            confidence: 88,
+            modelVersion: '1.0',
+            diagnosedAt: DateTime.utc(2026, 4, 15),
+          ),
+        ],
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(emissions, greaterThanOrEqualTo(1));
+      final loaded = await repo.getCases();
+      expect(loaded.map((c) => c.name), ['Watched Patient']);
+    },
+  );
 }
 
 class _CountingXrayStorage extends MemorySecureTokenStorage {
@@ -601,6 +701,20 @@ class _CountingXrayStorage extends MemorySecureTokenStorage {
   Future<String?> read(String key) {
     readsByKey[key] = (readsByKey[key] ?? 0) + 1;
     return super.read(key);
+  }
+}
+
+class _FlakyXrayStorage extends _CountingXrayStorage {
+  bool failNextKeyRead = false;
+
+  @override
+  Future<String?> read(String key) {
+    final res = super.read(key);
+    if (key == 'clinical_xray_aes_key_v1' && failNextKeyRead) {
+      failNextKeyRead = false;
+      return Future<String?>.error(StateError('transient keystore failure'));
+    }
+    return res;
   }
 }
 

@@ -4,7 +4,7 @@ import 'package:myapp/domain/models/system_status.dart';
 import 'package:myapp/domain/models/trend_data_point.dart';
 import 'package:myapp/domain/models/dashboard_snapshot.dart';
 
-/// Live summary/activity are applied together to avoid mixing partial results.
+/// Snapshot data is applied together to avoid mixing partial results.
 abstract interface class DashboardSnapshotRepository {
   Future<DashboardSnapshot> load({
     required int days,
@@ -21,4 +21,9 @@ abstract class DashboardRepository {
   Future<List<TrendDataPoint>> getTrendData();
 
   Future<List<SystemStatus>> getSystemStatuses();
+}
+
+/// A real local dashboard that refreshes when device records change.
+abstract interface class DeviceDashboardSource {
+  Stream<void> watchChanges();
 }

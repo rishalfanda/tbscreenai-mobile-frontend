@@ -242,21 +242,28 @@ class EncryptedXrayStore {
     if (cached != null) return Future.value(cached);
     final inFlight = _keyReadInFlight;
     if (inFlight != null) return inFlight;
-    final future = () async {
-      final encoded = await _secureStorage.read(_keyName);
-      if (encoded == null) {
-        throw StateError('X-ray encryption key is unavailable.');
-      }
-      final bytes = _decodeKeyBytes(encoded);
-      _cachedKeyBytes = bytes;
-      return bytes;
-    }();
-    _keyReadInFlight = future.whenComplete(() {
-      if (identical(_keyReadInFlight, future)) {
+    var completed = false;
+    late final Future<List<int>> tracked;
+    tracked = _loadExistingKeyBytes().whenComplete(() {
+      completed = true;
+      if (identical(_keyReadInFlight, tracked)) {
         _keyReadInFlight = null;
       }
     });
-    return _keyReadInFlight!;
+    if (!completed) {
+      _keyReadInFlight = tracked;
+    }
+    return tracked;
+  }
+
+  Future<List<int>> _loadExistingKeyBytes() async {
+    final encoded = await _secureStorage.read(_keyName);
+    if (encoded == null) {
+      throw StateError('X-ray encryption key is unavailable.');
+    }
+    final bytes = _decodeKeyBytes(encoded);
+    _cachedKeyBytes = bytes;
+    return bytes;
   }
 
   List<int> _decodeKeyBytes(String encoded) {

@@ -36,11 +36,15 @@ class AuthProvider extends ChangeNotifier {
   int _generation = 0;
   bool _disposed = false;
   Future<void>? _logoutInProgress;
+  bool _isHydratingReceivedCache = false;
+  int _receivedCacheRevision = 0;
   String? sessionRefusalCode;
 
   bool get isLoggedIn => _status == AuthStatus.authenticated;
   bool get isBusy =>
       _status == AuthStatus.authenticating || _status == AuthStatus.loggingOut;
+  bool get isHydratingReceivedCache => _isHydratingReceivedCache;
+  int get receivedCacheRevision => _receivedCacheRevision;
   AuthStatus get status => _status;
   UserProfile? get profile => _profile;
   String get userId => _profile?.userId ?? '';
@@ -87,6 +91,7 @@ class AuthProvider extends ChangeNotifier {
     }
     _profile = profile;
     _status = profile == null ? AuthStatus.loggedOut : AuthStatus.authenticated;
+    _isHydratingReceivedCache = false;
     _notifyIfAlive();
   }
 
@@ -114,9 +119,16 @@ class AuthProvider extends ChangeNotifier {
       throw StateError('Password change identity mismatch');
     }
     _profile = updated;
+    _isHydratingReceivedCache = _canHydrateReceivedCache;
     _notifyIfAlive();
     _scheduleReceivedCacheHydration(generation);
   }
+
+  bool get _canHydrateReceivedCache =>
+      isLoggedIn &&
+      !mustChangePassword &&
+      mobileRole == MobileRole.clinician &&
+      _authRepository is ReceivedCacheHydratingRepository;
 
   void _scheduleReceivedCacheHydration(int generation) {
     unawaited(_hydrateReceivedCacheIfEligible(generation));
@@ -128,6 +140,7 @@ class AuthProvider extends ChangeNotifier {
     final generation = ++_generation;
     _profile = null;
     _status = AuthStatus.authenticating;
+    _isHydratingReceivedCache = false;
     _notifyIfAlive();
     if (_logoutInProgress != null) {
       await _logoutInProgress;
@@ -160,6 +173,7 @@ class AuthProvider extends ChangeNotifier {
       _profile = profile;
       sessionRefusalCode = null;
       _status = AuthStatus.authenticated;
+      _isHydratingReceivedCache = _canHydrateReceivedCache;
       _notifyIfAlive();
       _scheduleReceivedCacheHydration(generation);
     } catch (error) {
@@ -171,6 +185,7 @@ class AuthProvider extends ChangeNotifier {
           _deviceActivated = false;
         }
         _profile = null;
+        _isHydratingReceivedCache = false;
         _status = AuthStatus.loggedOut;
         _notifyIfAlive();
       }
@@ -182,17 +197,21 @@ class AuthProvider extends ChangeNotifier {
     final repo = _authRepository;
     if (_disposed ||
         generation != _generation ||
-        !isLoggedIn ||
-        mustChangePassword ||
-        mobileRole != MobileRole.clinician ||
-        repo is! ReceivedCacheHydratingRepository) {
+        !_canHydrateReceivedCache) {
       return;
     }
+    _isHydratingReceivedCache = true;
     try {
       await (repo as ReceivedCacheHydratingRepository).hydrateReceivedCache();
     } catch (_) {
       // Stale session switches, rapid logout, or DB teardown are expected to
       // abort background cache hydration safely without escaping the zone.
+    } finally {
+      if (!_disposed && generation == _generation) {
+        _isHydratingReceivedCache = false;
+        _receivedCacheRevision++;
+        _notifyIfAlive();
+      }
     }
   }
 
@@ -203,6 +222,7 @@ class AuthProvider extends ChangeNotifier {
     if (running != null) return running;
 
     _generation++;
+    _isHydratingReceivedCache = false;
     _status = AuthStatus.loggingOut;
     _notifyIfAlive();
     final completion = Completer<void>();

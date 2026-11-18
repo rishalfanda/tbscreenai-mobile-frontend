@@ -65,3 +65,8 @@ abstract interface class LesionRatingValidationRepository {
     String? note,
   });
 }
+
+/// Local validation store that emits when SQLite clinical tables change.
+abstract interface class ValidationChangesRepository {
+  Stream<void> watchChanges();
+}

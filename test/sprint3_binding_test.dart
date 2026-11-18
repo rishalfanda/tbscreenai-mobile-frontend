@@ -8,8 +8,8 @@ import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/mock/mock_repositories.dart';
 import 'package:myapp/data/http/http_repositories.dart';
-import 'package:myapp/data/http/http_dashboard_repository.dart';
 import 'package:myapp/data/http/http_dataset_repository.dart';
+import 'package:myapp/data/offline/offline_dashboard_repository.dart';
 import 'package:myapp/data/offline/offline_patient_repository.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/offline/offline_validation_repository.dart';
@@ -62,7 +62,9 @@ void main() {
       );
       expect(
         context.read<DashboardRepository>(),
-        live ? isA<HttpDashboardRepository>() : isA<MockDashboardRepository>(),
+        live
+            ? isA<OfflineDashboardRepository>()
+            : isA<MockDashboardRepository>(),
       );
       expect(
         context.read<DatasetRepository>(),

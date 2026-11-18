@@ -556,6 +556,135 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'OfflineValidationScreen automatically refreshes when SQLite changes or background hydration finishes',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final repo = _ReactiveRepo();
+      addTearDown(repo.dispose);
+      final hydrationGate = Completer<void>();
+      final authRepo = _HydratingAuthRepo(
+        onHydrate: () async {
+          await hydrationGate.future;
+          repo.cases.add(_reactiveCase('case-hydrated', 'Hydrated Patient'));
+        },
+      );
+      final auth = AuthProvider(authRepo);
+      addTearDown(auth.dispose);
+
+      await tester.runAsync(
+        () => auth.login(email: 'doctor@example.invalid', password: 'pw'),
+      );
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<ValidationRepository>.value(value: repo),
+            ChangeNotifierProvider.value(value: auth),
+            ChangeNotifierProvider(create: (_) => AppLanguage()),
+          ],
+          child: const MaterialApp(home: Scaffold(body: ValidationScreen())),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('0 screenings'), findsOneWidget);
+
+      // Simulate incremental SQLite commit before full hydration completion.
+      repo.cases.add(_reactiveCase('case-db', 'Database Restored Patient'));
+      repo.emitDbChange();
+      await tester.pumpAndSettle();
+      expect(find.text('1 screenings'), findsOneWidget);
+      expect(find.text('Database Restored Patient'), findsOneWidget);
+
+      // Finish background hydration and confirm the remaining case appears automatically.
+      hydrationGate.complete();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pumpAndSettle();
+      expect(find.text('2 screenings'), findsOneWidget);
+      expect(find.text('Hydrated Patient'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+}
+
+ValidationCase _reactiveCase(String id, String name) => ValidationCase(
+  id: id,
+  patientId: 'p-$id',
+  name: name,
+  initials: 'P',
+  age: 40,
+  gender: 'Male',
+  aiScore: 75,
+  isPositive: true,
+  diagnosedAt: DateTime.utc(2026, 4, 15, 10, 0),
+  diagnosisDate: '2026-04-15',
+  status: 'pending',
+  doctorNote: null,
+  xrayUrl: null,
+  findings: const ValidationFindings(
+    consolidation: 75,
+    cavity: 0,
+    effusion: 0,
+    fibrotic: 0,
+    calcification: 0,
+  ),
+);
+
+class _HydratingAuthRepo extends AuthRepository
+    implements ReceivedCacheHydratingRepository {
+  _HydratingAuthRepo({required this.onHydrate});
+
+  final Future<void> Function() onHydrate;
+
+  @override
+  Future<UserProfile> login({
+    required String email,
+    required String password,
+  }) async => _doctor;
+
+  @override
+  Future<void> logout() async {}
+
+  @override
+  Future<void> hydrateReceivedCache() => onHydrate();
+}
+
+class _ReactiveRepo extends ValidationRepository
+    implements NumericValidationRepository, ValidationChangesRepository {
+  final List<ValidationCase> cases = [];
+  final StreamController<void> _changes = StreamController<void>.broadcast();
+
+  void emitDbChange() => _changes.add(null);
+
+  void dispose() => unawaited(_changes.close());
+
+  @override
+  Stream<void> watchChanges() => _changes.stream;
+
+  @override
+  Future<List<ValidationCase>> getCases() async => List.of(cases);
+
+  @override
+  Future<XrayImage?> loadCaseImage(String id) async => null;
+
+  @override
+  Future<void> submitScore({
+    required String id,
+    required int score,
+    String? status,
+    String? note,
+  }) async {}
+
+  @override
+  Future<ValidationSubmission> submitValidation({
+    required String id,
+    required String status,
+    String? note,
+  }) async => const ValidationSubmission(ValidationSubmissionState.queued);
 }
 
 class _ScaleAndConflictRepo extends ValidationRepository
