@@ -116,19 +116,11 @@ void main() {
           throwsA(isA<StateError>()),
         );
         if (width == 1280) {
-          await tester.runAsync(() async {
-            final picture =
-                await (preview.currentContext!.findRenderObject()!
-                        as RenderRepaintBoundary)
-                    .toImage();
-            final bytes = await picture.toByteData(
-              format: ui.ImageByteFormat.png,
-            );
-            await File(
-              'artifacts/nov02-activation-preview.png',
-            ).writeAsBytes(bytes!.buffer.asUint8List());
-            picture.dispose();
-          });
+          await _capturePreview(
+            tester,
+            preview,
+            'artifacts/nov02-activation-preview.png',
+          );
         }
         await tester.enterText(
           find.byType(TextFormField),
@@ -145,23 +137,35 @@ void main() {
         expect(find.byType(TextFormField), findsNWidgets(2));
         expect(find.text('Activation code'), findsNothing);
         if (width == 1280) {
-          await tester.runAsync(() async {
-            final picture =
-                await (preview.currentContext!.findRenderObject()!
-                        as RenderRepaintBoundary)
-                    .toImage();
-            final bytes = await picture.toByteData(
-              format: ui.ImageByteFormat.png,
-            );
-            await File(
-              'artifacts/nov02-login-preview.png',
-            ).writeAsBytes(bytes!.buffer.asUint8List());
-            picture.dispose();
-          });
+          await _capturePreview(
+            tester,
+            preview,
+            'artifacts/nov02-login-preview.png',
+          );
         }
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
       },
     );
   }
+}
+
+Future<void> _capturePreview(
+  WidgetTester tester,
+  GlobalKey preview,
+  String path,
+) async {
+  await tester.runAsync(() async {
+    final picture =
+        await (preview.currentContext!.findRenderObject()!
+                as RenderRepaintBoundary)
+            .toImage();
+    final bytes = await picture.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
+    final file = File(path);
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes!.buffer.asUint8List());
+    picture.dispose();
+  });
 }

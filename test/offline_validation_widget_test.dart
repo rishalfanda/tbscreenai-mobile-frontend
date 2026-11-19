@@ -609,6 +609,70 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'Auto-refresh while getConflicts is in flight does not drop conflict resolution actions',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final conflictsCompleter = Completer<List<ClinicalConflict>>();
+      final repo = _ReactiveRepo(conflictsFuture: conflictsCompleter.future);
+      repo.cases.add(_reactiveCase('case-1', 'Conflict Patient'));
+      addTearDown(repo.dispose);
+      final auth = AuthProvider(
+        _Auth(),
+        initialProfile: _doctor,
+      );
+      addTearDown(auth.dispose);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<ValidationRepository>.value(value: repo),
+            ChangeNotifierProvider.value(value: auth),
+            ChangeNotifierProvider(create: (_) => AppLanguage()),
+          ],
+          child: const MaterialApp(home: Scaffold(body: ValidationScreen())),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('1 screenings'), findsOneWidget);
+
+      // Trigger background auto-refresh before slow getConflicts completes.
+      repo.cases.add(_reactiveCase('case-2', 'Restored During Conflicts'));
+      repo.emitDbChange();
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('2 screenings'), findsOneWidget);
+
+      // Complete initial getConflicts; banner + Resolve button must still appear.
+      conflictsCompleter.complete(const [
+        ClinicalConflict(
+          clientOpId: 'op-race',
+          diagnosisId: 'case-1',
+          localStatus: 'pending',
+          localNote: null,
+          baseVersion: 1,
+          detail: 'version_conflict',
+          serverStatus: 'agreed',
+          serverVersion: 2,
+        ),
+      ]);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('validation-conflict-op-race')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('resolve-validation-conflict-op-race')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 ValidationCase _reactiveCase(String id, String name) => ValidationCase(
@@ -655,6 +719,10 @@ class _HydratingAuthRepo extends AuthRepository
 
 class _ReactiveRepo extends ValidationRepository
     implements NumericValidationRepository, ValidationChangesRepository {
+  _ReactiveRepo({Future<List<ClinicalConflict>>? conflictsFuture})
+    : _conflictsFuture = conflictsFuture;
+
+  final Future<List<ClinicalConflict>>? _conflictsFuture;
   final List<ValidationCase> cases = [];
   final StreamController<void> _changes = StreamController<void>.broadcast();
 
@@ -667,6 +735,10 @@ class _ReactiveRepo extends ValidationRepository
 
   @override
   Future<List<ValidationCase>> getCases() async => List.of(cases);
+
+  @override
+  Future<List<ClinicalConflict>> getConflicts() =>
+      _conflictsFuture ?? Future.value(const []);
 
   @override
   Future<XrayImage?> loadCaseImage(String id) async => null;

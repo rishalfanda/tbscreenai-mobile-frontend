@@ -80,6 +80,7 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
   String? _error;
   bool _deleting = false;
   int _loadGeneration = 0;
+  int _conflictGeneration = 0;
   bool _loadInFlight = false;
   bool _pendingBackgroundReload = false;
   bool _handledRequestedCase = false;
@@ -151,9 +152,23 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
     final profile = auth.profile;
     try {
       final repository = context.read<ValidationRepository>();
-      final Future<List<ClinicalConflict>>? conflictsFuture = includeConflicts
-          ? repository.getConflicts()
-          : null;
+      if (includeConflicts) {
+        final conflictGen = ++_conflictGeneration;
+        unawaited(() async {
+          try {
+            final conflicts = await repository.getConflicts();
+            if (!mounted ||
+                conflictGen != _conflictGeneration ||
+                profile != auth.profile ||
+                !auth.isLoggedIn) {
+              return;
+            }
+            setState(() => _conflicts = conflicts);
+          } catch (_) {
+            // Keep local cases visible even if conflict HTTP hydration fails.
+          }
+        }());
+      }
       final rows = await repository.getCases();
       if (!mounted ||
           generation != _loadGeneration ||
@@ -168,22 +183,6 @@ class _OfflineValidationScreenState extends State<OfflineValidationScreen> {
         _loading = false;
         _error = null;
       });
-      if (conflictsFuture != null) {
-        unawaited(() async {
-          try {
-            final conflicts = await conflictsFuture;
-            if (!mounted ||
-                generation != _loadGeneration ||
-                profile != auth.profile ||
-                !auth.isLoggedIn) {
-              return;
-            }
-            setState(() => _conflicts = conflicts);
-          } catch (_) {
-            // Keep local cases visible even if conflict HTTP hydration fails.
-          }
-        }());
-      }
       if (openRequested && widget.caseId != null && !_handledRequestedCase) {
         final requested = rows
             .where((row) => row.id == widget.caseId)
