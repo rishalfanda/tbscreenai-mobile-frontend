@@ -1,3 +1,5 @@
+import 'package:myapp/domain/models/segmentation_overlays.dart';
+import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/domain/models/clinical_conflict.dart';
 import 'package:myapp/domain/models/validation_case.dart';
 
@@ -32,4 +34,39 @@ abstract class ValidationRepository {
   }) {
     throw UnsupportedError('Conflict resolution is unavailable.');
   }
+}
+
+/// Local numeric review, deliberately separate from the legacy server verdict.
+abstract interface class NumericValidationRepository {
+  Future<void> submitScore({
+    required String id,
+    required int score,
+    String? status,
+    String? note,
+  });
+  Future<XrayImage?> loadCaseImage(String id);
+}
+
+abstract interface class SegmentationValidationRepository {
+  Future<SegmentationOverlays?> loadCaseSegmentation(String id);
+}
+
+/// Removes a doctor's review from the list while retaining screening and image.
+abstract interface class ValidationResetRepository {
+  Future<void> resetValidation(String id);
+}
+
+/// PR40 lesion ratings are never inferred from the legacy trust score.
+abstract interface class LesionRatingValidationRepository {
+  Future<void> submitLesionRating({
+    required String id,
+    required int rating,
+    required String status,
+    String? note,
+  });
+}
+
+/// Local validation store that emits when SQLite clinical tables change.
+abstract interface class ValidationChangesRepository {
+  Stream<void> watchChanges();
 }

@@ -69,6 +69,26 @@ LocalDiagnosesCompanion diagnosisRowFromJson(Map<String, dynamic> json) {
     findings: Value(jsonEncode(json['findings'] ?? const {})),
     status: Value(json['status'] as String? ?? 'pending'),
     doctorNote: Value(json['doctor_note'] as String?),
+    lesionRating: json.containsKey('lesion_rating')
+        ? Value(json['lesion_rating'] as int?)
+        : const Value.absent(),
+    validationDeletedAt: json.containsKey('validation_deleted_at')
+        ? Value(
+            DateTime.tryParse(json['validation_deleted_at'] as String? ?? ''),
+          )
+        : const Value.absent(),
+    validationDeletedBy: json.containsKey('validation_deleted_by')
+        ? Value(json['validation_deleted_by'] as String?)
+        : const Value.absent(),
+    validationScore: json.containsKey('validation_score')
+        ? Value(json['validation_score'] as int?)
+        : const Value.absent(),
+    validatedBy: json.containsKey('validated_by')
+        ? Value(json['validated_by'] as String?)
+        : const Value.absent(),
+    validatedAt: json.containsKey('validated_at')
+        ? Value(DateTime.tryParse(json['validated_at'] as String? ?? ''))
+        : const Value.absent(),
     diagnosedAt:
         DateTime.tryParse(json['diagnosed_at'] as String? ?? '') ??
         DateTime.now(),

@@ -1,10 +1,11 @@
+import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/localization/app_text.dart';
+import 'package:myapp/core/config/app_config.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/services.dart';
-import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 import 'package:myapp/features/diagnosis/application/prepare_inference_image.dart';
@@ -142,24 +143,47 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     'Other',
   ];
 
+  OnnxInferenceEngine? _readInferenceEngine(BuildContext context) {
+    try {
+      return context.read<OnnxInferenceEngine>();
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     if (widget.hasModelOverride != null) {
-      _hasModelReady = widget.hasModelOverride!;
       _checkingModel = false;
     } else {
-      try {
-        final engine = context.read<OnnxInferenceEngine>();
-        engine.ready.then((_) {
-          if (!mounted) return;
-          setState(() {
-            _hasModelReady = engine.hasBundle;
-            _checkingModel = false;
-          });
-        });
-      } catch (_) {
+      final engine = _readInferenceEngine(context);
+      if (engine == null) {
         _checkingModel = false;
+      } else {
+        engine.ready
+            .then((_) {
+              if (!mounted) return;
+              final readyEngine = _readInferenceEngine(context);
+              final hasBundle = readyEngine?.hasBundle ?? false;
+              setState(() {
+                _hasModelReady = hasBundle;
+                _checkingModel = false;
+              });
+              if (hasBundle &&
+                  readyEngine != null &&
+                  !readyEngine.isStandbyReady) {
+                unawaited(readyEngine.initiateStandby());
+              }
+            })
+            .catchError((Object _) {
+              if (mounted) {
+                setState(() {
+                  _hasModelReady = false;
+                  _checkingModel = false;
+                });
+              }
+            });
       }
     }
   }
@@ -591,6 +615,7 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     );
     final age = _numberField(
       label: 'Usia',
+      unit: 'thn',
       key: const Key('age'),
       controller: _ageController,
       onChanged: (value) => diagnosis.updateAge(int.tryParse(value)),
@@ -598,7 +623,8 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
       max: 130,
     );
     final height = _numberField(
-      label: 'Tinggi Badan (cm)',
+      label: 'Tinggi Badan',
+      unit: 'cm',
       key: const Key('height'),
       controller: _heightController,
       onChanged: (value) => diagnosis.updateHeight(double.tryParse(value)),
@@ -607,7 +633,8 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
       decimal: true,
     );
     final weight = _numberField(
-      label: 'Berat Badan (kg)',
+      label: 'Berat Badan',
+      unit: 'kg',
       key: const Key('weight'),
       controller: _weightController,
       onChanged: (value) => diagnosis.updateWeight(double.tryParse(value)),
@@ -650,11 +677,13 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     required double min,
     required double max,
     bool decimal = false,
+    String? unit,
   }) {
     return LabeledField(
       label: label,
       child: DarkTextField(
         key: key,
+        unit: unit,
         controller: controller,
         keyboardType: TextInputType.numberWithOptions(decimal: decimal),
         inputFormatters: [
@@ -914,13 +943,68 @@ class _DiagnosisInputTabState extends State<DiagnosisInputTab> {
     bool checkingModel,
     bool locked,
   ) {
+    final engine = widget.hasModelOverride == null
+        ? _readInferenceEngine(context)
+        : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (!checkingModel && !hasModel) ...[
           const NoModelBanner(),
           const SizedBox(height: 18),
-        ],
+        ] else if (!checkingModel && hasModel && engine != null)
+          ValueListenableBuilder<bool>(
+            valueListenable: engine.isWarmingUp,
+            builder: (context, warmingUp, _) {
+              if (!warmingUp) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Container(
+                  key: const Key('model-warmup-indicator'),
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: diagnosisAccent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: diagnosisAccent.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            diagnosisAccent,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          context.tr(
+                            'Menyiapkan model AI di latar belakang...',
+                            'Preparing AI model in background...',
+                          ),
+                          style: const TextStyle(
+                            color: diagnosisText,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
         IgnorePointer(
           ignoring: locked,
           child: Opacity(

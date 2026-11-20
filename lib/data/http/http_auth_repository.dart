@@ -1,48 +1,82 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:myapp/data/secure/device_identity_store.dart';
+import 'package:myapp/data/secure/doctor_session_store.dart';
 import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/settings_store.dart';
+import 'package:myapp/domain/models/access_scope.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/domain/repositories/auth_repository.dart';
 import 'package:myapp/data/offline/device_operator_outbox.dart';
 
 /// Live auth against POST /auth/login + /auth/refresh.
-class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
+class HttpAuthRepository
+    implements
+        AuthRepository,
+        PasswordChangeRepository,
+        PersistentDoctorAuthRepository,
+        ReceivedCacheHydratingRepository,
+        ModelGatedAuthRepository {
   HttpAuthRepository(
     this._client, {
     SettingsStore? settings,
     AppDatabase? db,
     DeviceOperatorOutbox? outbox,
+    DoctorSessionStore? doctorSession,
+    Future<bool> Function()? hasActiveModel,
   }) : _settings = settings,
        _db = db,
-       _outbox = outbox;
+       _outbox = outbox,
+       _doctorSession = doctorSession,
+       _hasActiveModel = hasActiveModel;
 
+  final DoctorSessionStore? _doctorSession;
   final ApiClient _client;
   final SettingsStore? _settings;
   final AppDatabase? _db;
   final DeviceOperatorOutbox? _outbox;
+  final Future<bool> Function()? _hasActiveModel;
   int _operation = 0;
   Future<void>? _cleanup;
   UserProfile? _identity;
+  bool _sessionCleared = false;
+
+  @override
+  bool get enforcesActiveModelOnLogin => _hasActiveModel != null;
 
   @override
   Future<UserProfile> login({
     required String email,
     required String password,
   }) async {
-    // Invalidate in-flight work immediately, but retain the previous owner's
-    // cache until the replacement account has authenticated successfully.
+    // Invalidate in-flight work immediately. When cleanup already completed
+    // via a finished logout before reaching /login, skip redundant Keystore/DB
+    // cleanup work and proceed directly to /auth/login.
     final operation = ++_operation;
     _identity = null;
-    _db?.invalidateSession();
-    final clearingTokens = _client.tokens.clear();
     final cleanup = _cleanup;
-    if (cleanup != null) await cleanup;
-    await clearingTokens;
-    await _outbox?.captureDoctorQueue();
-    _ensureCurrent(operation);
+    final alreadyCleared =
+        _sessionCleared && cleanup == null && !_client.tokens.hasSession;
+    _sessionCleared = false;
+    if (alreadyCleared) {
+      _ensureCurrent(operation);
+    } else {
+      final clearingDoctorSession = _doctorSession?.clear();
+      final clearingTokens = _client.tokens.clear();
+      if (cleanup != null) await cleanup;
+      _ensureCurrent(operation);
+      await Future.wait<void>([
+        ?clearingDoctorSession,
+        clearingTokens,
+        ?_outbox?.captureDoctorQueue(),
+      ]);
+      _ensureCurrent(operation);
+    }
 
     final tokenGeneration = _client.tokens.generation;
-    final databaseGeneration = _db?.sessionGeneration;
     final response = await _client.dio.post<Map<String, dynamic>>(
       '/auth/login',
       data: {'email': email, 'password': password},
@@ -69,8 +103,11 @@ class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
         tenantId is! String ||
         tenantId.isEmpty ||
         displayName is! String ||
+        displayName.trim().isEmpty ||
         userEmail is! String ||
+        userEmail.trim().isEmpty ||
         role is! String ||
+        role.trim().isEmpty ||
         (user.containsKey('must_change_password') &&
             user['must_change_password'] is! bool)) {
       throw const FormatException('Authenticated user identity is incomplete');
@@ -86,41 +123,153 @@ class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
       mustChangePassword: user['must_change_password'] == true,
     );
 
+    final checkModel =
+        profile.mobileRole == MobileRole.clinician && _hasActiveModel != null;
+    final deviceFuture = _client.deviceIdentity.read();
+    final modelFuture = checkModel
+        ? _hasActiveModel()
+        : Future<bool>.value(true);
+    final checks = await Future.wait<Object?>([modelFuture, deviceFuture]);
+    _ensureCurrent(operation, tokenGeneration: tokenGeneration);
+
+    final hasModel = checks[0] as bool;
+    final device = checks[1] as DeviceIdentity?;
+    if (!hasModel) {
+      await _trackCleanup(() => _revokeServerSession(access));
+      throw const NoActiveModelException();
+    }
+    if (device != null && device.tenantId != profile.tenantId) {
+      await _trackCleanup(() => _revokeServerSession(access));
+      throw const FormatException(
+        'Authenticated tenant does not match tablet registration',
+      );
+    }
+
     try {
       final settings = _settings;
       final database = _db;
       if (database != null && settings != null) {
         final deviceId = await settings.readOrCreateDeviceId();
         _ensureCurrent(operation, tokenGeneration: tokenGeneration);
+        database.invalidateSession();
         await database.activateOwner(
-          databaseGeneration!,
+          database.sessionGeneration,
           DataOwner(tenantId: tenantId, userId: userId, deviceId: deviceId),
+          identitySettings: SettingsStore.identityEntries(
+            userId: userId,
+            tenantId: tenantId,
+            role: role,
+            displayName: displayName,
+            email: userEmail,
+          ),
         );
         _ensureCurrent(operation, tokenGeneration: tokenGeneration);
-        await settings.saveIdentity(
-          userId: userId,
-          tenantId: tenantId,
-          role: role,
-          displayName: displayName,
-          email: userEmail,
-        );
-        if (!profile.mustChangePassword) await _outbox?.restoreDoctorQueue();
+        if (!profile.mustChangePassword) {
+          await _outbox?.restoreDoctorQueue(
+            scope: OutboxRestoreScope.pendingOnly,
+          );
+        }
       }
 
       _ensureCurrent(operation, tokenGeneration: tokenGeneration);
-      await _client.tokens.update(access: access, refresh: refresh);
+      final shouldSaveDoctorSession =
+          _doctorSession != null &&
+          profile.mobileRole == MobileRole.clinician &&
+          !profile.mustChangePassword &&
+          device != null &&
+          device.tenantId == profile.tenantId;
+      await Future.wait<void>([
+        _client.tokens.update(access: access, refresh: refresh),
+        if (shouldSaveDoctorSession)
+          _doctorSession.save(profile, device.id, _client.baseUrl),
+      ]);
       _ensureCurrent(operation);
     } catch (_) {
       // A newer login or logout owns cleanup. A failure in the current login
       // must fail closed and remove any partially activated local owner.
       if (operation == _operation) {
-        await _client.tokens.clear();
-        await _db?.clearSessionData();
+        await Future.wait<void>([
+          _client.tokens.clear(),
+          ?_doctorSession?.clear(),
+          ?_db?.clearSessionData(),
+        ]);
       }
       rethrow;
     }
+    _ensureCurrent(operation);
     _identity = profile;
     return profile;
+  }
+
+  @override
+  Future<UserProfile?> restoreDoctorSession({
+    DeviceIdentity? knownDevice,
+  }) async {
+    final operation = ++_operation;
+    _sessionCleared = false;
+    final db = _db;
+    final settings = _settings;
+    if (_doctorSession == null || db == null || settings == null) {
+      await _client.tokens.clear();
+      return null;
+    }
+    try {
+      final device = knownDevice ?? await _client.deviceIdentity.read();
+      _ensureCurrent(operation);
+      if (device == null) {
+        await _client.tokens.clear();
+        return null;
+      }
+      final checks = await Future.wait<Object?>([
+        _doctorSession.read(device.id, _client.baseUrl),
+        settings.readSessionOwner(),
+        settings.readRole(),
+      ]);
+      final profile = checks[0] as UserProfile?;
+      final owner = checks[1] as String?;
+      final role = checks[2] as String?;
+      if (profile == null ||
+          profile.tenantId != device.tenantId ||
+          owner != '${profile.tenantId}:${profile.userId}' ||
+          MobileRole.parse(role) != MobileRole.clinician ||
+          profile.role != role) {
+        await _doctorSession.clear();
+        await _client.tokens.clear();
+        return null;
+      }
+      final restored = await Future.wait<Object?>([
+        _client.tokens.restore(
+          localAuthenticationGranted: true,
+          allowExpiredAccess: true,
+          knownOwner: owner,
+        ),
+        settings.readOrCreateDeviceId(),
+      ]);
+      if (restored[0] != true) {
+        await _doctorSession.clear();
+        await _client.tokens.clear();
+        return null;
+      }
+      _ensureCurrent(operation);
+      final localDevice = restored[1] as String;
+      await db.activateOwner(
+        db.sessionGeneration,
+        DataOwner(
+          tenantId: profile.tenantId,
+          userId: profile.userId,
+          deviceId: localDevice,
+        ),
+      );
+      _ensureCurrent(operation);
+      _identity = profile;
+      return profile;
+    } catch (_) {
+      if (operation == _operation) {
+        await _doctorSession.clear();
+        await _client.tokens.clear();
+      }
+      return null;
+    }
   }
 
   void _ensureCurrent(int operation, {int? tokenGeneration}) {
@@ -174,42 +323,148 @@ class HttpAuthRepository implements AuthRepository, PasswordChangeRepository {
     }
     await _client.tokens.replaceSession(access: access, refresh: refresh);
     _ensureCurrent(operation);
-    await _outbox?.restoreDoctorQueue();
-    _ensureCurrent(operation);
-    return UserProfile(
+    final updated = UserProfile(
       userId: user['id'] as String,
       tenantId: user['tenant_id'] as String,
       displayName: user['full_name'] as String,
       email: user['email'] as String,
       role: user['role'] as String,
     );
+    final device = await _client.deviceIdentity.read();
+    _ensureCurrent(operation);
+    if (device != null && device.tenantId == updated.tenantId) {
+      await _doctorSession?.save(updated, device.id, _client.baseUrl);
+    }
+    _ensureCurrent(operation);
+    _identity = updated;
+    try {
+      await _outbox?.restoreDoctorQueue(scope: OutboxRestoreScope.pendingOnly);
+    } catch (_) {
+      // Password and tokens are already committed on server and secure storage;
+      // retain the updated session rather than misreporting password failure.
+    }
+    _ensureCurrent(operation);
+    return updated;
+  }
+
+  @override
+  Future<void> hydrateReceivedCache() async {
+    final operation = _operation;
+    final identity = _identity;
+    if (identity == null ||
+        identity.mustChangePassword ||
+        identity.mobileRole != MobileRole.clinician) {
+      return;
+    }
+    await _outbox?.restoreDoctorQueue(scope: OutboxRestoreScope.receivedOnly);
+    _ensureCurrent(operation);
   }
 
   @override
   Future<void> logout() {
+    // Keep the old bearer only in memory long enough to revoke this server
+    // session. The request is isolated from ApiClient's refresh interceptor:
+    // logout rejection must never refresh an expiring/invalid session.
+    final serverLogout = _revokeServerSession(_client.tokens.accessToken);
     _operation++;
     _identity = null;
     _db?.invalidateSession();
-    return _clearSession();
+    return _clearSession(serverLogout: serverLogout);
   }
 
-  Future<void> _clearSession() {
-    final clearedTokens = _client.tokens.clear();
+  Future<void> _revokeServerSession(String? accessToken) async {
+    if (!_isLiveAccessToken(accessToken)) return;
 
-    Future<void> clean() async {
-      await _outbox?.captureDoctorQueue();
-      await clearedTokens;
-      await _db?.clearSessionData();
+    // A short hard bound keeps offline logout usable. Login waits for the
+    // serialized cleanup below, so a legacy server token (without a session
+    // id) cannot finish late and revoke a newly-created login.
+    final cancel = CancelToken();
+    try {
+      final device = await _client.deviceIdentity.read();
+      final dio = Dio(
+        BaseOptions(
+          baseUrl: _client.baseUrl,
+          connectTimeout: const Duration(seconds: 3),
+          sendTimeout: const Duration(seconds: 3),
+          receiveTimeout: const Duration(seconds: 3),
+        ),
+      );
+      // Reuse only the transport so synthetic adapters remain testable. Do
+      // not close this Dio: the adapter is owned by the shared ApiClient.
+      dio.httpClientAdapter = _client.dio.httpClientAdapter;
+      await dio
+          .post<void>(
+            '/auth/logout',
+            cancelToken: cancel,
+            options: Options(
+              headers: <String, dynamic>{
+                'Authorization': 'Bearer $accessToken',
+                ...?device?.headers,
+              },
+            ),
+          )
+          .timeout(
+            const Duration(seconds: 3),
+            onTimeout: () {
+              cancel.cancel('Server logout timed out');
+              throw TimeoutException('Server logout timed out');
+            },
+          );
+    } catch (_) {
+      // Server revocation is best effort. Local secrets and clinical cache
+      // still have to be cleared when offline or when the session is stale.
     }
+  }
 
-    // Serialize cleanup even if expiry and user logout arrive together.
+  bool _isLiveAccessToken(String? token) {
+    if (token == null || token.isEmpty) return false;
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return false;
+      final claims =
+          jsonDecode(
+                utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+              )
+              as Map<String, dynamic>;
+      final expiresAt = claims['exp'];
+      return expiresAt is num &&
+          expiresAt > DateTime.now().millisecondsSinceEpoch / 1000;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _trackCleanup(Future<void> Function() action) {
     final previous = _cleanup;
     final next = previous == null
-        ? clean()
-        : previous.then((_) => clean(), onError: (Object _) => clean());
+        ? action()
+        : previous.then((_) => action(), onError: (Object _) => action());
     _cleanup = next;
     return next.whenComplete(() {
       if (identical(_cleanup, next)) _cleanup = null;
     });
+  }
+
+  Future<void> _clearSession({Future<void>? serverLogout}) {
+    final clearOperation = _operation;
+    _sessionCleared = false;
+    final clearedTokens = _client.tokens.clear();
+    final clearedDoctorSession = _doctorSession?.clear();
+
+    Future<void> clean() async {
+      final localCleanup = () async {
+        await _outbox?.captureDoctorQueue();
+        await clearedTokens;
+        await clearedDoctorSession;
+        await _db?.clearSessionData();
+        if (clearOperation == _operation && !_client.tokens.hasSession) {
+          _sessionCleared = true;
+        }
+      }();
+      await Future.wait<void>([localCleanup, ?serverLogout], eagerError: false);
+    }
+
+    // Serialize cleanup even if expiry and user logout arrive together.
+    return _trackCleanup(clean);
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -8,6 +10,7 @@ import 'package:myapp/data/local/tables.dart';
 part 'app_database.g.dart';
 
 // === Section: Sync queue state machine ===
+const String syncBlockedContract = 'blocked_contract';
 const String syncPending = 'pending';
 const String syncSending = 'sending';
 const String syncRetryable = 'retryable';
@@ -52,6 +55,7 @@ class DataOwner {
 ///
 /// v2 adds explicit owner/version/retry metadata. v3 adds durable screening
 /// snapshots, encrypted X-ray artifacts and conflict-resolution audit events.
+/// v6 adds [ArchivedXrayArtifacts] for BLOB-native outbox artifact storage.
 /// Session secrets and artifact keys live in platform secure storage.
 @DriftDatabase(
   tables: [
@@ -59,6 +63,7 @@ class DataOwner {
     LocalDiagnoses,
     SyncQueue,
     EncryptedXrayArtifacts,
+    ArchivedXrayArtifacts,
     ClinicalAuditEvents,
     AppSettings,
   ],
@@ -79,7 +84,7 @@ class AppDatabase extends _$AppDatabase {
       );
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 6;
 
   int _sessionGeneration = 0;
   DataOwner? _activeOwner;
@@ -91,12 +96,33 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    onCreate: (m) => m.createAll(),
+    onCreate: (m) async {
+      await m.createAll();
+      await _createArchiveIndexes();
+    },
     onUpgrade: (m, from, to) async {
       if (from < 2) await _migrateV1ToV2(m);
       if (from < 3) await _migrateV2ToV3(m);
+      if (from < 5) {
+        await m.addColumn(localDiagnoses, localDiagnoses.lesionRating);
+        await m.addColumn(localDiagnoses, localDiagnoses.validationDeletedAt);
+        await m.addColumn(localDiagnoses, localDiagnoses.validationDeletedBy);
+      }
+      if (from < 4) {
+        await m.addColumn(localDiagnoses, localDiagnoses.validationScore);
+        await m.addColumn(localDiagnoses, localDiagnoses.validatedBy);
+        await m.addColumn(localDiagnoses, localDiagnoses.validatedAt);
+      }
+      if (from < 6) {
+        await m.createTable(archivedXrayArtifacts);
+        await _createArchiveIndexes();
+      }
     },
     beforeOpen: (details) async {
+      if (!kIsWeb) {
+        await customStatement('PRAGMA journal_mode = WAL;');
+        await customStatement('PRAGMA busy_timeout = 5000;');
+      }
       // A process crash can leave an op in sending. The same client_op_id is
       // safe to replay because the backend enforces idempotency.
       if (details.versionNow >= 2) {
@@ -220,25 +246,51 @@ class AppDatabase extends _$AppDatabase {
     updates: {appSettings},
   );
 
+  static const List<String> _identitySettingKeys = [
+    kSessionOwner,
+    kUserId,
+    kTenantId,
+    kUserRole,
+    kUserDisplayName,
+    kUserEmail,
+  ];
+
   /// Authenticates first, then switches the local owner atomically. A failed
   /// login never destroys the previous owner's offline work.
-  Future<void> activateOwner(int generation, DataOwner owner) {
+  Future<void> activateOwner(
+    int generation,
+    DataOwner owner, {
+    Map<String, String>? identitySettings,
+  }) {
+    final settingsToWrite = <String, String>{
+      ...?identitySettings,
+      kSessionOwner: owner.key,
+      kDeviceId: owner.deviceId,
+    };
+    _assertNoSessionSecrets(settingsToWrite.keys);
     return writeForSession(generation, () async {
       final previous = await getSetting(kSessionOwner);
-      if (previous != null && previous != owner.key) {
-        await _deleteClinicalData();
-        await _deleteIdentitySettings();
-      } else if (previous == owner.key) {
+      if (previous == owner.key) {
         await _claimUnattributedRows(owner);
       }
-      if (previous != owner.key) {
-        // A delta cursor belongs to exactly one account. A new owner must
-        // start with a full pull or it can silently miss older records.
-        await deleteSetting(kLastSyncAt);
-      }
       _activeOwner = owner;
-      await putSetting(kSessionOwner, owner.key);
-      await putSetting(kDeviceId, owner.deviceId);
+      await batch((b) {
+        if (previous != null && previous != owner.key) {
+          _addClinicalDataDeletes(b);
+          b.deleteWhere(
+            appSettings,
+            (t) => t.key.isIn(const [..._identitySettingKeys, kLastSyncAt]),
+          );
+        } else if (previous != owner.key) {
+          // A delta cursor belongs to exactly one account. A new owner must
+          // start with a full pull or it can silently miss older records.
+          b.deleteWhere(appSettings, (t) => t.key.equals(kLastSyncAt));
+        }
+        b.insertAllOnConflictUpdate(appSettings, [
+          for (final entry in settingsToWrite.entries)
+            AppSettingsCompanion.insert(key: entry.key, value: entry.value),
+        ]);
+      });
     });
   }
 
@@ -253,6 +305,14 @@ class AppDatabase extends _$AppDatabase {
 
   // === Section: Settings ===
 
+  void _assertNoSessionSecrets(Iterable<String> keys) {
+    for (final key in keys) {
+      if (key == kAccessToken || key == kRefreshToken) {
+        throw ArgumentError('Session secrets are forbidden in SQLite');
+      }
+    }
+  }
+
   Future<String?> getSetting(String key) async {
     final row = await (select(
       appSettings,
@@ -260,17 +320,39 @@ class AppDatabase extends _$AppDatabase {
     return row?.value;
   }
 
+  Future<Map<String, String>> getSettings(List<String> keys) async {
+    if (keys.isEmpty) return const {};
+    final rows = await (select(
+      appSettings,
+    )..where((t) => t.key.isIn(keys))).get();
+    return {for (final row in rows) row.key: row.value};
+  }
+
   Future<void> putSetting(String key, String value) {
-    if (key == kAccessToken || key == kRefreshToken) {
-      throw ArgumentError('Session secrets are forbidden in SQLite');
-    }
+    _assertNoSessionSecrets([key]);
     return into(appSettings).insertOnConflictUpdate(
       AppSettingsCompanion.insert(key: key, value: value),
     );
   }
 
+  Future<void> putSettings(Map<String, String> entries) async {
+    if (entries.isEmpty) return;
+    _assertNoSessionSecrets(entries.keys);
+    await batch((b) {
+      b.insertAllOnConflictUpdate(appSettings, [
+        for (final entry in entries.entries)
+          AppSettingsCompanion.insert(key: entry.key, value: entry.value),
+      ]);
+    });
+  }
+
   Future<void> deleteSetting(String key) {
     return (delete(appSettings)..where((t) => t.key.equals(key))).go();
+  }
+
+  Future<void> deleteSettings(List<String> keys) async {
+    if (keys.isEmpty) return;
+    await (delete(appSettings)..where((t) => t.key.isIn(keys))).go();
   }
 
   // === Section: Patients cache ===
@@ -387,7 +469,46 @@ class AppDatabase extends _$AppDatabase {
 
   Future<int> countPatients() async => (await allPatients()).length;
 
+  Future<List<LocalPatient>> patientsByIds(Iterable<String> ids) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return const [];
+    final owner = _activeOwner;
+    final out = <LocalPatient>[];
+    const maxVars = 400;
+    for (var i = 0; i < list.length; i += maxVars) {
+      final slice = list.sublist(i, math.min(i + maxVars, list.length));
+      final query = select(localPatients)
+        ..where((t) => t.id.isIn(slice) & t.tombstone.equals(false));
+      if (owner != null) {
+        query.where(
+          (t) =>
+              t.tenantId.equals(owner.tenantId) &
+              t.userId.equals(owner.userId) &
+              t.deviceId.equals(owner.deviceId),
+        );
+      }
+      out.addAll(await query.get());
+    }
+    return out;
+  }
+
   // === Section: Diagnoses cache ===
+
+  Future<List<LocalDiagnose>> activeValidations() {
+    final query = select(localDiagnoses)
+      ..where((t) => t.tombstone.equals(false) & t.validationDeletedAt.isNull())
+      ..orderBy([(t) => OrderingTerm.desc(t.diagnosedAt)]);
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query.get();
+  }
 
   Future<List<LocalDiagnose>> allDiagnoses() {
     final query = select(localDiagnoses)
@@ -603,6 +724,210 @@ class AppDatabase extends _$AppDatabase {
     return query.getSingleOrNull();
   }
 
+  Future<List<EncryptedXrayArtifact>> findEncryptedArtifacts(
+    Iterable<String> ids,
+  ) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return const [];
+    final owner = _activeOwner;
+    final out = <EncryptedXrayArtifact>[];
+    const maxVars = 400;
+    for (var i = 0; i < list.length; i += maxVars) {
+      final slice = list.sublist(i, math.min(i + maxVars, list.length));
+      final query = select(encryptedXrayArtifacts)
+        ..where((t) => t.id.isIn(slice));
+      if (owner != null) {
+        query.where(
+          (t) =>
+              t.tenantId.equals(owner.tenantId) &
+              t.userId.equals(owner.userId) &
+              t.deviceId.equals(owner.deviceId),
+        );
+      }
+      out.addAll(await query.get());
+    }
+    return out;
+  }
+
+  Future<void> _createArchiveIndexes() => customStatement(
+    'CREATE INDEX IF NOT EXISTS idx_archived_xray_owner '
+    'ON archived_xray_artifacts (tenant_id, user_id, device_id, archive_key)',
+  );
+
+  /// Copies already-encrypted X-ray/overlay BLOBs inside SQLite from
+  /// [encryptedXrayArtifacts] into [archivedXrayArtifacts] without allocating
+  /// large byte buffers or JSON integer arrays in Dart.
+  Future<void> copyEncryptedArtifactsToArchive(
+    Map<String, List<String>> artifactIdsByArchiveKey,
+    DataOwner owner,
+  ) async {
+    const maxVars = 400;
+    for (final entry in artifactIdsByArchiveKey.entries) {
+      final ids = entry.value;
+      if (ids.isEmpty) continue;
+      for (var i = 0; i < ids.length; i += maxVars) {
+        final slice = ids.sublist(i, math.min(i + maxVars, ids.length));
+        final placeholders = List.filled(slice.length, '?').join(',');
+        await customInsert(
+          'INSERT OR REPLACE INTO archived_xray_artifacts ('
+          'archive_key, artifact_id, cipher_text, nonce, mac, filename, '
+          'mime_type, source, checksum, size_bytes, created_at, '
+          'tenant_id, user_id, device_id) '
+          'SELECT ?, id, cipher_text, nonce, mac, filename, '
+          'mime_type, source, checksum, size_bytes, created_at, '
+          'tenant_id, user_id, device_id '
+          'FROM encrypted_xray_artifacts '
+          'WHERE id IN ($placeholders) '
+          'AND tenant_id = ? AND user_id = ? AND device_id = ?',
+          variables: [
+            Variable.withString(entry.key),
+            for (final id in slice) Variable.withString(id),
+            Variable.withString(owner.tenantId),
+            Variable.withString(owner.userId),
+            Variable.withString(owner.deviceId),
+          ],
+          updates: {archivedXrayArtifacts},
+        );
+      }
+    }
+  }
+
+  /// Restores archived BLOBs directly into [encryptedXrayArtifacts] inside SQLite
+  /// for verified [artifactIdsByArchiveKey] entries owned by [owner].
+  Future<void> copyArchiveArtifactsToActive(
+    Map<String, List<String>> artifactIdsByArchiveKey,
+    DataOwner owner,
+  ) async {
+    const maxVars = 400;
+    for (final entry in artifactIdsByArchiveKey.entries) {
+      final ids = entry.value;
+      if (ids.isEmpty) continue;
+      for (var i = 0; i < ids.length; i += maxVars) {
+        final slice = ids.sublist(i, math.min(i + maxVars, ids.length));
+        final placeholders = List.filled(slice.length, '?').join(',');
+        await customInsert(
+          'INSERT OR REPLACE INTO encrypted_xray_artifacts ('
+          'id, cipher_text, nonce, mac, filename, '
+          'mime_type, source, checksum, size_bytes, created_at, '
+          'tenant_id, user_id, device_id) '
+          'SELECT artifact_id, cipher_text, nonce, mac, filename, '
+          'mime_type, source, checksum, size_bytes, created_at, '
+          'tenant_id, user_id, device_id '
+          'FROM archived_xray_artifacts '
+          'WHERE archive_key = ? AND artifact_id IN ($placeholders) '
+          'AND tenant_id = ? AND user_id = ? AND device_id = ?',
+          variables: [
+            Variable.withString(entry.key),
+            for (final id in slice) Variable.withString(id),
+            Variable.withString(owner.tenantId),
+            Variable.withString(owner.userId),
+            Variable.withString(owner.deviceId),
+          ],
+          updates: {encryptedXrayArtifacts},
+        );
+      }
+    }
+  }
+
+  Future<void> upsertArchivedArtifacts(
+    List<ArchivedXrayArtifactsCompanion> rows,
+  ) async {
+    if (rows.isEmpty) return;
+    await batch((b) {
+      b.insertAllOnConflictUpdate(archivedXrayArtifacts, rows);
+    });
+  }
+
+  Future<void> rekeyArchivedArtifacts({
+    required String fromKey,
+    required String toKey,
+    DataOwner? owner,
+  }) async {
+    if (fromKey == toKey) return;
+    final ownerSql = owner == null
+        ? ''
+        : ' AND tenant_id = ? AND user_id = ? AND device_id = ?';
+    await customInsert(
+      'INSERT OR REPLACE INTO archived_xray_artifacts ('
+      'archive_key, artifact_id, cipher_text, nonce, mac, filename, '
+      'mime_type, source, checksum, size_bytes, created_at, '
+      'tenant_id, user_id, device_id) '
+      'SELECT ?, artifact_id, cipher_text, nonce, mac, filename, '
+      'mime_type, source, checksum, size_bytes, created_at, '
+      'tenant_id, user_id, device_id '
+      'FROM archived_xray_artifacts '
+      'WHERE archive_key = ?$ownerSql',
+      variables: [
+        Variable.withString(toKey),
+        Variable.withString(fromKey),
+        if (owner != null) ...[
+          Variable.withString(owner.tenantId),
+          Variable.withString(owner.userId),
+          Variable.withString(owner.deviceId),
+        ],
+      ],
+      updates: {archivedXrayArtifacts},
+    );
+  }
+
+  Future<List<ArchivedXrayArtifact>> findArchivedArtifacts(
+    String archiveKey, {
+    List<String>? artifactIds,
+    DataOwner? owner,
+  }) async {
+    if (artifactIds != null && artifactIds.isEmpty) return const [];
+    final out = <ArchivedXrayArtifact>[];
+    if (artifactIds == null) {
+      final query = select(archivedXrayArtifacts)
+        ..where((t) => t.archiveKey.equals(archiveKey));
+      if (owner != null) {
+        query.where(
+          (t) =>
+              t.tenantId.equals(owner.tenantId) &
+              t.userId.equals(owner.userId) &
+              t.deviceId.equals(owner.deviceId),
+        );
+      }
+      out.addAll(await query.get());
+      return out;
+    }
+    const maxVars = 400;
+    for (var i = 0; i < artifactIds.length; i += maxVars) {
+      final slice = artifactIds.sublist(
+        i,
+        math.min(i + maxVars, artifactIds.length),
+      );
+      final query = select(archivedXrayArtifacts)
+        ..where(
+          (t) => t.archiveKey.equals(archiveKey) & t.artifactId.isIn(slice),
+        );
+      if (owner != null) {
+        query.where(
+          (t) =>
+              t.tenantId.equals(owner.tenantId) &
+              t.userId.equals(owner.userId) &
+              t.deviceId.equals(owner.deviceId),
+        );
+      }
+      out.addAll(await query.get());
+    }
+    return out;
+  }
+
+  Future<void> deleteArchivedArtifactsForKeys(List<String> archiveKeys) async {
+    if (archiveKeys.isEmpty) return;
+    const maxVars = 400;
+    for (var i = 0; i < archiveKeys.length; i += maxVars) {
+      final slice = archiveKeys.sublist(
+        i,
+        math.min(i + maxVars, archiveKeys.length),
+      );
+      await (delete(
+        archivedXrayArtifacts,
+      )..where((t) => t.archiveKey.isIn(slice))).go();
+    }
+  }
+
   // === Section: Clinical audit evidence ===
 
   Future<void> appendClinicalAudit(ClinicalAuditEventsCompanion event) {
@@ -629,6 +954,107 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> enqueue(SyncQueueCompanion op) {
     return into(syncQueue).insertOnConflictUpdate(_ownOperation(op));
+  }
+
+  /// Atomically upserts restored outbox entities and conflict/failure flags.
+  Future<void> applyOutboxRestoreBatch({
+    List<LocalPatientsCompanion> patients = const [],
+    List<LocalDiagnosesCompanion> diagnoses = const [],
+    List<EncryptedXrayArtifactsCompanion> artifacts = const [],
+    List<SyncQueueCompanion> operations = const [],
+    List<String> conflictPatientIds = const [],
+    List<String> conflictDiagnosisIds = const [],
+    List<String> failedDiagnosisIds = const [],
+  }) async {
+    if (patients.isEmpty &&
+        diagnoses.isEmpty &&
+        artifacts.isEmpty &&
+        operations.isEmpty &&
+        conflictPatientIds.isEmpty &&
+        conflictDiagnosisIds.isEmpty &&
+        failedDiagnosisIds.isEmpty) {
+      return;
+    }
+    final ownedPatients = [for (final row in patients) _ownPatient(row)];
+    final ownedDiagnoses = [for (final row in diagnoses) _ownDiagnosis(row)];
+    final ownedArtifacts = [for (final row in artifacts) _ownArtifact(row)];
+    final ownedOperations = [for (final row in operations) _ownOperation(row)];
+    final owner = _activeOwner;
+
+    Expression<bool> ownedIds(
+      List<String> ids,
+      GeneratedColumn<String> idColumn,
+      GeneratedColumn<String> tenantColumn,
+      GeneratedColumn<String> userColumn,
+      GeneratedColumn<String> deviceColumn,
+    ) {
+      Expression<bool> pred = idColumn.isIn(ids);
+      if (owner != null) {
+        pred =
+            pred &
+            tenantColumn.equals(owner.tenantId) &
+            userColumn.equals(owner.userId) &
+            deviceColumn.equals(owner.deviceId);
+      }
+      return pred;
+    }
+
+    await batch((b) {
+      if (ownedPatients.isNotEmpty) {
+        b.insertAllOnConflictUpdate(localPatients, ownedPatients);
+      }
+      if (ownedDiagnoses.isNotEmpty) {
+        b.insertAllOnConflictUpdate(localDiagnoses, ownedDiagnoses);
+      }
+      if (ownedArtifacts.isNotEmpty) {
+        b.insertAllOnConflictUpdate(encryptedXrayArtifacts, ownedArtifacts);
+      }
+      if (ownedOperations.isNotEmpty) {
+        b.insertAllOnConflictUpdate(syncQueue, ownedOperations);
+      }
+      if (conflictPatientIds.isNotEmpty) {
+        b.update(
+          localPatients,
+          const LocalPatientsCompanion(hasConflict: Value(true)),
+          where: (t) => ownedIds(
+            conflictPatientIds,
+            t.id,
+            t.tenantId,
+            t.userId,
+            t.deviceId,
+          ),
+        );
+      }
+      if (conflictDiagnosisIds.isNotEmpty) {
+        b.update(
+          localDiagnoses,
+          const LocalDiagnosesCompanion(
+            hasConflict: Value(true),
+            saveStatus: Value('conflict'),
+          ),
+          where: (t) => ownedIds(
+            conflictDiagnosisIds,
+            t.id,
+            t.tenantId,
+            t.userId,
+            t.deviceId,
+          ),
+        );
+      }
+      if (failedDiagnosisIds.isNotEmpty) {
+        b.update(
+          localDiagnoses,
+          const LocalDiagnosesCompanion(saveStatus: Value('failed')),
+          where: (t) => ownedIds(
+            failedDiagnosisIds,
+            t.id,
+            t.tenantId,
+            t.userId,
+            t.deviceId,
+          ),
+        );
+      }
+    });
   }
 
   Future<List<SyncQueueData>> pendingOps() => opsReadyForPush(manual: true);
@@ -677,6 +1103,59 @@ class AppDatabase extends _$AppDatabase {
       );
     }
     return query.get();
+  }
+
+  Future<List<SyncQueueData>> legacyRatingConflictCandidates() {
+    final query = select(syncQueue)
+      ..where(
+        (t) =>
+            t.entityType.equals('diagnosis') &
+            t.operation.equals('update') &
+            t.status.equals(syncSynced).not() &
+            t.status.equals(syncConflict).not() &
+            t.retryCount.isBiggerThanValue(0),
+      );
+    final owner = _activeOwner;
+    if (owner != null) {
+      query.where(
+        (t) =>
+            t.tenantId.equals(owner.tenantId) &
+            t.userId.equals(owner.userId) &
+            t.deviceId.equals(owner.deviceId),
+      );
+    }
+    return query.get();
+  }
+
+  Future<List<SyncQueueData>> pendingDiagnosisMutationsFor(
+    Iterable<String> diagnosisIds,
+  ) async {
+    final list = diagnosisIds.toSet().toList();
+    if (list.isEmpty) return const [];
+    final owner = _activeOwner;
+    final out = <SyncQueueData>[];
+    const maxVars = 400;
+    for (var i = 0; i < list.length; i += maxVars) {
+      final slice = list.sublist(i, math.min(i + maxVars, list.length));
+      final query = select(syncQueue)
+        ..where(
+          (t) =>
+              t.entityId.isIn(slice) &
+              t.entityType.equals('diagnosis') &
+              t.status.equals(syncSynced).not() &
+              t.operation.equals('create').not(),
+        );
+      if (owner != null) {
+        query.where(
+          (t) =>
+              t.tenantId.equals(owner.tenantId) &
+              t.userId.equals(owner.userId) &
+              t.deviceId.equals(owner.deviceId),
+        );
+      }
+      out.addAll(await query.get());
+    }
+    return out;
   }
 
   Future<List<String>> protectedEntityIds(String entityType) async {
@@ -787,10 +1266,12 @@ class AppDatabase extends _$AppDatabase {
   Future<void> clearSessionData() async {
     _sessionGeneration++;
     _activeOwner = null;
-    await transaction(() async {
-      await _deleteClinicalData();
-      await _deleteIdentitySettings();
-      await deleteSetting(kLastSyncAt);
+    await batch((b) {
+      _addClinicalDataDeletes(b);
+      b.deleteWhere(
+        appSettings,
+        (t) => t.key.isIn(const [..._identitySettingKeys, kLastSyncAt]),
+      );
     });
   }
 
@@ -798,31 +1279,19 @@ class AppDatabase extends _$AppDatabase {
   Future<void> clearAll() async {
     _sessionGeneration++;
     _activeOwner = null;
-    await transaction(() async {
-      await _deleteClinicalData();
-      await delete(appSettings).go();
+    await batch((b) {
+      _addClinicalDataDeletes(b);
+      b.deleteWhere(archivedXrayArtifacts, (_) => const Constant(true));
+      b.deleteWhere(appSettings, (_) => const Constant(true));
     });
   }
 
-  Future<void> _deleteClinicalData() => batch((b) {
+  void _addClinicalDataDeletes(Batch b) {
     b.deleteWhere(localPatients, (_) => const Constant(true));
     b.deleteWhere(localDiagnoses, (_) => const Constant(true));
     b.deleteWhere(syncQueue, (_) => const Constant(true));
     b.deleteWhere(encryptedXrayArtifacts, (_) => const Constant(true));
     b.deleteWhere(clinicalAuditEvents, (_) => const Constant(true));
-  });
-
-  Future<void> _deleteIdentitySettings() async {
-    for (final key in [
-      kSessionOwner,
-      kUserId,
-      kTenantId,
-      kUserRole,
-      kUserDisplayName,
-      kUserEmail,
-    ]) {
-      await deleteSetting(key);
-    }
   }
 
   Future<void> _claimUnattributedRows(DataOwner owner) async {

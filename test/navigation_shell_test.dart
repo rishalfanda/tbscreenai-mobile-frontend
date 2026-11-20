@@ -25,8 +25,8 @@ Future<GoRouter> mountShell(WidgetTester tester, double width) async {
             builder: (_, _) => const TextField(key: ValueKey('draft')),
           ),
           GoRoute(
-            path: '/patients',
-            builder: (_, _) => const Text('Patient page'),
+            path: '/validation',
+            builder: (_, _) => const Text('Validation page'),
           ),
         ],
       ),
@@ -71,7 +71,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.getSize(field).width, width + 84);
     expect(find.text('Keep this draft'), findsOneWidget);
-    expect(find.text('Patients'), findsNothing);
+    expect(find.text('Validation'), findsNothing);
     await tester.tap(find.byTooltip('Show navigation'));
     await tester.pumpAndSettle();
     expect(tester.getSize(field).width, width);
@@ -85,16 +85,16 @@ void main() {
     final router = await mountShell(tester, 600);
     await tester.tap(find.byTooltip('Show navigation'));
     await tester.pumpAndSettle();
-    expect(find.text('Patients'), findsOneWidget);
+    expect(find.text('Validation'), findsOneWidget);
     await tester.tapAt(const Offset(500, 500));
     await tester.pumpAndSettle();
-    expect(find.text('Patients'), findsNothing);
+    expect(find.text('Validation'), findsNothing);
     await tester.tap(find.byTooltip('Show navigation'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Patients'));
+    await tester.tap(find.text('Validation'));
     await tester.pumpAndSettle();
-    expect(router.routeInformationProvider.value.uri.path, '/patients');
-    expect(find.text('Patient page'), findsOneWidget);
+    expect(router.routeInformationProvider.value.uri.path, '/validation');
+    expect(find.text('Validation page'), findsOneWidget);
     expect(
       tester.state<ScaffoldState>(find.byType(Scaffold).first).isDrawerOpen,
       isFalse,

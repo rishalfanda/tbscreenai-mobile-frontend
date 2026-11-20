@@ -1,3 +1,4 @@
+import 'package:myapp/data/sync/validation_score_contract.dart';
 import 'dart:convert';
 import 'dart:math';
 
@@ -16,27 +17,31 @@ class SyncReport {
     required this.skipped,
     required this.conflicts,
     required this.failed,
+    this.blocked = 0,
   });
 
   const SyncReport.empty()
     : applied = 0,
       skipped = 0,
       conflicts = 0,
-      failed = 0;
+      failed = 0,
+      blocked = 0;
 
+  final int blocked;
   final int applied;
   final int skipped;
   final int conflicts;
   final int failed;
 
-  int get total => applied + skipped + conflicts + failed;
-  bool get hasProblems => conflicts > 0 || failed > 0;
+  int get total => applied + skipped + conflicts + failed + blocked;
+  bool get hasProblems => conflicts > 0 || failed > 0 || blocked > 0;
 
   SyncReport add(SyncReport other) => SyncReport(
     applied: applied + other.applied,
     skipped: skipped + other.skipped,
     conflicts: conflicts + other.conflicts,
     failed: failed + other.failed,
+    blocked: blocked + other.blocked,
   );
 }
 
@@ -66,8 +71,11 @@ class SyncEngine {
 
   Future<SyncReport>? _pushInFlight;
 
-  Future<String> enqueuePatientCreate(Map<String, dynamic> payload) async {
-    final entityId = uuidV4();
+  Future<String> enqueuePatientCreate(
+    Map<String, dynamic> payload, {
+    String? id,
+  }) async {
+    final entityId = id ?? uuidV4();
     await _db.enqueue(
       SyncQueueCompanion.insert(
         clientOpId: uuidV4(),
@@ -162,7 +170,7 @@ class SyncEngine {
 
   Future<SyncReport> _push({required bool manual}) async {
     final session = _db.sessionGeneration;
-    final pending = await _db.opsReadyForPush(
+    var pending = await _db.opsReadyForPush(
       manual: manual,
       now: _now().toUtc(),
     );
@@ -171,6 +179,41 @@ class SyncEngine {
     }
 
     var report = const SyncReport.empty();
+    bool? legacySupported, ratingSupported;
+    final ready = <SyncQueueData>[];
+    var blocked = 0;
+    for (final op in pending) {
+      final body = jsonDecode(op.payload) as Map;
+      if (op.entityType == 'diagnosis' &&
+          (op.operation == 'delete_validation' ||
+              body.containsKey('lesion_rating'))) {
+        ratingSupported ??= await supportsValidationScore(
+          _client,
+          lesion: true,
+        );
+        if (!ratingSupported) {
+          blocked++;
+          continue;
+        }
+      } else if (op.entityType == 'diagnosis' &&
+          op.operation == 'update' &&
+          body.containsKey('validation_score')) {
+        legacySupported ??= await supportsValidationScore(_client);
+        if (!legacySupported) {
+          blocked++;
+          continue;
+        }
+      }
+      ready.add(op);
+    }
+    pending = ready;
+    report = SyncReport(
+      applied: 0,
+      skipped: 0,
+      conflicts: 0,
+      failed: 0,
+      blocked: blocked,
+    );
     for (var offset = 0; offset < pending.length; offset += _batchSize) {
       if (session != _db.sessionGeneration) return report;
       final end = min(offset + _batchSize, pending.length);

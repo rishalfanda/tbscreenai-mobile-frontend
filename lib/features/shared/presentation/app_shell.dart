@@ -1,3 +1,4 @@
+import 'package:myapp/features/shared/presentation/widgets/connection_status_badge.dart';
 import 'package:myapp/core/localization/app_text.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/localization/language_toggle.dart';
@@ -6,11 +7,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
 import 'package:myapp/state/diagnosis_provider.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
-import 'package:myapp/features/shared/presentation/model_initiation_dialog.dart';
+import 'package:myapp/features/auth/presentation/logout_confirmation_dialog.dart';
 import 'package:myapp/state/auth_provider.dart';
 import 'package:myapp/domain/models/access_scope.dart';
 
@@ -23,7 +25,6 @@ class AppShell extends StatefulWidget {
   final Widget child;
 
   static const _items = <({String route, IconData icon, String label})>[
-    (route: '/technician', icon: Icons.build_outlined, label: 'Technician'),
     (route: '/users', icon: Icons.manage_accounts_outlined, label: 'Users'),
     (route: '/models', icon: Icons.memory_rounded, label: 'Models'),
     (
@@ -31,15 +32,19 @@ class AppShell extends StatefulWidget {
       icon: Icons.space_dashboard_rounded,
       label: 'Dashboard',
     ),
-    (route: '/patients', icon: Icons.people_alt_rounded, label: 'Patients'),
     (route: '/diagnosis', icon: Icons.biotech_rounded, label: 'Screening'),
     (
       route: '/validation',
       icon: Icons.verified_user_rounded,
       label: 'Validation',
     ),
-    (route: '/dataset', icon: Icons.table_chart_rounded, label: 'Dataset'),
     (route: '/sync', icon: Icons.cloud_sync_rounded, label: 'Sync'),
+    (
+      route: '/backup-restore',
+      icon: Icons.backup_outlined,
+      label: 'Backup & Restore',
+    ),
+    (route: '/dataset', icon: Icons.table_chart_rounded, label: 'Dataset'),
     (route: '/account', icon: Icons.person_rounded, label: 'Account'),
   ];
 
@@ -53,6 +58,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   StreamSubscription<int>? _pendingSubscription;
   String? _pendingOwner;
+  String? _standbyOwner;
+  bool _wasOnDiagnosis = false;
+  bool _warmupScheduled = false;
+
+  bool get _isOnDiagnosis => widget.location.startsWith('/diagnosis');
 
   @override
   void initState() {
@@ -67,7 +77,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         state == AppLifecycleState.hidden) {
       _releaseModelStandby();
     } else if (state == AppLifecycleState.resumed) {
-      _checkModelStandby();
+      unawaited(_checkModelStandby());
     }
   }
 
@@ -76,6 +86,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       final engine = context.read<OnnxInferenceEngine>();
       unawaited(engine.releaseStandby());
     } catch (_) {}
+  }
+
+  void _scheduleModelWarmupIfNeeded() {
+    if (_warmupScheduled) return;
+    _warmupScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _warmupScheduled = false;
+      unawaited(_checkModelStandby());
+    });
   }
 
   AuthProvider? _getAuth(BuildContext context, {bool listen = true}) {
@@ -90,7 +109,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final auth = _getAuth(context, listen: true);
-    final owner = auth != null && auth.isLoggedIn && auth.mobileRole == MobileRole.clinician
+    final owner =
+        auth != null &&
+            auth.isLoggedIn &&
+            auth.mobileRole == MobileRole.clinician
         ? '${auth.userId}:${auth.tenantId}'
         : null;
     if (owner != _pendingOwner) {
@@ -110,12 +132,39 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         } catch (_) {}
       }
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkModelStandby();
-    });
+
+    final standbyOwner =
+        auth != null &&
+            auth.isLoggedIn &&
+            !auth.mustChangePassword &&
+            auth.mobileRole == MobileRole.clinician
+        ? '${auth.userId}:${auth.tenantId}'
+        : null;
+    final onDiagnosis = _isOnDiagnosis;
+    if (standbyOwner != _standbyOwner || onDiagnosis != _wasOnDiagnosis) {
+      _standbyOwner = standbyOwner;
+      _wasOnDiagnosis = onDiagnosis;
+      if (standbyOwner == null) {
+        _releaseModelStandby();
+      } else if (onDiagnosis) {
+        _scheduleModelWarmupIfNeeded();
+      }
+    }
   }
 
-  void _checkModelStandby() {
+  @override
+  void didUpdateWidget(covariant AppShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.location == widget.location) return;
+    final onDiagnosis = _isOnDiagnosis;
+    final enteredDiagnosis = onDiagnosis && !_wasOnDiagnosis;
+    _wasOnDiagnosis = onDiagnosis;
+    if (enteredDiagnosis && _standbyOwner != null) {
+      _scheduleModelWarmupIfNeeded();
+    }
+  }
+
+  Future<void> _checkModelStandby() async {
     if (!mounted) return;
     try {
       final auth = _getAuth(context, listen: false);
@@ -126,11 +175,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         _releaseModelStandby();
         return;
       }
+      if (!_isOnDiagnosis) return;
 
       final engine = context.read<OnnxInferenceEngine>();
-      if (!engine.isStandbyReady) {
-        initiateModelStandbyWithDialog(context, engine);
-      }
+      if (engine.isStandbyReady) return;
+      if (!engine.hasBundle && !await engine.ready) return;
+      if (!mounted || !_isOnDiagnosis || engine.isStandbyReady) return;
+      await engine.initiateStandby();
     } catch (_) {
       return;
     }
@@ -258,6 +309,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                               ),
                             ),
                           ),
+                          const ConnectionStatusBadge(),
                           const Padding(
                             padding: EdgeInsets.symmetric(horizontal: 8),
                             child: LanguageToggle(),
@@ -343,6 +395,41 @@ class _NavRail extends StatelessWidget {
                 );
               },
             ),
+          ),
+          Builder(
+            builder: (context) {
+              AuthProvider? auth;
+              try {
+                auth = Provider.of<AuthProvider?>(context);
+              } catch (_) {}
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (AppConfig.useHttp &&
+                      auth?.mobileRole == MobileRole.technician)
+                    IconButton(
+                      key: const ValueKey('technician-change-password'),
+                      tooltip: context.trRead(
+                        'Ganti password',
+                        'Change password',
+                      ),
+                      color: Colors.white,
+                      onPressed: auth?.isBusy == true
+                          ? null
+                          : () => context.go('/change-password'),
+                      icon: const Icon(Icons.key_outlined),
+                    ),
+                  IconButton(
+                    tooltip: context.trRead('Keluar', 'Sign out'),
+                    color: Colors.white,
+                    onPressed: auth?.isBusy == true
+                        ? null
+                        : () => unawaited(confirmAndLogout(context)),
+                    icon: const Icon(Icons.logout),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),

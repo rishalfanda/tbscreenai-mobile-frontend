@@ -13,33 +13,45 @@ class SettingsStore {
 
   Future<String?> readSessionOwner() => _db.getSetting(kSessionOwner);
 
+  static Map<String, String> identityEntries({
+    required String userId,
+    required String tenantId,
+    required String role,
+    required String displayName,
+    required String email,
+  }) => {
+    kSessionOwner: '$tenantId:$userId',
+    kUserId: userId,
+    kTenantId: tenantId,
+    kUserRole: role,
+    kUserDisplayName: displayName,
+    kUserEmail: email,
+  };
+
   Future<void> saveIdentity({
     required String userId,
     required String tenantId,
     required String role,
     required String displayName,
     required String email,
-  }) async {
-    await _db.putSetting(kSessionOwner, '$tenantId:$userId');
-    await _db.putSetting(kUserId, userId);
-    await _db.putSetting(kTenantId, tenantId);
-    await _db.putSetting(kUserRole, role);
-    await _db.putSetting(kUserDisplayName, displayName);
-    await _db.putSetting(kUserEmail, email);
-  }
+  }) => _db.putSettings(
+    identityEntries(
+      userId: userId,
+      tenantId: tenantId,
+      role: role,
+      displayName: displayName,
+      email: email,
+    ),
+  );
 
-  Future<void> clearIdentity() async {
-    for (final key in [
-      kSessionOwner,
-      kUserId,
-      kTenantId,
-      kUserRole,
-      kUserDisplayName,
-      kUserEmail,
-    ]) {
-      await _db.deleteSetting(key);
-    }
-  }
+  Future<void> clearIdentity() => _db.deleteSettings(const [
+    kSessionOwner,
+    kUserId,
+    kTenantId,
+    kUserRole,
+    kUserDisplayName,
+    kUserEmail,
+  ]);
 
   Future<String?> readDisplayName() => _db.getSetting(kUserDisplayName);
   Future<String?> readEmail() => _db.getSetting(kUserEmail);

@@ -2,6 +2,13 @@ import 'package:myapp/domain/models/diagnosis_inference_request.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
 import 'package:myapp/domain/models/xray_image.dart';
 
+class LocalModelUnavailable implements Exception {
+  const LocalModelUnavailable();
+  @override
+  String toString() =>
+      'Model lokal belum siap. Minta teknisi memasang dan memverifikasi model pada tablet ini.';
+}
+
 /// Contract for AI diagnosis inference.
 abstract class DiagnosisRepository {
   Future<List<String>> getSymptomOptions();

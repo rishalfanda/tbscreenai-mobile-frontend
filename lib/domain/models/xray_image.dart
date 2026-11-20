@@ -31,6 +31,15 @@ class XrayImage {
     required this.source,
   }) : checksumSha256 = sha256.convert(bytes).toString();
 
+  XrayImage.verified({
+    required Uint8List bytes,
+    required this.filename,
+    required this.mimeType,
+    required this.format,
+    required this.source,
+    required this.checksumSha256,
+  }) : bytes = bytes.asUnmodifiableView();
+
   factory XrayImage.fromBytes({
     required Uint8List bytes,
     required String filename,

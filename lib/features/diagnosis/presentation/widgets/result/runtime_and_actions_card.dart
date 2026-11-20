@@ -1,6 +1,7 @@
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/diagnosis_outcome.dart';
 import 'package:myapp/domain/models/screening_result.dart';
@@ -104,18 +105,46 @@ class RuntimeAndActionsCard extends StatelessWidget {
                 context,
                 Icons.picture_as_pdf_rounded,
                 'PDF',
-                tooltip:
-                    'Dinonaktifkan sampai kebijakan PHI untuk hasil tersimpan disetujui.',
+                tooltip: 'Fitur ini belum tersedia.',
               ),
               const SizedBox(width: 8),
               _actionButton(
                 context,
                 Icons.print_rounded,
                 'Cetak',
-                tooltip:
-                    'Dinonaktifkan sampai kebijakan PHI untuk hasil tersimpan disetujui.',
+                tooltip: 'Fitur ini belum tersedia.',
               ),
             ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const Key('continue-validation-button'),
+              onPressed: result.isMock || diagnosis.isSaving
+                  ? null
+                  : () async {
+                      final saved = await diagnosis.saveCurrentResult();
+                      if (!context.mounted) return;
+                      final id = diagnosis.lastResult?.id;
+                      if (!saved || id == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: AppText(
+                              diagnosis.persistenceError ??
+                                  'Simpan hasil screening terlebih dahulu.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      context.go(
+                        '/validation?caseId=${Uri.encodeComponent(id)}',
+                      );
+                    },
+              icon: const Icon(Icons.fact_check_outlined),
+              label: const AppText('Lanjut ke Validation'),
+            ),
           ),
           const SizedBox(height: 10),
           SizedBox(
@@ -158,9 +187,7 @@ class RuntimeAndActionsCard extends StatelessWidget {
         backgroundColor: kResultSurfaceAltColor,
         disabledBackgroundColor: kResultSurfaceAltColor.withValues(alpha: 0.55),
         side: BorderSide(
-          color: isEnabled
-              ? const Color(0x40FFFFFF)
-              : const Color(0x24FFFFFF),
+          color: isEnabled ? const Color(0x40FFFFFF) : const Color(0x24FFFFFF),
         ),
       ),
     );

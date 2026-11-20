@@ -1,3 +1,6 @@
+import 'package:myapp/data/local/mappers.dart';
+import 'package:myapp/data/offline/offline_validation_repository.dart';
+import 'package:myapp/data/sync/sync_engine.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -179,6 +182,8 @@ Map<String, Object?> receipt(
   RequestOptions o, {
   String status = 'applied',
   String? ownerId = doctor,
+  int? opVersion = 1,
+  int? serverVersion = 1,
 }) {
   final item = ((o.data as Map)['items'] as List).single as Map;
   return {
@@ -188,6 +193,11 @@ Map<String, Object?> receipt(
       {
         'client_op_id': item['client_op_id'],
         'entity_id': item['entity_id'],
+        'entity_type': item['entity_type'],
+        'op_version': ['applied', 'skipped'].contains(status)
+            ? opVersion
+            : null,
+        'server_version': serverVersion,
         'owner_user_id': ownerId,
         'status': status,
         'code': status == 'failed' ? 'invalid_payload' : null,
@@ -195,6 +205,98 @@ Map<String, Object?> receipt(
     ],
   };
 }
+
+class _NoArchiveKeyRead extends MemorySecureTokenStorage {
+  @override
+  Future<String?> read(String key) =>
+      throw StateError('Queue count must not decrypt images');
+}
+
+Map<String, Object?> _serverState({bool deleted = false}) => {
+  'server_time': '2026-11-04T00:00:00Z',
+  'patients': deleted
+      ? []
+      : [
+          {
+            'id': patient,
+            'tenant_id': tenant,
+            'code': 'SYN-OPERATOR',
+            'name': 'Updated synthetic patient',
+            'age': 30,
+            'gender': 'Male',
+            'status': 'Normal',
+            'history': [],
+            'version': 2,
+            'updated_at': '2026-11-04T00:00:00Z',
+          },
+        ],
+  'diagnoses': deleted
+      ? []
+      : [
+          {
+            'id': diagnosis,
+            'tenant_id': tenant,
+            'patient_id': patient,
+            'created_by': doctor,
+            'is_positive': false,
+            'confidence': 80,
+            'model_version': 'synthetic-model',
+            'status': 'agreed',
+            'doctor_note': 'Server review',
+            'validation_score': 4,
+            'validated_by': doctor,
+            'validated_at': '2026-11-04T00:00:00Z',
+            'version': 3,
+            'findings': {},
+            'updated_at': '2026-11-04T00:00:00Z',
+          },
+        ],
+  'gone': deleted
+      ? [
+          {'entity_type': 'patient', 'id': patient, 'reason': 'deleted'},
+          {'entity_type': 'diagnosis', 'id': diagnosis, 'reason': 'deleted'},
+        ]
+      : [],
+};
+
+Map<String, Object?> _scoreContract() => {
+  'components': {'schemas': {}},
+  'paths': {
+    '/api/v1/diagnoses/{id}/status': {
+      'patch': {
+        'requestBody': {
+          'content': {
+            'application/json': {
+              'schema': {
+                'properties': {
+                  'status': {},
+                  'base_version': {},
+                  'validation_score': {},
+                  'validated_at': {},
+                },
+              },
+            },
+          },
+        },
+        'responses': {
+          '200': {
+            'content': {
+              'application/json': {
+                'schema': {
+                  'properties': {
+                    'validation_score': {},
+                    'validated_at': {},
+                    'validated_by': {},
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};
 
 void main() {
   setUp(() async {
@@ -215,6 +317,1296 @@ void main() {
     await client.close();
     await db.close();
   });
+  test(
+    'PR39 retry baseline uses op_version, never newer server_version',
+    () async {
+      await seed(image: true);
+      await handoff();
+      await activate();
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.path == '/sync/operator/push') {
+          return (
+            200,
+            receipt(o, status: 'skipped', opVersion: 2, serverVersion: 3),
+          );
+        }
+        final body = o.data as Map;
+        return (
+          200,
+          {
+            'upload_id': 'synthetic-upload',
+            'diagnosis_id': diagnosis,
+            'size_bytes': body['size_bytes'],
+            'chunk_count': body['chunk_count'],
+            'chunk_size': body['chunk_size'],
+            'received_chunks': [0],
+            'status': 'completed',
+            'image_id': 'synthetic-image',
+          },
+        );
+      });
+      await service().push(refreshCache: false);
+      final retained = await outbox.entries(
+        tenant,
+        localDevice,
+        includeReceived: true,
+      );
+      final dx = retained.singleWhere((e) => e['diagnosis'] != null);
+      expect((dx['diagnosis'] as Map)['serverVersion'], 2);
+      expect((dx['diagnosis'] as Map)['hasConflict'], true);
+      expect((dx['op'] as Map)['baseVersion'], 2);
+    },
+  );
+
+  for (final deleted in [false, true]) {
+    test(
+      'PR39 state refresh updates received cache, deleted=$deleted',
+      () async {
+        await seed(image: true);
+        await handoff();
+        await activate();
+        client.dio.httpClientAdapter = _Adapter((o) {
+          if (o.path == '/sync/operator/push') return (200, receipt(o));
+          if (o.path == '/sync/operator/state') {
+            expect((o.data as Map)['patient_ids'], [patient]);
+            expect((o.data as Map)['diagnosis_ids'], [diagnosis]);
+            return (200, _serverState(deleted: deleted));
+          }
+          final body = o.data as Map;
+          return (
+            200,
+            {
+              'upload_id': 'synthetic-upload',
+              'diagnosis_id': diagnosis,
+              'size_bytes': body['size_bytes'],
+              'chunk_count': body['chunk_count'],
+              'chunk_size': body['chunk_size'],
+              'received_chunks': [0],
+              'status': 'completed',
+              'image_id': 'synthetic-image',
+            },
+          );
+        });
+        expect((await service().push()).applied, 2);
+        await db.clearSessionData();
+        await owner(doctor);
+        await outbox.restoreDoctorQueue();
+        final row = await db.findDiagnosis(diagnosis);
+        if (deleted) {
+          expect(row, isNull);
+          expect(await db.findPatient(patient), isNull);
+        } else {
+          expect(row!.serverVersion, 3);
+          expect(row.validationScore, 4);
+          expect(row.validatedBy, doctor);
+          expect(row.hasConflict, false);
+          expect(row.imageReference, 'local-encrypted://$diagnosis');
+          final repo = OfflineValidationRepository(
+            db: db,
+            client: client,
+            syncEngine: SyncEngine(
+              db: db,
+              client: client,
+              settings: SettingsStore(db),
+            ),
+            localOnly: true,
+          );
+          await repo.submitScore(id: diagnosis, score: 8, status: 'agreed');
+          final update = (await db.pendingOps()).single;
+          expect(update.baseVersion, 3);
+          await outbox.captureDoctorQueue();
+          expect(await outbox.count(tenant, localDevice), 1);
+        }
+      },
+    );
+  }
+
+  test(
+    'PR39 not_found retains unsent work; foreign state cannot alter archives',
+    () async {
+      await seed();
+      await handoff();
+      await activate();
+      var foreign = false;
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.path == '/sync/operator/push') return (503, {});
+        if (foreign) {
+          return (
+            200,
+            {
+              'server_time': '2026-11-04T00:00:00Z',
+              'diagnoses': [],
+              'gone': [],
+              'patients': [
+                {
+                  ...(_serverState()['patients'] as List).single as Map,
+                  'tenant_id': 'foreign-tenant',
+                },
+              ],
+            },
+          );
+        }
+        return (
+          200,
+          {
+            'server_time': '2026-11-04T00:00:00Z',
+            'patients': [],
+            'diagnoses': [],
+            'gone': [
+              {'entity_type': 'patient', 'id': patient, 'reason': 'not_found'},
+            ],
+          },
+        );
+      });
+      expect((await service().push()).failed, 1);
+      expect(await service().queuedCount(), 1);
+      foreign = true;
+      await expectLater(service().push(), throwsFormatException);
+      expect(await service().queuedCount(), 1);
+      await db.clearSessionData();
+      await owner(doctor);
+      await outbox.restoreDoctorQueue();
+      expect((await db.findPatient(patient))!.name, 'Synthetic patient');
+    },
+  );
+
+  test(
+    'PR39 heatmap failure retains receipt for safe retry without record resend',
+    () async {
+      await seed(image: true);
+      final image = await xray.read('local-encrypted://$diagnosis');
+      await xray.persist(artifactId: '$diagnosis:lesion', image: image);
+      await handoff();
+      await activate();
+      var recordCalls = 0, heatmaps = 0;
+      var accept = false;
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.path == '/sync/operator/push') {
+          recordCalls++;
+          return (200, receipt(o));
+        }
+        if (o.path.endsWith('/heatmap')) {
+          heatmaps++;
+          expect(o.contentType, 'image/png');
+          expect(o.data, image.bytes);
+          return (
+            200,
+            {
+              'diagnosis_id': diagnosis,
+              'sha256': accept ? image.checksumSha256 : 'wrong',
+              'size_bytes': image.sizeBytes,
+              'created': false,
+            },
+          );
+        }
+        final body = o.data as Map;
+        return (
+          200,
+          {
+            'upload_id': 'upload',
+            'diagnosis_id': diagnosis,
+            'size_bytes': body['size_bytes'],
+            'chunk_count': body['chunk_count'],
+            'chunk_size': body['chunk_size'],
+            'received_chunks': [0],
+            'status': 'completed',
+            'image_id': 'image',
+          },
+        );
+      });
+      expect((await service().push(refreshCache: false)).failed, 1);
+      expect(await service().queuedCount(), 1);
+      accept = true;
+      expect((await service().push(refreshCache: false)).skipped, 1);
+      expect(recordCalls, 2);
+      expect(heatmaps, 2);
+      expect(await service().queuedCount(), 0);
+    },
+  );
+  test(
+    'PR39 newer state never overwrites a queued clinical decision or baseline',
+    () async {
+      await seed(image: true);
+      await db.upsertDiagnosis(
+        (await db.findDiagnosis(
+          diagnosis,
+        ))!.copyWith(serverVersion: const Value(2)).toCompanion(false),
+      );
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        localOnly: true,
+      );
+      await repo.submitScore(id: diagnosis, score: 8, status: 'agreed');
+      await handoff();
+      await activate();
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.uri.path == '/openapi.json') return (200, _scoreContract());
+        if (o.path == '/sync/operator/push') {
+          final item = ((o.data as Map)['items'] as List).single as Map;
+          if (item['operation'] == 'update') {
+            expect(item['base_version'], 2);
+            return (200, receipt(o, status: 'conflict', serverVersion: 3));
+          }
+          return (200, receipt(o));
+        }
+        if (o.path == '/sync/operator/state') return (200, _serverState());
+        final body = o.data as Map;
+        return (
+          200,
+          {
+            'upload_id': 'upload',
+            'diagnosis_id': diagnosis,
+            'size_bytes': body['size_bytes'],
+            'chunk_count': body['chunk_count'],
+            'chunk_size': body['chunk_size'],
+            'received_chunks': [0],
+            'status': 'completed',
+            'image_id': 'image',
+          },
+        );
+      });
+      expect((await service().push()).conflicts, 1);
+      await db.clearSessionData();
+      await owner(doctor);
+      await outbox.restoreDoctorQueue();
+      final row = (await db.findDiagnosis(diagnosis))!;
+      expect(row.serverVersion, 2);
+      expect(row.validationScore, 8);
+      expect(row.hasConflict, true);
+      final op = (await db.opsWithStatus(syncConflict)).single;
+      expect(op.baseVersion, 2);
+    },
+  );
+
+  test(
+    'PR39 server deletion quarantines pending work without restoring retired patients',
+    () async {
+      await seed(image: true);
+      await handoff();
+      await activate();
+      client.dio.httpClientAdapter = _Adapter(
+        (o) => o.path == '/sync/operator/state'
+            ? (200, _serverState(deleted: true))
+            : (503, {}),
+      );
+      expect((await service().push()).failed, 2);
+      expect(await service().queuedCount(), 2);
+      expect(
+        (await service().queued()).every((e) => e['retired'] == true),
+        true,
+      );
+      await db.clearSessionData();
+      await owner(doctor);
+      await outbox.restoreDoctorQueue();
+      expect(await db.findPatient(patient), isNull);
+      expect(await db.findDiagnosis(diagnosis), isNull);
+    },
+  );
+
+  test(
+    'received screening and masks remain encrypted and restore only for their doctor',
+    () async {
+      await seed(image: true);
+      final original = await xray.read('local-encrypted://$diagnosis');
+      final refs = <String, dynamic>{
+        'lung_area_px': 4,
+        'legend': [
+          {
+            'name': 'cavity',
+            'red': 255,
+            'green': 0,
+            'blue': 0,
+            'pixel_count': 1,
+          },
+        ],
+      };
+      for (final kind in ['xray', 'lung', 'lesion']) {
+        refs[kind] = await xray.persist(
+          artifactId: '$diagnosis:$kind',
+          image: original,
+        );
+      }
+      await (db.update(
+        db.localDiagnoses,
+      )..where((t) => t.id.equals(diagnosis))).write(
+        LocalDiagnosesCompanion(
+          clinicalSnapshot: Value(jsonEncode({'segmentation_v1': refs})),
+        ),
+      );
+      await handoff();
+      await activate();
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.path == '/sync/operator/push') return (200, receipt(o));
+        if (o.uri.path == '/openapi.json') {
+          return (
+            200,
+            {
+              'paths': {
+                '/api/v1/diagnoses/{diagnosis_id}/lung-map': {'put': {}},
+              },
+            },
+          );
+        }
+        if (o.path.endsWith('/heatmap') || o.path.endsWith('/lung-map')) {
+          return (
+            200,
+            {
+              'diagnosis_id': diagnosis,
+              'sha256': original.checksumSha256,
+              'size_bytes': original.sizeBytes,
+              'created': true,
+            },
+          );
+        }
+        final body = o.data as Map;
+        return (
+          200,
+          {
+            'upload_id': 'synthetic-upload',
+            'diagnosis_id': diagnosis,
+            'size_bytes': body['size_bytes'],
+            'chunk_count': body['chunk_count'],
+            'chunk_size': body['chunk_size'],
+            'received_chunks': [0],
+            'status': 'completed',
+            'image_id': 'synthetic-image',
+          },
+        );
+      });
+      expect((await service().push(refreshCache: false)).applied, 2);
+      expect(await service().queuedCount(), 0);
+      expect(await db.findDiagnosis(diagnosis), isNull);
+      await db.clearSessionData();
+      await owner('other-doctor');
+      await outbox.restoreDoctorQueue();
+      expect(await db.findDiagnosis(diagnosis), isNull);
+      await db.clearSessionData();
+      await owner(doctor);
+      await outbox.restoreDoctorQueue();
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        xrayStore: xray,
+        localOnly: true,
+      );
+      expect(
+        (await repo.loadCaseImage(diagnosis))!.checksumSha256,
+        original.checksumSha256,
+      );
+      final masks = await repo.loadCaseSegmentation(diagnosis);
+      expect(masks!.lesionPng, original.bytes);
+      expect(masks.legend.single.name, 'cavity');
+      expect((await db.findDiagnosis(diagnosis))!.saveStatus, 'saved');
+    },
+  );
+
+  test(
+    'missing lung-map support retains only unfinished maps after X-ray and lesion ACK, then resumes without resend',
+    () async {
+      await seed(image: true);
+      final original = await xray.read('local-encrypted://$diagnosis');
+      final refs = <String, dynamic>{'lung_area_px': 4, 'legend': []};
+      for (final kind in ['xray', 'lung', 'lesion']) {
+        refs[kind] = await xray.persist(
+          artifactId: '$diagnosis:$kind',
+          image: original,
+        );
+      }
+      await db.upsertDiagnosis(
+        (await db.findDiagnosis(diagnosis))!
+            .toCompanion(false)
+            .copyWith(
+              clinicalSnapshot: Value(jsonEncode({'segmentation_v1': refs})),
+            ),
+      );
+      await handoff();
+      await activate();
+      var supportsLung = false,
+          originals = 0,
+          lesions = 0,
+          lungs = 0,
+          records = 0;
+      final calls = <String>[];
+      client.dio.httpClientAdapter = _Adapter((o) {
+        calls.add(o.path);
+        if (o.path == '/sync/operator/push') {
+          records++;
+          return (200, receipt(o));
+        }
+        if (o.uri.path == '/openapi.json') {
+          return (
+            200,
+            {
+              'paths': {
+                if (supportsLung)
+                  '/api/v1/diagnoses/{diagnosis_id}/lung-map': {'put': {}},
+              },
+            },
+          );
+        }
+        if (o.path.endsWith('/heatmap') || o.path.endsWith('/lung-map')) {
+          if (o.path.endsWith('/heatmap')) {
+            lesions++;
+          } else {
+            lungs++;
+          }
+          expect(o.headers['X-Content-SHA256'], original.checksumSha256);
+          return (
+            200,
+            {
+              'diagnosis_id': diagnosis,
+              'sha256': original.checksumSha256,
+              'size_bytes': original.sizeBytes,
+              'created': true,
+            },
+          );
+        }
+        if (o.path == '/blobs/init') {
+          originals++;
+          final body = o.data as Map;
+          return (
+            200,
+            {
+              'upload_id': 'synthetic-upload',
+              'diagnosis_id': diagnosis,
+              'size_bytes': body['size_bytes'],
+              'chunk_count': body['chunk_count'],
+              'chunk_size': body['chunk_size'],
+              'received_chunks': [0],
+              'status': 'completed',
+              'image_id': 'synthetic-image',
+            },
+          );
+        }
+        throw StateError('Unexpected request');
+      });
+      final first = await service().push(refreshCache: false);
+      expect(first.applied, 1);
+      expect(first.blocked, 1);
+      expect(await service().queuedCount(), 1);
+      expect(originals, 1);
+      expect(lesions, 1);
+      expect(lungs, 0);
+      expect(
+        calls.indexOf('/blobs/init'),
+        lessThan(calls.indexOf('/diagnoses/$diagnosis/heatmap')),
+      );
+      supportsLung = true;
+      final second = await service().push(refreshCache: false);
+      expect(second.skipped, 1);
+      expect(second.blocked, 0);
+      expect(await service().queuedCount(), 0);
+      expect(originals, 1);
+      expect(lesions, 1);
+      expect(lungs, 1);
+      expect(records, 2);
+    },
+  );
+
+  test(
+    'queue summary shows 104 operations for 52 patient and 52 screening records without decrypting archives',
+    () async {
+      await owner(technician, role: 'technician');
+      await db.batch((batch) {
+        for (var i = 0; i < 52; i++) {
+          for (final kind in ['patient', 'diagnosis']) {
+            batch.insert(
+              db.appSettings,
+              AppSettingsCompanion.insert(
+                key: '${DeviceOperatorOutbox.prefix}$kind-$i',
+                value: jsonEncode({
+                  'tenant_id': tenant,
+                  'device_id': localDevice,
+                  'owner_id': doctor,
+                  'op_status': syncPending,
+                  'entity_type': kind,
+                  'operation': 'create',
+                }),
+              ),
+            );
+          }
+        }
+      });
+      final summary = await DeviceOperatorOutbox(
+        db,
+        _NoArchiveKeyRead(),
+      ).summary(tenant, localDevice);
+      expect(summary.total, 104);
+      expect(summary.patients, 52);
+      expect(summary.screenings, 52);
+      expect(summary.validations, 0);
+      expect(summary.other, 0);
+      expect(
+        (await DeviceOperatorOutbox(
+          db,
+          _NoArchiveKeyRead(),
+        ).summary('foreign', localDevice)).total,
+        0,
+      );
+      expect((await service().queueSummary()).total, 104);
+    },
+  );
+
+  test(
+    'old encrypted archives gain summary metadata without changing queue entries',
+    () async {
+      await seed(image: true);
+      await handoff();
+      await db.customUpdate(
+        "UPDATE app_settings SET value = json_remove(value, '\$.entity_type', '\$.operation') WHERE key LIKE ?",
+        variables: [Variable.withString('${DeviceOperatorOutbox.prefix}%')],
+        updates: {db.appSettings},
+      );
+      final summary = await outbox.summary(tenant, localDevice);
+      expect(summary.total, 2);
+      expect(summary.patients, 1);
+      expect(summary.screenings, 1);
+      expect((await outbox.entries(tenant, localDevice)).length, 2);
+      expect(
+        (await DeviceOperatorOutbox(
+          db,
+          _NoArchiveKeyRead(),
+        ).summary(tenant, localDevice)).total,
+        2,
+      );
+    },
+  );
+
+  test(
+    'queue summary counts tenant/device metadata without decrypting archives',
+    () async {
+      await seed(image: true);
+      await handoff();
+      final summary = DeviceOperatorOutbox(db, _NoArchiveKeyRead());
+      expect(await summary.count(tenant, localDevice), 2);
+      expect(await summary.count('other-tenant', localDevice), 0);
+      expect(await summary.count(tenant, 'other-device'), 0);
+      expect(await service().queuedCount(), 2);
+    },
+  );
+
+  test(
+    'PR38 read-back preserves score endpoints and encrypted local X-ray',
+    () async {
+      await seed(image: true);
+      final before = await db.findDiagnosis(diagnosis);
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        xrayStore: xray,
+        localOnly: true,
+      );
+      for (final score in [0, 10]) {
+        await db.upsertDiagnosis(
+          diagnosisRowFromJson({
+            'id': diagnosis,
+            'patient_id': patient,
+            'is_positive': false,
+            'confidence': 80,
+            'model_version': 'synthetic-model',
+            'status': 'agreed',
+            'doctor_note': 'Synthetic server note',
+            'validation_score': score,
+            'validated_by': doctor,
+            'validated_at': '2026-10-30T02:15:00Z',
+            'version': 2,
+          }),
+        );
+        final row = await db.findDiagnosis(diagnosis);
+        expect(row!.validationScore, score);
+        expect(row.validatedBy, doctor);
+        expect(row.validatedAt!.toUtc(), DateTime.utc(2026, 10, 30, 2, 15));
+        expect((await repo.getCases()).single.validationScore, score);
+        expect(
+          (await repo.getCases()).single.validationNote,
+          'Synthetic server note',
+        );
+        expect(
+          (await repo.loadCaseImage(diagnosis))!.checksumSha256,
+          before!.imageChecksum,
+        );
+      }
+    },
+  );
+
+  for (final supported in [false, true]) {
+    test(
+      'PR38 normal sync holds score until deployed contract: $supported',
+      () async {
+        await seed(image: true);
+        final sync = SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        );
+        final repo = OfflineValidationRepository(
+          db: db,
+          client: client,
+          syncEngine: sync,
+          localOnly: true,
+        );
+        await repo.submitScore(id: diagnosis, score: 10, status: 'agreed');
+        for (final op in await db.pendingOps()) {
+          if (op.operation != 'update') {
+            await db.markOp(op.clientOpId, syncSynced);
+          }
+        }
+        var posts = 0;
+        client.dio.httpClientAdapter = _Adapter((o) {
+          if (o.uri.path == '/openapi.json') {
+            return (
+              200,
+              {
+                'paths': {
+                  '/api/v1/diagnoses/{diagnosis_id}/status': {
+                    'patch': {
+                      'requestBody': {
+                        'content': {
+                          'application/json': {
+                            'schema': {
+                              r'$ref':
+                                  '#/components/schemas/DiagnosisValidationPatch',
+                            },
+                          },
+                        },
+                      },
+                      'responses': {
+                        '200': {
+                          'content': {
+                            'application/json': {
+                              'schema': {
+                                r'$ref': '#/components/schemas/DiagnosisOut',
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+                'components': {
+                  'schemas': supported
+                      ? {
+                          'DiagnosisValidationPatch': {
+                            'properties': {
+                              'validation_score': {},
+                              'validated_at': {},
+                              'status': {},
+                              'base_version': {},
+                            },
+                          },
+                          'DiagnosisOut': {
+                            'properties': {
+                              'validation_score': {},
+                              'validated_at': {},
+                              'status': {},
+                              'base_version': {},
+                              'validated_by': {},
+                            },
+                          },
+                        }
+                      : {},
+                },
+              },
+            );
+          }
+          posts++;
+          expect(o.path, '/sync/push');
+          final item = ((o.data as Map)['items'] as List).single as Map;
+          expect((item['payload'] as Map)['validation_score'], 10);
+          return (200, receipt(o));
+        });
+        final report = await sync.push();
+        expect(posts, supported ? 1 : 0);
+        expect(report.applied, supported ? 1 : 0);
+        expect(report.blocked, supported ? 0 : 1);
+        expect((await db.pendingOps()).length, supported ? 0 : 1);
+      },
+    );
+  }
+
+  test(
+    'PR40 delete preserves verdict, rating, note and image and queues delete_validation',
+    () async {
+      await seed(image: true);
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        xrayStore: xray,
+        localOnly: true,
+      );
+      await repo.submitLesionRating(
+        id: diagnosis,
+        rating: 7,
+        status: 'agreed',
+        note: 'Synthetic note',
+      );
+      await expectLater(
+        repo.resetValidation(diagnosis),
+        throwsA(isA<ValidationContractException>()),
+      );
+      expect((await repo.getCases()).single.lesionRating, 7);
+      final update = (await db.pendingOps()).singleWhere(
+        (op) => op.operation == 'update',
+      );
+      await db.markOp(update.clientOpId, syncSynced);
+      await db.upsertDiagnosis(
+        (await db.findDiagnosis(
+          diagnosis,
+        ))!.toCompanion(false).copyWith(serverVersion: const Value(1)),
+      );
+      final before = (await db.findDiagnosis(diagnosis))!;
+      final picture = (await repo.loadCaseImage(diagnosis))!;
+      await repo.resetValidation(diagnosis);
+      final after = (await db.findDiagnosis(diagnosis))!;
+      expect(after.status, 'agreed');
+      expect(after.lesionRating, 7);
+      expect(after.validationDeletedAt, isNotNull);
+      expect(after.validationDeletedBy, doctor);
+      expect(after.validatedBy, doctor);
+      expect(after.validatedAt, before.validatedAt);
+      expect(after.doctorNote, 'Synthetic note');
+      expect(after.patientId, before.patientId);
+      expect(after.confidence, before.confidence);
+      expect(after.isPositive, before.isPositive);
+      expect(after.imageReference, before.imageReference);
+      expect(after.tombstone, isFalse);
+      expect(
+        (jsonDecode(after.clinicalSnapshot) as Map).containsKey(
+          'local_validation_v1',
+        ),
+        isTrue,
+      );
+      expect(
+        (await repo.loadCaseImage(diagnosis))!.checksumSha256,
+        picture.checksumSha256,
+      );
+      final reset = (await db.pendingOps()).singleWhere(
+        (op) => op.operation == 'delete_validation',
+      );
+      expect((jsonDecode(reset.payload) as Map).keys, ['deleted_at']);
+      expect(reset.baseVersion, 1);
+      expect(await repo.getCases(), isEmpty);
+      expect(await repo.watchPendingCount().first, 0);
+      final restarted = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        xrayStore: xray,
+        localOnly: true,
+      );
+      expect(await restarted.getCases(), isEmpty);
+      await owner(technician, role: 'technician');
+      await expectLater(
+        repo.resetValidation(diagnosis),
+        throwsA(isA<ValidationContractException>()),
+      );
+    },
+  );
+
+  test(
+    'PR40 lesion rating never replaces legacy trust score and explicitly rerates an unsent legacy verdict',
+    () async {
+      await seed(image: true);
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        localOnly: true,
+      );
+      await repo.submitScore(id: diagnosis, score: 8, status: 'agreed');
+      await repo.submitLesionRating(
+        id: diagnosis,
+        rating: 0,
+        status: 'disagreed',
+        note: '  ',
+      );
+      final row = (await db.findDiagnosis(diagnosis))!;
+      expect(row.validationScore, 8);
+      expect(row.lesionRating, 0);
+      expect(row.doctorNote, isNull);
+      final op = (await db.pendingOps()).singleWhere(
+        (op) => op.operation == 'update',
+      );
+      final body = jsonDecode(op.payload) as Map;
+      expect(body['lesion_rating'], 0);
+      expect(body.containsKey('validation_score'), false);
+      expect(body['doctor_note'], isNull);
+      await expectLater(
+        repo.submitLesionRating(id: diagnosis, rating: 11, status: 'agreed'),
+        throwsA(isA<ValidationContractException>()),
+      );
+    },
+  );
+
+  test(
+    'validation repository retains screening hours minutes and seconds',
+    () async {
+      await seed(image: true);
+      final at = DateTime.utc(2026, 11, 11, 10, 25, 32);
+      await db.upsertDiagnosis(
+        (await db.findDiagnosis(
+          diagnosis,
+        ))!.toCompanion(false).copyWith(diagnosedAt: Value(at)),
+      );
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        localOnly: true,
+      );
+      expect((await repo.getCases()).single.diagnosedAt!.toUtc(), at);
+    },
+  );
+
+  for (final outcome in ['applied', 'skipped', 'conflict', 'unsupported']) {
+    test(
+      'PR40 operator delete_validation handles $outcome without deleting screening',
+      () async {
+        await seed(image: true);
+        for (final op in await db.pendingOps()) {
+          await db.markOp(op.clientOpId, syncSynced);
+        }
+        await db.upsertDiagnosis(
+          (await db.findDiagnosis(diagnosis))!
+              .toCompanion(false)
+              .copyWith(
+                serverVersion: const Value(2),
+                status: const Value('agreed'),
+                lesionRating: const Value(10),
+                doctorNote: const Value('Audit note'),
+              ),
+        );
+        final repo = OfflineValidationRepository(
+          db: db,
+          client: client,
+          syncEngine: SyncEngine(
+            db: db,
+            client: client,
+            settings: SettingsStore(db),
+          ),
+          localOnly: true,
+        );
+        await repo.resetValidation(diagnosis);
+        await expectLater(
+          repo.submitLesionRating(id: diagnosis, rating: 1, status: 'agreed'),
+          throwsA(isA<ValidationContractException>()),
+        );
+        await handoff();
+        await activate();
+        for (final entry in await service().queued()) {
+          if ((entry['op'] as Map)['operation'] != 'delete_validation') {
+            await outbox.remove((entry['op'] as Map)['clientOpId'] as String);
+          }
+        }
+        var posts = 0;
+        client.dio.httpClientAdapter = _Adapter((o) {
+          if (o.uri.path == '/openapi.json') {
+            return (
+              200,
+              outcome == 'unsupported'
+                  ? {}
+                  : jsonDecode(
+                      File(
+                        'test/fixtures/pr40_validation_openapi.json',
+                      ).readAsStringSync(),
+                    ),
+            );
+          }
+          posts++;
+          final item = ((o.data as Map)['items'] as List).single as Map;
+          expect(item['operation'], 'delete_validation');
+          expect(item['base_version'], 2);
+          expect(item['owner_user_id'], doctor);
+          final answer = receipt(
+            o,
+            status: outcome,
+            opVersion: 3,
+            serverVersion: 3,
+          );
+          if (outcome == 'skipped') {
+            ((answer['results'] as List).single as Map)['code'] =
+                'already_deleted';
+          }
+          return (200, answer);
+        });
+        final report = await service().push(refreshCache: false);
+        expect(posts, outcome == 'unsupported' ? 0 : 1);
+        expect(report.blocked, outcome == 'unsupported' ? 1 : 0);
+        expect(report.conflicts, outcome == 'conflict' ? 1 : 0);
+        if (outcome == 'applied' || outcome == 'skipped') {
+          expect(await outbox.count(tenant, localDevice), 0);
+          await db.clearSessionData();
+          await owner(doctor);
+          await outbox.restoreDoctorQueue();
+          final restored = (await db.findDiagnosis(diagnosis))!;
+          expect(restored.status, 'agreed');
+          expect(restored.lesionRating, 10);
+          expect(restored.doctorNote, 'Audit note');
+          expect(restored.validationDeletedAt, isNotNull);
+        }
+      },
+    );
+  }
+
+  test(
+    'PR40 server deletion reaches doctor through operator state and retains local X-ray',
+    () async {
+      await seed(image: true);
+      await handoff();
+      await activate();
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.path == '/sync/operator/push') return (200, receipt(o));
+        if (o.path == '/sync/operator/state') {
+          final state = _serverState();
+          final dx = (state['diagnoses'] as List).single as Map;
+          dx['lesion_rating'] = 10;
+          dx['validation_deleted_at'] = '2026-11-07T00:00:00Z';
+          dx['validation_deleted_by'] = doctor;
+          return (200, state);
+        }
+        final body = o.data as Map;
+        return (
+          200,
+          {
+            'upload_id': 'synthetic-upload',
+            'diagnosis_id': diagnosis,
+            'size_bytes': body['size_bytes'],
+            'chunk_count': body['chunk_count'],
+            'chunk_size': body['chunk_size'],
+            'received_chunks': [0],
+            'status': 'completed',
+            'image_id': 'synthetic-image',
+          },
+        );
+      });
+      await service().push();
+      await db.clearSessionData();
+      await owner(doctor);
+      await outbox.restoreDoctorQueue();
+      final restored = (await db.findDiagnosis(diagnosis))!;
+      expect(restored.lesionRating, 10);
+      expect(restored.validationScore, 4);
+      expect(restored.validationDeletedBy, doctor);
+      expect(restored.tombstone, false);
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        xrayStore: xray,
+        localOnly: true,
+      );
+      expect(await repo.getCases(), isEmpty);
+      expect(await repo.watchPendingCount().first, 0);
+      expect(await repo.loadCaseImage(diagnosis), isNotNull);
+    },
+  );
+
+  test(
+    'PR40 upgrades a never-sent local archive into a versioned delete op',
+    () async {
+      await seed(image: true);
+      for (final op in await db.pendingOps()) {
+        await db.markOp(op.clientOpId, syncSynced);
+      }
+      await db.upsertDiagnosis(
+        (await db.findDiagnosis(
+          diagnosis,
+        ))!.toCompanion(false).copyWith(serverVersion: const Value(2)),
+      );
+      final key =
+          'deleted_validation_v1:${base64Url.encode(utf8.encode(jsonEncode([tenant, doctor, localDevice])))}';
+      await db.putSetting(key, jsonEncode([diagnosis]));
+      await db.enqueue(
+        SyncQueueCompanion.insert(
+          clientOpId: 'old-reset',
+          entityType: 'diagnosis',
+          entityId: diagnosis,
+          operation: 'update',
+          payload: '{"status":"pending","validation_score":null}',
+          baseVersion: const Value(2),
+          createdAt: DateTime.utc(2026),
+        ),
+      );
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        localOnly: true,
+      );
+      expect(await repo.getCases(), isEmpty);
+      expect((await db.pendingOps()).single.operation, 'delete_validation');
+      expect((await db.findOperation('old-reset'))!.status, syncSynced);
+      expect(jsonDecode((await db.getSetting(key))!), isEmpty);
+      expect(
+        (await db.findDiagnosis(diagnosis))!.validationDeletedAt,
+        isNotNull,
+      );
+    },
+  );
+
+  test('lesion rating allows disagreement without an optional note', () async {
+    await seed(image: true);
+    final repo = OfflineValidationRepository(
+      db: db,
+      client: client,
+      syncEngine: SyncEngine(
+        db: db,
+        client: client,
+        settings: SettingsStore(db),
+      ),
+      xrayStore: xray,
+      localOnly: true,
+    );
+    await repo.submitScore(id: diagnosis, score: 10, status: 'disagreed');
+    final saved = (await repo.getCases()).single;
+    expect(saved.status, 'disagreed');
+    expect(saved.validationScore, 10);
+    expect(saved.validationNote, isNull);
+    final queued = (await db.pendingOps()).singleWhere(
+      (op) => op.operation == 'update',
+    );
+    final body = jsonDecode(queued.payload) as Map;
+    expect(body['validation_score'], 10);
+    expect(body['doctor_note'], isNull);
+  });
+
+  for (final supported in [false, true]) {
+    test(
+      'PR38 score operator sync requires deployed contract: $supported',
+      () async {
+        await seed(image: true);
+        final repo = OfflineValidationRepository(
+          db: db,
+          client: client,
+          syncEngine: SyncEngine(
+            db: db,
+            client: client,
+            settings: SettingsStore(db),
+          ),
+          xrayStore: xray,
+          localOnly: true,
+        );
+        await repo.submitScore(
+          id: diagnosis,
+          score: 0,
+          status: 'disagreed',
+          note: 'Synthetic reason',
+        );
+        final queued = (await db.pendingOps())
+            .where((op) => op.operation == 'update')
+            .single;
+        final body = jsonDecode(queued.payload) as Map;
+        expect(body['validation_score'], 0);
+        expect(body['status'], 'disagreed');
+        expect(body['validated_at'], isNotNull);
+        expect(body.containsKey('validated_by'), isFalse);
+        expect(queued.baseVersion, 1);
+        expect((await repo.getCases()).single.validationScore, 0);
+        await expectLater(
+          repo.submitScore(id: diagnosis, score: 10, status: 'agreed'),
+          throwsA(isA<ValidationContractException>()),
+        );
+        await handoff();
+        await activate();
+        for (final entry in await service().queued()) {
+          if ((entry['op'] as Map)['operation'] != 'update') {
+            await outbox.remove((entry['op'] as Map)['clientOpId'] as String);
+          }
+        }
+        var posts = 0;
+        client.dio.httpClientAdapter = _Adapter((o) {
+          if (o.uri.path == '/openapi.json') {
+            return (
+              200,
+              {
+                'paths': {
+                  '/api/v1/diagnoses/{diagnosis_id}/status': {
+                    'patch': {
+                      'requestBody': {
+                        'content': {
+                          'application/json': {
+                            'schema': {
+                              r'$ref':
+                                  '#/components/schemas/DiagnosisValidationPatch',
+                            },
+                          },
+                        },
+                      },
+                      'responses': {
+                        '200': {
+                          'content': {
+                            'application/json': {
+                              'schema': {
+                                r'$ref': '#/components/schemas/DiagnosisOut',
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+                'components': {
+                  'schemas': supported
+                      ? {
+                          'DiagnosisValidationPatch': {
+                            'properties': {
+                              'validation_score': {},
+                              'validated_at': {},
+                              'status': {},
+                              'base_version': {},
+                            },
+                          },
+                          'DiagnosisOut': {
+                            'properties': {
+                              'validation_score': {},
+                              'validated_at': {},
+                              'status': {},
+                              'base_version': {},
+                              'validated_by': {},
+                            },
+                          },
+                        }
+                      : {},
+                },
+              },
+            );
+          }
+          posts++;
+          final item = ((o.data as Map)['items'] as List).single as Map;
+          expect(item['owner_user_id'], doctor);
+          expect(item['base_version'], 1);
+          expect((item['payload'] as Map)['validation_score'], 0);
+          expect(
+            (item['payload'] as Map)['validated_at'],
+            body['validated_at'],
+          );
+          return (200, receipt(o));
+        });
+        final report = await service().push(refreshCache: false);
+        expect(posts, supported ? 1 : 0);
+        expect(report.blocked, supported ? 0 : 1);
+        expect(report.applied, supported ? 1 : 0);
+        expect((await service().queued()).length, supported ? 0 : 1);
+      },
+    );
+  }
+
+  test(
+    'offline score 0 and 10 survive encrypted handoff and never reach legacy API',
+    () async {
+      await seed(image: true);
+      var requests = 0;
+      client.dio.httpClientAdapter = _Adapter((o) {
+        requests++;
+        return (200, receipt(o));
+      });
+      final repo = OfflineValidationRepository(
+        db: db,
+        client: client,
+        syncEngine: SyncEngine(
+          db: db,
+          client: client,
+          settings: SettingsStore(db),
+        ),
+        xrayStore: xray,
+        localOnly: true,
+      );
+      expect((await repo.getCases()).single.serverVersion, isNull);
+      final image = await repo.loadCaseImage(diagnosis);
+      expect(image, isNotNull);
+      for (final score in [0, 10]) {
+        await repo.submitScore(
+          id: diagnosis,
+          score: score,
+          note: 'Synthetic review',
+        );
+        expect((await repo.getCases()).single.validationScore, score);
+      }
+      expect((await db.opsWithStatus(syncBlockedContract)).length, 1);
+      expect(
+        (await db.pendingOps()).any((op) => op.operation == 'validate_score'),
+        isFalse,
+      );
+      expect(requests, 0);
+      await handoff();
+      await activate();
+      final entries = await service().queued();
+      final held = entries
+          .where(
+            (entry) => (entry['op'] as Map)['operation'] == 'validate_score',
+          )
+          .single;
+      expect(jsonDecode((held['op'] as Map)['payload'] as String)['score'], 10);
+      // Only retain the score to isolate the operator's blocked-operation path.
+      for (final entry in entries) {
+        if (!identical(entry, held) &&
+            (entry['op'] as Map)['operation'] != 'validate_score') {
+          await outbox.remove((entry['op'] as Map)['clientOpId'] as String);
+        }
+      }
+      final report = await service().push(refreshCache: false);
+      expect(report.blocked, 1);
+      expect(requests, 0);
+      expect((await service().queued()).length, 1);
+      await db.clearSessionData();
+      await owner(doctor);
+      await outbox.restoreDoctorQueue();
+      expect((await repo.getCases()).single.validationScore, 10);
+      expect(
+        (await repo.loadCaseImage(diagnosis))!.checksumSha256,
+        image!.checksumSha256,
+      );
+      await owner(technician, role: 'technician');
+      await expectLater(
+        repo.submitScore(id: diagnosis, score: 5),
+        throwsA(isA<ValidationContractException>()),
+      );
+    },
+  );
+
   testWidgets(
     'operator UI sends the retained queue and refreshes remaining count',
     (tester) async {
@@ -223,7 +1615,12 @@ void main() {
         await handoff();
         await activate();
       });
-      client.dio.httpClientAdapter = _Adapter((o) => (200, receipt(o)));
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.path == '/sync/operator/state') {
+          return (200, {..._serverState(), 'diagnoses': []});
+        }
+        return (200, receipt(o));
+      });
       await tester.pumpWidget(
         MultiProvider(
           providers: [
@@ -236,12 +1633,16 @@ void main() {
         ),
       );
       await app_fixture.pumpApp(tester);
-      expect(find.text('Retained queue: 1'), findsOneWidget);
+      expect(find.text('Queued sync operations: 1'), findsOneWidget);
+      expect(find.text('Patient data: 1'), findsOneWidget);
+      expect(find.text('Screening: 0'), findsOneWidget);
       await tester.tap(find.byType(CheckboxListTile));
       await tester.pump();
+      await tester.ensureVisible(find.text('Sync to server'));
       await tester.tap(find.text('Sync to server'));
       await app_fixture.pumpApp(tester);
-      expect(find.text('Retained queue: 0'), findsOneWidget);
+      expect(find.text('Queued sync operations: 0'), findsOneWidget);
+      expect(find.text('Patient data: 0'), findsOneWidget);
       expect(find.textContaining('Applied: 1'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -464,7 +1865,7 @@ void main() {
         expect(item['client_op_id'], 'patient-op');
         return (200, receipt(o));
       });
-      final report = await service().push();
+      final report = await service().push(refreshCache: false);
       expect(report.applied, 1);
       expect(await service().queued(), isEmpty);
     },
@@ -477,7 +1878,7 @@ void main() {
       requests++;
       return (200, {});
     });
-    await expectLater(service().push(), throwsStateError);
+    await expectLater(service().push(refreshCache: false), throwsStateError);
     expect(requests, 0);
     expect((await service().queued()).length, 1);
   });
@@ -491,7 +1892,7 @@ void main() {
         client.dio.httpClientAdapter = _Adapter(
           (o) => (200, receipt(o, status: status)),
         );
-        final report = await service().push();
+        final report = await service().push(refreshCache: false);
         expect(report.conflicts + report.failed, 1);
         expect((await service().queued()).length, 1);
         await db.clearSessionData();
@@ -513,7 +1914,7 @@ void main() {
     client.dio.httpClientAdapter = _Adapter(
       (o) => (200, receipt(o, ownerId: technician)),
     );
-    expect((await service().push()).failed, 1);
+    expect((await service().push(refreshCache: false)).failed, 1);
     expect((await service().queued()).length, 1);
   });
   test(
@@ -528,7 +1929,7 @@ void main() {
           reason: 'synthetic offline',
         ),
       );
-      expect((await service().push()).failed, 1);
+      expect((await service().push(refreshCache: false)).failed, 1);
       client.dio.httpClientAdapter = _Adapter((o) {
         expect(
           ((o.data as Map)['items'] as List).single['client_op_id'],
@@ -536,7 +1937,7 @@ void main() {
         );
         return (200, receipt(o, status: 'skipped'));
       });
-      expect((await service().push()).skipped, 1);
+      expect((await service().push(refreshCache: false)).skipped, 1);
       expect(await service().queued(), isEmpty);
     },
   );
@@ -552,7 +1953,7 @@ void main() {
         started.complete(o);
         return waiting.future;
       });
-      final run = service().push();
+      final run = service().push(refreshCache: false);
       final failed = expectLater(run, throwsStateError);
       final request = await started.future;
       await auth.logout();
@@ -604,12 +2005,12 @@ void main() {
           },
         );
       });
-      final first = await service().push();
+      final first = await service().push(refreshCache: false);
       expect(first.applied, 1);
       expect(first.failed, 1);
       expect((await service().queued()).length, 1);
       complete = true;
-      final second = await service().push();
+      final second = await service().push(refreshCache: false);
       expect(second.skipped, 1);
       expect(recordRequests, 2);
       expect(chunkRequests, 1);
@@ -645,6 +2046,84 @@ void main() {
       expect(await client.deviceIdentity.read(), isNotNull);
       expect(await db.getSetting('tablet_activation_nonce_v1'), isNull);
       await expectLater(activate(), throwsStateError);
+    },
+  );
+  test(
+    'old received archives repair image uploads without replaying diagnosis metadata',
+    () async {
+      await seed(image: true);
+      final image = await xray.read('local-encrypted://$diagnosis');
+      await xray.persist(artifactId: '$diagnosis:lung', image: image);
+      await handoff();
+      await activate();
+      final old = (await service().queued()).singleWhere(
+        (e) => (e['op'] as Map)['entityType'] == 'diagnosis',
+      );
+      old['record_synced'] = true;
+      await outbox.retainReceived(old);
+      await outbox.remove((old['op'] as Map)['clientOpId'] as String);
+      var diagnosisPushes = 0, lungUploads = 0, xrayChecks = 0;
+      client.dio.httpClientAdapter = _Adapter((o) {
+        if (o.path == '/sync/operator/push') {
+          final item = ((o.data as Map)['items'] as List).single as Map;
+          if (item['entity_type'] == 'diagnosis') diagnosisPushes++;
+          return (200, receipt(o));
+        }
+        if (o.uri.path == '/openapi.json') {
+          return (
+            200,
+            {
+              'paths': {
+                '/api/v1/diagnoses/{diagnosis_id}/lung-map': {'put': {}},
+              },
+            },
+          );
+        }
+        if (o.path.endsWith('/lung-map')) {
+          lungUploads++;
+          return (
+            200,
+            {
+              'diagnosis_id': diagnosis,
+              'sha256': image.checksumSha256,
+              'size_bytes': image.sizeBytes,
+              'created': true,
+            },
+          );
+        }
+        if (o.path == '/blobs/init') {
+          xrayChecks++;
+          final b = o.data as Map;
+          return (
+            200,
+            {
+              'upload_id': 'old-image',
+              'diagnosis_id': diagnosis,
+              'size_bytes': b['size_bytes'],
+              'chunk_count': b['chunk_count'],
+              'chunk_size': b['chunk_size'],
+              'received_chunks': [0],
+              'status': 'completed',
+              'image_id': 'old-image-id',
+            },
+          );
+        }
+        throw StateError('Unexpected test request ${o.path}');
+      });
+      await service().prepareImageRepairs();
+      await service().prepareImageRepairs();
+      expect(
+        await service().queuedCount(),
+        2,
+        reason: 'Patient plus one image repair, no duplicates',
+      );
+      final report = await service().push(refreshCache: false);
+      expect(report.failed, 0);
+      expect(diagnosisPushes, 0);
+      expect(xrayChecks, 1);
+      expect(lungUploads, 1);
+      await service().prepareImageRepairs();
+      expect(await service().queuedCount(), 0);
     },
   );
 }

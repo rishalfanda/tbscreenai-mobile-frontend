@@ -2,7 +2,6 @@ import 'package:myapp/core/localization/app_text.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:myapp/core/config/app_config.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/domain/models/models.dart';
@@ -31,7 +30,7 @@ class DashboardScreen extends StatelessWidget {
                   _buildHeader(context, dashboard),
                   const SizedBox(height: 20),
                   if (dashboard.isLoading)
-                    const Center(child: CircularProgressIndicator())
+                    _buildLoadingSkeleton(context)
                   else if (dashboard.error != null) ...[
                     AppText(dashboard.error!),
                     const SizedBox(height: 12),
@@ -111,9 +110,16 @@ class DashboardScreen extends StatelessWidget {
                 width: isCompact ? 200 : 220,
               ),
             if (dashboard.isLive) ...[
-              const Chip(
-                avatar: Icon(Icons.lock_outline, size: 18),
-                label: AppText('Instansi akun'),
+              Chip(
+                avatar: const Icon(Icons.lock_outline, size: 18),
+                label: AppText(
+                  dashboard.isOffline
+                      ? context.trRead(
+                          'Data lokal - akun dokter ini',
+                          'Local data - current doctor',
+                        )
+                      : 'Instansi akun',
+                ),
               ),
               IconButton(
                 tooltip: localize(context, 'Refresh dashboard'),
@@ -121,28 +127,6 @@ class DashboardScreen extends StatelessWidget {
                 icon: const Icon(Icons.refresh),
               ),
             ],
-            FilledButton.icon(
-              onPressed:
-                  context.watch<AuthProvider?>()?.mobileRole.allows(
-                        '/diagnosis',
-                      ) ==
-                      true
-                  ? () => context.go('/diagnosis')
-                  : null,
-              icon: const Icon(Icons.add_rounded),
-              label: const AppText('New Screening'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 16,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppTheme.inputRadius),
-                ),
-              ),
-            ),
           ],
         ),
       ],
@@ -185,25 +169,160 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
+  SliverGridDelegateWithFixedCrossAxisCount _statGridDelegate(double maxWidth) {
+    final crossAxisCount = switch (maxWidth) {
+      < 560 => 1,
+      < 1080 => 2,
+      _ => 4,
+    };
+    return SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: crossAxisCount,
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      mainAxisExtent: crossAxisCount == 1 ? 112 : 128,
+    );
+  }
+
+  Widget _skeletonBox({
+    double? width,
+    required double height,
+    double radius = 6,
+  }) => Container(
+    width: width,
+    height: height,
+    decoration: BoxDecoration(
+      color: AppTheme.navy.withValues(alpha: 0.07),
+      borderRadius: BorderRadius.circular(radius),
+    ),
+  );
+
+  Widget _buildLoadingSkeleton(BuildContext context) {
+    final borderSide = BorderSide(
+      color: AppTheme.borderLight.withValues(alpha: 0.8),
+    );
+    return Semantics(
+      key: const Key('dashboard-loading-skeleton'),
+      label: context.tr(
+        'Memuat ringkasan dashboard...',
+        'Loading dashboard summary...',
+      ),
+      child: ExcludeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            LayoutBuilder(
+              builder: (context, constraints) => GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: 4,
+                gridDelegate: _statGridDelegate(constraints.maxWidth),
+                itemBuilder: (_, _) => Card(
+                  color: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+                    side: borderSide,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        _skeletonBox(width: 44, height: 44, radius: 12),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _skeletonBox(width: 96, height: 12),
+                              const SizedBox(height: 10),
+                              _skeletonBox(width: 64, height: 22),
+                              const SizedBox(height: 8),
+                              _skeletonBox(width: 112, height: 10),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+                side: borderSide,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _skeletonBox(width: 160, height: 16),
+                    const SizedBox(height: 10),
+                    _skeletonBox(width: 240, height: 12),
+                    const SizedBox(height: 16),
+                    _skeletonBox(height: 12, radius: 8),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+                side: borderSide,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _skeletonBox(width: 180, height: 16),
+                    const SizedBox(height: 16),
+                    _skeletonBox(height: 160, radius: 10),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+                side: borderSide,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _skeletonBox(width: 150, height: 16),
+                    const SizedBox(height: 14),
+                    for (var i = 0; i < 3; i++) ...[
+                      if (i > 0) const SizedBox(height: 12),
+                      _skeletonBox(height: 44, radius: 8),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildStatCards(BuildContext context, DashboardProvider dashboard) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final crossAxisCount = switch (constraints.maxWidth) {
-          < 560 => 1,
-          < 1080 => 2,
-          _ => 4,
-        };
-
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: dashboard.metrics.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            mainAxisExtent: crossAxisCount == 1 ? 112 : 128,
-          ),
+          gridDelegate: _statGridDelegate(constraints.maxWidth),
           itemBuilder: (context, index) {
             final metric = dashboard.metrics[index];
             final isPositive = metric.change.startsWith('+');
@@ -254,7 +373,12 @@ class DashboardScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           AppText(
-                            metric.title,
+                            dashboard.isOffline && metric.icon == 'people'
+                                ? context.trRead(
+                                    'Pasien di perangkat',
+                                    'Patients on device',
+                                  )
+                                : metric.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.bodySmall
@@ -310,7 +434,12 @@ class DashboardScreen extends StatelessWidget {
                           if (metric.subtext != null) ...[
                             const SizedBox(height: 2),
                             AppText(
-                              metric.subtext!,
+                              dashboard.isOffline && metric.icon == 'people'
+                                  ? context.trRead(
+                                      'Semua pasien lokal akun ini',
+                                      'All local patients for this account',
+                                    )
+                                  : metric.subtext!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
@@ -781,13 +910,6 @@ class DashboardScreen extends StatelessWidget {
                     fontSize: 18,
                   ),
                 ),
-                TextButton(
-                  onPressed: null,
-                  child: const AppText(
-                    'Full history unavailable',
-                    style: TextStyle(color: AppTheme.primary),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -830,7 +952,7 @@ class DashboardScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${activity.timestamp} · ${activity.institution}',
+                            '${activity.timestamp} · ${dashboard.isOffline ? context.trRead('Perangkat ini', 'This device') : activity.institution}',
                             style: const TextStyle(
                               color: AppTheme.subtitleGrey,
                               fontSize: 12,

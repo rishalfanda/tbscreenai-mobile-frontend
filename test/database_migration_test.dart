@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:drift/native.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 
@@ -85,6 +86,112 @@ void _createV1(File file, {String? owner, bool complete = true}) {
 }
 
 void main() {
+  test(
+    'PR40 v4 to v5 preserves legacy trust, screening and queue without inventing lesion rating',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'pr40-migration-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}/owner.sqlite');
+      final first = AppDatabase(NativeDatabase(file));
+      await first.upsertDiagnosis(
+        LocalDiagnosesCompanion.insert(
+          id: 'synthetic',
+          patientId: 'patient',
+          isPositive: true,
+          confidence: 73,
+          modelVersion: 'synthetic',
+          diagnosedAt: DateTime.utc(2026),
+          validationScore: const Value(8),
+          doctorNote: const Value('Old audit note'),
+        ),
+      );
+      await first.enqueue(
+        SyncQueueCompanion.insert(
+          clientOpId: 'old-op',
+          entityType: 'diagnosis',
+          entityId: 'synthetic',
+          operation: 'update',
+          payload: '{"validation_score":8}',
+          createdAt: DateTime.utc(2026),
+        ),
+      );
+      await first.close();
+      final raw = sqlite3.open(file.path);
+      for (final column in [
+        'lesion_rating',
+        'validation_deleted_at',
+        'validation_deleted_by',
+      ]) {
+        raw.execute('ALTER TABLE local_diagnoses DROP COLUMN $column');
+      }
+      raw.execute('PRAGMA user_version = 4');
+      raw.close();
+      final upgraded = AppDatabase(NativeDatabase(file));
+      addTearDown(upgraded.close);
+      final row = (await upgraded.findDiagnosis('synthetic'))!;
+      expect(row.validationScore, 8);
+      expect(row.lesionRating, isNull);
+      expect(row.validationDeletedAt, isNull);
+      expect(row.doctorNote, 'Old audit note');
+      expect(row.confidence, 73);
+      expect(
+        (await upgraded.pendingOps()).single.payload,
+        '{"validation_score":8}',
+      );
+    },
+  );
+
+  test('v3 to v4 keeps clinical rows and pending operations', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'tbscreen-score-migrate-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}${Platform.pathSeparator}v3.sqlite');
+    final first = AppDatabase(NativeDatabase(file));
+    await first.upsertDiagnosis(
+      LocalDiagnosesCompanion.insert(
+        id: 'synthetic-diagnosis',
+        patientId: 'synthetic-patient',
+        isPositive: false,
+        confidence: 80,
+        modelVersion: 'synthetic-model',
+        diagnosedAt: DateTime.utc(2026),
+      ),
+    );
+    await first.enqueue(
+      SyncQueueCompanion.insert(
+        clientOpId: 'synthetic-op',
+        entityType: 'diagnosis',
+        entityId: 'synthetic-diagnosis',
+        operation: 'create',
+        payload: '{}',
+        createdAt: DateTime.utc(2026),
+      ),
+    );
+    await first.close();
+    final raw = sqlite3.open(file.path);
+    for (final column in [
+      'validation_score',
+      'validated_by',
+      'validated_at',
+      'lesion_rating',
+      'validation_deleted_at',
+      'validation_deleted_by',
+    ]) {
+      raw.execute('ALTER TABLE local_diagnoses DROP COLUMN $column');
+    }
+    raw.execute('PRAGMA user_version = 3');
+    raw.close();
+    final reopened = AppDatabase(NativeDatabase(file));
+    addTearDown(reopened.close);
+    final row = await reopened.findDiagnosis('synthetic-diagnosis');
+    expect(row!.confidence, 80);
+    expect(row.validationScore, isNull);
+    expect((await reopened.pendingOps()).single.clientOpId, 'synthetic-op');
+  });
+
   test('reopening v2 reclaims an interrupted sending operation', () async {
     final directory = await Directory.systemTemp.createTemp('tbscreen-reopen-');
     addTearDown(() => directory.delete(recursive: true));
@@ -180,4 +287,62 @@ void main() {
       raw.close();
     }
   });
+
+  test(
+    'v5 to v6 creates archived_xray_artifacts table, enables WAL, and preserves v5 rows',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'tbscreen-v5-v6-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}${Platform.pathSeparator}v5.sqlite');
+      final first = AppDatabase(NativeDatabase(file));
+      await first.activateOwner(
+        first.sessionGeneration,
+        const DataOwner(tenantId: 't1', userId: 'u1', deviceId: 'd1'),
+      );
+      await first.upsertDiagnosis(
+        LocalDiagnosesCompanion.insert(
+          id: 'diag-v5',
+          patientId: 'pat-v5',
+          isPositive: false,
+          confidence: 42,
+          modelVersion: 'v1',
+          diagnosedAt: DateTime.utc(2026, 11, 17),
+        ),
+      );
+      await first.putSetting('device_operator_outbox_v1:op-v5', '{"cipher":"x"}');
+      await first.close();
+
+      // Downgrade DB back to v5 by dropping archived_xray_artifacts and setting PRAGMA user_version = 5.
+      final raw = sqlite3.open(file.path);
+      raw.execute('DROP TABLE IF EXISTS archived_xray_artifacts');
+      raw.execute('PRAGMA user_version = 5');
+      raw.close();
+
+      final upgraded = AppDatabase(NativeDatabase(file));
+      addTearDown(upgraded.close);
+
+      final diag = await upgraded.findDiagnosis('diag-v5');
+      expect(diag, isNotNull);
+      expect(diag!.confidence, 42);
+      expect(
+        await upgraded.getSetting('device_operator_outbox_v1:op-v5'),
+        '{"cipher":"x"}',
+      );
+      final tables = await upgraded
+          .customSelect(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'archived_xray_artifacts'",
+          )
+          .get();
+      expect(tables, hasLength(1));
+      final journalMode = await upgraded
+          .customSelect('PRAGMA journal_mode')
+          .getSingle();
+      expect(
+        journalMode.read<String>('journal_mode').toLowerCase(),
+        'wal',
+      );
+    },
+  );
 }

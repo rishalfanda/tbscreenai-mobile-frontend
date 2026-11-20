@@ -1,3 +1,4 @@
+import 'package:myapp/domain/models/segmentation_overlays.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -103,7 +104,17 @@ DiagnosisOutcome _outcome({bool mock = false}) => DiagnosisOutcome(
   consolidation: 20,
   infiltrate: 4.2,
   imageId: '11111111-1111-4111-8111-111111111111',
-  provenance: const {'bundle_version': '2026.09.04', 'rf_model': 'combined'},
+  provenance: const {
+    'schema_version': 1,
+    'bundle_version': '2026.09.04',
+    'bundle_channel': 'stable',
+    'rf_model': 'combined',
+    'p_fused': 0.87,
+    'p_cnn': 0.82,
+    'p_rf': 0.74,
+    'lesion_confidence': 0.91,
+    'app_version': 'synthetic-test',
+  },
 );
 
 DiagnosisDraft _draft() => DiagnosisDraft(
@@ -168,6 +179,93 @@ void main() {
     await client.close();
     await db.close();
   });
+
+  test(
+    'inline screening creates patient and diagnosis atomically without Patient menu',
+    () async {
+      final saved = await store().persist(
+        ScreeningResult(
+          draft: _draft().copyWith(patientId: null, patientCode: null),
+          outcome: _outcome(),
+        ),
+      );
+      final patient = await db.findPatient(saved.draft.patientId!);
+      expect(patient!.name, _draft().patientName);
+      expect(patient.status, 'Suspected');
+      expect(patient.code.length, lessThanOrEqualTo(20));
+      final ops = await db.pendingOps();
+      expect(ops.length, 2);
+      expect(
+        ops.where((op) => op.entityType == 'patient').single.entityId,
+        saved.draft.patientId,
+      );
+      expect(
+        jsonDecode(
+          ops.where((op) => op.entityType == 'diagnosis').single.payload,
+        )['patient_id'],
+        saved.draft.patientId,
+      );
+      expect(
+        saved.requiresLeaveConfirmation,
+        isFalse,
+        reason: 'Durable offline data must not block repeated screenings',
+      );
+      expect(
+        (await store().restoreLatest())!.draft.patientId,
+        saved.draft.patientId,
+      );
+    },
+  );
+
+  test(
+    'stored segmentation remains available after reopening the result',
+    () async {
+      final png = _draft().image!.bytes;
+      final outcome = DiagnosisOutcome(
+        isPositive: true,
+        confidence: 87,
+        processingTime: '1s',
+        modelVersion: 'synthetic-model',
+        createdAt: DateTime.utc(2026),
+        isMock: false,
+        segmentation: SegmentationOverlays(
+          xrayPng: png,
+          lungPng: png,
+          lesionPng: png,
+          lesionLayerPngs: {'cavity': png},
+          lungAreaPx: 4,
+          legend: const [
+            LesionLegendEntry(
+              name: 'cavity',
+              red: 255,
+              green: 0,
+              blue: 0,
+              pixelCount: 1,
+            ),
+          ],
+        ),
+      );
+      final saved = await store().persist(
+        ScreeningResult(
+          draft: _draft().copyWith(patientId: null),
+          outcome: outcome,
+        ),
+      );
+      expect(
+        (await db.findEncryptedArtifact('${saved.id}:lesion'))!.cipherText,
+        isNot(equals(png)),
+      );
+      expect(
+        (await db.findEncryptedArtifact('${saved.id}:lesion:cavity'))!
+            .cipherText,
+        isNot(equals(png)),
+      );
+      final restored = await store().restoreLatest();
+      expect(restored!.outcome.segmentation!.lesionPng, png);
+      expect(restored.outcome.segmentation!.layerFor('cavity'), png);
+      expect(restored.outcome.segmentation!.legend.single.name, 'cavity');
+    },
+  );
 
   test(
     'FE-106 typed inference persists encrypted image and restores after database reopen',
@@ -238,6 +336,9 @@ void main() {
       final payload = jsonDecode(queued.payload) as Map;
       expect(payload['image_id'], persisted.outcome.imageId);
       expect(payload['provenance'], persisted.outcome.provenance);
+      expect(payload['provenance']['p_fused'], 0.87);
+      expect(payload['provenance']['p_cnn'], 0.82);
+      expect(payload['provenance']['p_rf'], 0.74);
       final expectedClinical = {
         'schema_version': 1,
         'height_cm': 160.0,
@@ -414,6 +515,22 @@ void main() {
 
   for (final decision in ConflictDecision.values) {
     test('FE-109 ${decision.name} is explicit and audited', () async {
+      db.invalidateSession();
+      await db.activateOwner(
+        db.sessionGeneration,
+        const DataOwner(
+          tenantId: '11111111-1111-4111-8111-111111111111',
+          userId: '22222222-2222-4222-8222-222222222222',
+          deviceId: 'synthetic-device',
+        ),
+      );
+      await SettingsStore(db).saveIdentity(
+        userId: '22222222-2222-4222-8222-222222222222',
+        tenantId: '11111111-1111-4111-8111-111111111111',
+        role: 'doctor',
+        displayName: 'Synthetic doctor',
+        email: 'doctor@example.invalid',
+      );
       await seed();
       adapter.verdict = 'conflict';
       final result = await validation.submitValidation(
@@ -426,7 +543,20 @@ void main() {
       expect(conflict.localNote, 'Local note');
       expect(conflict.serverNote, 'Server note');
       adapter.verdict = null;
-      await validation.resolveConflict(conflict: conflict, decision: decision);
+      if (decision == ConflictDecision.reapplyLocal) {
+        await validation.resolveNumericConflict(
+          conflict: conflict,
+          decision: decision,
+          status: 'disagreed',
+          lesionRating: 7,
+          note: 'Local note',
+        );
+      } else {
+        await validation.resolveConflict(
+          conflict: conflict,
+          decision: decision,
+        );
+      }
       final row = (await db.findDiagnosis('diagnosis'))!;
       expect(
         (await db.clinicalAuditFor('diagnosis')).last.action,
@@ -437,9 +567,12 @@ void main() {
         expect(row.serverVersion, 7);
         expect(row.hasConflict, isFalse);
       } else if (decision == ConflictDecision.reapplyLocal) {
-        final queued = (await db.opsWithStatus(syncRetryable)).single;
+        final queued = (await db.select(db.syncQueue).get())
+            .where((op) => op.clientOpId != conflict.clientOpId)
+            .single;
         expect(queued.baseVersion, 7);
         expect(queued.clientOpId, isNot(conflict.clientOpId));
+        expect(jsonDecode(queued.payload)['lesion_rating'], 7);
         expect(row.doctorNote, 'Local note');
       } else {
         expect(row.hasConflict, isTrue);

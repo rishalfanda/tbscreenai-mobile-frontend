@@ -1,3 +1,5 @@
+import 'package:myapp/data/secure/secure_token_storage.dart';
+import 'package:myapp/data/secure/device_identity_store.dart';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:drift/native.dart';
@@ -10,7 +12,7 @@ import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/data/http/api_client.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/state/auth_provider.dart';
-import 'http_dashboard_test.dart' as fixture;
+import 'package:myapp/state/dashboard_provider.dart';
 
 class _Adapter implements HttpClientAdapter {
   @override
@@ -31,8 +33,6 @@ class _Adapter implements HttpClientAdapter {
           'role': 'doctor',
         },
       },
-      '/dashboard/summary' => fixture.summary(),
-      '/dashboard/activity' => fixture.activities(),
       '/datasets' => {'items': [], 'total': 0, 'limit': 20, 'offset': 0},
       _ => throw StateError('Unexpected test request: ${options.path}'),
     };
@@ -49,6 +49,18 @@ class _Adapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+Future<MemorySecureTokenStorage> activatedStorage() async {
+  final storage = MemorySecureTokenStorage();
+  await DeviceIdentityStore(storage).saveActivation({
+    'device_id': 'synthetic-device',
+    'tenant_id': 'synthetic-hospital',
+    'credential': 'synthetic-credential',
+    'label': 'Synthetic tablet',
+    'status': 'active',
+  });
+  return storage;
+}
+
 Future<void> pumpApp(WidgetTester tester) async {
   for (var i = 0; i < 8; i++) {
     await tester.pump(const Duration(milliseconds: 100));
@@ -60,7 +72,7 @@ Future<void> pumpApp(WidgetTester tester) async {
 
 void main() {
   testWidgets(
-    'staging doctor can navigate Dashboard, Screening, and Dataset',
+    'staging doctor can navigate Dashboard, Screening, and Validation',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 1000);
       tester.view.devicePixelRatio = 1;
@@ -68,7 +80,11 @@ void main() {
       final database = AppDatabase(NativeDatabase.memory());
       await tester.runAsync(() => database.customSelect('SELECT 1').get());
       await tester.pumpWidget(
-        TBScreenApp(database: database, hasActiveModelOverride: () async => true),
+        TBScreenApp(
+          database: database,
+          secureTokenStorage: await activatedStorage(),
+          hasActiveModelOverride: () async => true,
+        ),
       );
       await pumpApp(tester);
       final context = tester.element(find.byType(MaterialApp));
@@ -84,6 +100,16 @@ void main() {
           tester.widget<MaterialApp>(find.byType(MaterialApp)).routerConfig!
               as GoRouter;
       expect(router.routeInformationProvider.value.uri.path, '/dashboard');
+      expect(find.text('Local data - current doctor'), findsOneWidget);
+      final dashboard = context.read<DashboardProvider>();
+      expect(dashboard.isOffline, isTrue);
+      expect(dashboard.error, isNull);
+      expect(dashboard.snapshot!.metrics.map((m) => m.value), [
+        '0',
+        '0',
+        '0',
+        '0',
+      ]);
       expect(tester.takeException(), isNull);
       await tester.tap(find.byTooltip('Screening'));
       await pumpApp(tester);
@@ -94,11 +120,12 @@ void main() {
       );
       expect(find.byKey(const Key('patient-name')), findsOneWidget);
       expect(tester.takeException(), isNull);
-      await tester.tap(find.byTooltip('Dataset'));
+      expect(find.byTooltip('Patients'), findsNothing);
+      expect(find.byTooltip('Dataset'), findsNothing);
+      await tester.tap(find.byTooltip('Validation'));
       await pumpApp(tester);
-      expect(router.routeInformationProvider.value.uri.path, '/dataset');
-      expect(find.byKey(const Key('live-dataset-content')), findsOneWidget);
-      expect(find.text('No matching datasets.'), findsOneWidget);
+      expect(router.routeInformationProvider.value.uri.path, '/validation');
+      expect(find.byKey(const Key('live-dataset-content')), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await pumpApp(tester);

@@ -50,6 +50,15 @@ class _DatasetBodyState extends State<_DatasetBody> {
       key: const Key('live-dataset-content'),
       padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 700 ? 16 : 28),
       children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Text(
+            context.trRead(
+              'Dataset berisi kumpulan hasil screening pengguna dalam instansi ini.',
+              'Datasets contain screening results from users in this institution.',
+            ),
+          ),
+        ),
         Wrap(
           alignment: WrapAlignment.spaceBetween,
           spacing: 12,

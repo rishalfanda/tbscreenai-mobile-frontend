@@ -290,8 +290,17 @@ class _CameraScreenState extends State<CameraScreen>
               )
             else
               Positioned(
-                left: 20,
-                right: 20,
+                left:
+                    MediaQuery.sizeOf(context).width >
+                        MediaQuery.sizeOf(context).height
+                    ? null
+                    : 20,
+                right: 24,
+                top:
+                    MediaQuery.sizeOf(context).width >
+                        MediaQuery.sizeOf(context).height
+                    ? 20
+                    : null,
                 bottom: 20,
                 child: _confirmationControls(),
               ),
@@ -468,7 +477,10 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Widget _confirmationControls() {
-    return Row(
+    final landscape =
+        MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height;
+    return Flex(
+      direction: landscape ? Axis.vertical : Axis.horizontal,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         OutlinedButton.icon(
@@ -477,12 +489,11 @@ class _CameraScreenState extends State<CameraScreen>
           label: const AppText('Retake'),
           style: OutlinedButton.styleFrom(
             foregroundColor: Colors.white,
-            disabledForegroundColor: Colors.white60,
             side: const BorderSide(color: Colors.white54),
             backgroundColor: Colors.black45,
           ),
         ),
-        const SizedBox(width: 16),
+        SizedBox(width: landscape ? 0 : 16, height: landscape ? 16 : 0),
         FilledButton.icon(
           onPressed: _confirming ? null : _confirm,
           icon: _confirming
@@ -496,12 +507,7 @@ class _CameraScreenState extends State<CameraScreen>
                 )
               : const Icon(Icons.check_rounded),
           label: AppText(_confirming ? 'Memproses...' : 'Use this image'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppTheme.primary,
-            disabledBackgroundColor: AppTheme.primary.withValues(alpha: 0.55),
-            foregroundColor: Colors.white,
-            disabledForegroundColor: Colors.white70,
-          ),
+          style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
         ),
       ],
     );

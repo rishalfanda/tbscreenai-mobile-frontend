@@ -12,8 +12,23 @@ class DarkDropdown extends StatelessWidget {
     required this.onChanged,
     this.validator,
     this.labels,
+    this.label,
+    this.leading,
   });
 
+  final String? label;
+  final IconData? leading;
+  DarkDropdown withLabel(String text, IconData? icon) => DarkDropdown(
+    key: key,
+    value: value,
+    hint: hint,
+    items: items,
+    onChanged: onChanged,
+    validator: validator,
+    labels: labels,
+    label: text,
+    leading: icon,
+  );
   final String? value;
   final String hint;
   final List<String> items;
@@ -36,7 +51,12 @@ class DarkDropdown extends StatelessWidget {
         color: diagnosisMuted,
       ),
       style: const TextStyle(color: diagnosisText, fontSize: 15),
-      decoration: darkInputDecoration(),
+      decoration: darkInputDecoration().copyWith(
+        labelText: label,
+        prefixIcon: leading == null
+            ? null
+            : Icon(leading, color: diagnosisMuted),
+      ),
       hint: AppText(
         hint,
         maxLines: 1,

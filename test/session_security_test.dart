@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:myapp/data/http/api_client.dart';
+import 'package:myapp/data/http/backend_refusal.dart';
+import 'package:myapp/data/http/online_session_check.dart';
 import 'package:myapp/data/http/http_auth_repository.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/settings_store.dart';
@@ -111,6 +113,161 @@ const _profile = UserProfile(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test(
+    'PR39 reconnect keeps matching offline identity and rejects a different owner',
+    () async {
+      final auth = AuthProvider(
+        _ImmediateAuthRepository(),
+        initialProfile: _profile,
+      );
+      final client = ApiClient(
+        baseUrl: 'https://synthetic.invalid/api/v1',
+        initialAccessToken: 'synthetic-access',
+        initialRefreshToken: 'synthetic-refresh',
+      );
+      var foreign = false;
+      client.dio.httpClientAdapter = _Adapter(
+        (_) => _json({
+          'id': foreign ? 'another-doctor' : _profile.userId,
+          'tenant_id': _profile.tenantId,
+          'role': _profile.role,
+          'is_active': true,
+        }),
+      );
+      await checkOnlineSession(client, auth);
+      expect(auth.isLoggedIn, true);
+      foreign = true;
+      await checkOnlineSession(client, auth);
+      expect(auth.isLoggedIn, false);
+      expect(auth.sessionRefusalCode, 'session_ended');
+      auth.dispose();
+      await client.close();
+    },
+  );
+
+  test(
+    'PR39 reconnect timeout leaves approved doctor identity intact',
+    () async {
+      final auth = AuthProvider(
+        _ImmediateAuthRepository(),
+        initialProfile: _profile,
+      );
+      final client = ApiClient(
+        baseUrl: 'https://synthetic.invalid/api/v1',
+        initialAccessToken: 'synthetic-access',
+        initialRefreshToken: 'synthetic-refresh',
+      );
+      client.dio.httpClientAdapter = _Adapter(
+        (o) => throw DioException(
+          requestOptions: o,
+          type: DioExceptionType.connectionTimeout,
+        ),
+      );
+      await checkOnlineSession(client, auth);
+      expect(auth.isLoggedIn, true);
+      expect(client.tokens.hasSession, true);
+      auth.dispose();
+      await client.close();
+    },
+  );
+
+  for (final refusal in {
+    'account_disabled': 401,
+    'session_ended': 401,
+    'device_revoked': 403,
+    'device_pending': 403,
+    'device_required': 401,
+    'device_unauthenticated': 401,
+    'device_session_required': 401,
+  }.entries) {
+    test(
+      'PR39 ${refusal.key} ends session without refresh and preserves archive keys',
+      () async {
+        final secure = MemorySecureTokenStorage();
+        final client = ApiClient(
+          baseUrl: 'https://synthetic.invalid/api/v1',
+          secureStorage: secure,
+          initialAccessToken: 'synthetic-access',
+          initialRefreshToken: 'synthetic-refresh',
+        );
+        await client.deviceIdentity.saveActivation({
+          'device_id': 'synthetic-device',
+          'tenant_id': 'hospital-1',
+          'credential': 'synthetic-credential',
+          'label': 'Synthetic',
+          'status': 'active',
+        });
+        await secure.write(
+          'device_operator_outbox_aes_v1',
+          'synthetic-retained-key',
+        );
+        final events = <SessionExpiredEvent>[];
+        final subscription = client.sessionExpired.listen(events.add);
+        client.dio.httpClientAdapter = _Adapter(
+          (o) => _json({
+            'detail': {'code': refusal.key, 'message': 'Synthetic refusal'},
+          }, refusal.value),
+        );
+        await expectLater(
+          client.dio.get<Object?>('/auth/me'),
+          throwsA(isA<DioException>()),
+        );
+        expect(events.single.code, refusal.key);
+        expect(client.tokens.hasSession, false);
+        expect(
+          await client.deviceIdentity.read(),
+          requiresTabletActivation(refusal.key) ? isNull : isNotNull,
+        );
+        expect(
+          await secure.read('device_operator_outbox_aes_v1'),
+          'synthetic-retained-key',
+        );
+        expect(refusalMessage(refusal.key, english: false), isNotNull);
+        await subscription.cancel();
+        await client.close();
+      },
+    );
+  }
+
+  test(
+    'PR39 ordinary 403 and network failure keep approved offline session',
+    () async {
+      final client = ApiClient(
+        baseUrl: 'https://synthetic.invalid/api/v1',
+        initialAccessToken: 'synthetic-access',
+        initialRefreshToken: 'synthetic-refresh',
+      );
+      final events = <SessionExpiredEvent>[];
+      final subscription = client.sessionExpired.listen(events.add);
+      client.dio.httpClientAdapter = _Adapter(
+        (_) => _json({
+          'detail': {
+            'code': 'forbidden',
+            'message': 'Synthetic permission denial',
+          },
+        }, 403),
+      );
+      await expectLater(
+        client.dio.get<Object?>('/users'),
+        throwsA(isA<DioException>()),
+      );
+      client.dio.httpClientAdapter = _Adapter(
+        (o) => throw DioException(
+          requestOptions: o,
+          type: DioExceptionType.connectionError,
+        ),
+      );
+      await expectLater(
+        client.dio.get<Object?>('/auth/me'),
+        throwsA(isA<DioException>()),
+      );
+      expect(events, isEmpty);
+      expect(client.tokens.hasSession, true);
+      await subscription.cancel();
+      await client.close();
+    },
+  );
 
   test(
     'concurrent 401 responses share one refresh request',

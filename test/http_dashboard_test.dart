@@ -259,4 +259,52 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    'C4: DashboardScreen renders layout-matched loading skeleton without fake values until snapshot arrives',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final summaryGate = Completer<Object?>();
+      client.dio.httpClientAdapter = _Adapter(
+        (request) async => request.path.endsWith('/summary')
+            ? await summaryGate.future
+            : activities(),
+      );
+      final provider = DashboardProvider(repository);
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider(create: (_) => provider),
+            ChangeNotifierProvider(create: (_) => AppLanguage()),
+          ],
+          child: const MaterialApp(home: Scaffold(body: DashboardScreen())),
+        ),
+      );
+      await tester.pump();
+
+      expect(provider.error, isNull);
+      expect(provider.isLoading, isTrue);
+      expect(find.byKey(const Key('dashboard-loading-skeleton')), findsOneWidget);
+      expect(find.text('88.8%'), findsNothing);
+      expect(find.text('Normal'), findsNothing);
+      expect(find.textContaining('Dr. Anderson'), findsNothing);
+
+      summaryGate.complete(summary());
+      await tester.runAsync(() async {
+        await Future<void>.delayed(Duration.zero);
+      });
+      await tester.pumpAndSettle();
+
+      expect(provider.error, isNull);
+      expect(provider.isLoading, isFalse);
+      expect(provider.snapshot?.agreementRate, 50.0);
+      expect(find.byKey(const Key('dashboard-loading-skeleton')), findsNothing);
+      expect(find.text('50.0%'), findsWidgets);
+      expect(find.text('Normal'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 }

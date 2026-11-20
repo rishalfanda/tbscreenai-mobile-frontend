@@ -26,6 +26,64 @@ class XrayImageCard extends StatefulWidget {
 
 class _XrayImageCardState extends State<XrayImageCard> {
   int _view = 0; // 0 = X-ray, 1 = Lung, 2 = Lesion
+  late Set<String> _selectedLesions = _allDetectedLesions(widget.segmentation);
+
+  @override
+  void didUpdateWidget(covariant XrayImageCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.segmentation, widget.segmentation)) {
+      _selectedLesions = _allDetectedLesions(widget.segmentation);
+    }
+  }
+
+  Set<String> _allDetectedLesions(SegmentationOverlays? segmentation) {
+    if (segmentation == null) return <String>{};
+    return {
+      for (final entry in segmentation.legend)
+        if (entry.pixelCount > 0) entry.name.toLowerCase(),
+    };
+  }
+
+  void _toggleLesion(String key) {
+    setState(() {
+      if (_selectedLesions.contains(key)) {
+        _selectedLesions.remove(key);
+      } else {
+        _selectedLesions.add(key);
+      }
+    });
+  }
+
+  ({Uint8List baseBytes, List<Uint8List> overlayPngs}) _resolveVisuals(
+    SegmentationOverlays segmentation,
+    Set<String> detected,
+  ) {
+    if (_view == 0) {
+      return (baseBytes: segmentation.xrayPng, overlayPngs: const []);
+    }
+    if (_view == 1) {
+      return (baseBytes: segmentation.lungPng, overlayPngs: const []);
+    }
+    final allSelected =
+        detected.isNotEmpty &&
+        _selectedLesions.length == detected.length &&
+        detected.every(_selectedLesions.contains);
+    if (detected.isEmpty || allSelected) {
+      return (baseBytes: segmentation.lesionPng, overlayPngs: const []);
+    }
+    if (segmentation.lesionLayerPngs.isEmpty) {
+      return (baseBytes: segmentation.lesionPng, overlayPngs: const []);
+    }
+    if (_selectedLesions.isEmpty) {
+      return (baseBytes: segmentation.xrayPng, overlayPngs: const []);
+    }
+    final overlays = <Uint8List>[
+      for (final entry in segmentation.legend)
+        if (_selectedLesions.contains(entry.name.toLowerCase()))
+          ?segmentation.layerFor(entry.name),
+    ];
+    return (baseBytes: segmentation.xrayPng, overlayPngs: overlays);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,31 +107,27 @@ class _XrayImageCardState extends State<XrayImageCard> {
         cursor: SystemMouseCursors.click,
         child: GestureDetector(
           key: const Key('xray-image-viewer-trigger'),
+          behavior: HitTestBehavior.opaque,
           onTap: () => openImageViewer(context, image.bytes),
           child: SizedBox(
             height: 320,
-            child: Center(
-              child: Image.memory(
-                image!.bytes,
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => const Center(
-                  child: AppText(
-                    'Gambar tidak tersedia',
-                    style: TextStyle(color: kResultTextLoColor),
-                  ),
-                ),
-              ),
-            ),
+            width: double.infinity,
+            child: _LayeredSegmentationImage(baseBytes: image!.bytes),
           ),
         ),
       );
     }
 
-    final bytes = switch (_view) {
-      1 => segmentation.lungPng,
-      2 => segmentation.lesionPng,
-      _ => segmentation.xrayPng,
-    };
+    final detected = _allDetectedLesions(segmentation);
+    final visuals = _resolveVisuals(segmentation, detected);
+    final canFilterLesions =
+        _view == 2 &&
+        detected.isNotEmpty &&
+        segmentation.lesionLayerPngs.isNotEmpty;
+    final allSelected =
+        detected.isNotEmpty &&
+        _selectedLesions.length == detected.length &&
+        detected.every(_selectedLesions.contains);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -103,21 +157,18 @@ class _XrayImageCardState extends State<XrayImageCard> {
                 cursor: SystemMouseCursors.click,
                 child: GestureDetector(
                   key: const Key('xray-image-viewer-trigger'),
-                  onTap: () => openImageViewer(context, bytes),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => openImageViewer(
+                    context,
+                    visuals.baseBytes,
+                    overlayPngs: visuals.overlayPngs,
+                  ),
                   child: SizedBox(
                     height: 320,
-                    child: Center(
-                      child: Image.memory(
-                        bytes,
-                        fit: BoxFit.contain,
-                        gaplessPlayback: true,
-                        errorBuilder: (_, _, _) => const Center(
-                          child: AppText(
-                            'Gambar tidak tersedia',
-                            style: TextStyle(color: kResultTextLoColor),
-                          ),
-                        ),
-                      ),
+                    width: double.infinity,
+                    child: _LayeredSegmentationImage(
+                      baseBytes: visuals.baseBytes,
+                      overlayPngs: visuals.overlayPngs,
                     ),
                   ),
                 ),
@@ -129,20 +180,79 @@ class _XrayImageCardState extends State<XrayImageCard> {
           const SizedBox(height: 10),
           Center(
             child: Wrap(
+              alignment: WrapAlignment.center,
               spacing: 8,
               runSpacing: 6,
-              children: segmentation.legend
-                  .map(
-                    (entry) => LesionLegendChip(
+              children: [
+                if (canFilterLesions)
+                  _buildAllLesionsButton(
+                    selected: allSelected,
+                    onTap: () => setState(() => _selectedLesions = detected),
+                  ),
+                for (final entry in segmentation.legend)
+                  () {
+                    final lesionKey = entry.name.toLowerCase();
+                    final interactive =
+                        canFilterLesions &&
+                        entry.pixelCount > 0 &&
+                        segmentation.layerFor(entry.name) != null;
+                    final selected =
+                        !canFilterLesions ||
+                        _selectedLesions.contains(lesionKey);
+                    return LesionLegendChip(
+                      key: interactive ? Key('lesion-filter-$lesionKey') : null,
                       entry: entry,
                       lungAreaPx: segmentation.lungAreaPx,
-                    ),
-                  )
-                  .toList(),
+                      interactive: interactive,
+                      selected: selected,
+                      onTap: interactive ? () => _toggleLesion(lesionKey) : null,
+                    );
+                  }(),
+              ],
             ),
           ),
         ],
       ],
+    );
+  }
+
+  Widget _buildAllLesionsButton({
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final fg = selected ? Colors.white : kResultTextHiColor;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: const Key('lesion-filter-all'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: selected ? AppTheme.primary : kResultSurfaceAltColor,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected ? AppTheme.primary : kResultBorderColor,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.layers_outlined, size: 13, color: fg),
+              const SizedBox(width: 5),
+              AppText(
+                'Semua',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: fg,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -189,9 +299,51 @@ class _XrayImageCardState extends State<XrayImageCard> {
   }
 }
 
+class _LayeredSegmentationImage extends StatelessWidget {
+  const _LayeredSegmentationImage({
+    required this.baseBytes,
+    this.overlayPngs = const [],
+  });
+
+  final Uint8List baseBytes;
+  final List<Uint8List> overlayPngs;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = Image.memory(
+      baseBytes,
+      fit: BoxFit.contain,
+      gaplessPlayback: true,
+      errorBuilder: (_, _, _) => const Center(
+        child: AppText(
+          'Gambar tidak tersedia',
+          style: TextStyle(color: kResultTextLoColor),
+        ),
+      ),
+    );
+    if (overlayPngs.isEmpty) return Center(child: base);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        base,
+        for (final layer in overlayPngs)
+          Image.memory(
+            layer,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+          ),
+      ],
+    );
+  }
+}
+
 /// Opens the currently-selected X-ray view (Rontgen/Paru/Lesi) full-size,
 /// with pinch/drag zoom and pan, over a dark modal overlay.
-void openImageViewer(BuildContext context, Uint8List bytes) {
+void openImageViewer(
+  BuildContext context,
+  Uint8List bytes, {
+  List<Uint8List> overlayPngs = const [],
+}) {
   showDialog<void>(
     context: context,
     barrierColor: Colors.black87,
@@ -205,7 +357,12 @@ void openImageViewer(BuildContext context, Uint8List bytes) {
             child: InteractiveViewer(
               minScale: 1,
               maxScale: 5,
-              child: Center(child: Image.memory(bytes, fit: BoxFit.contain)),
+              child: SizedBox.expand(
+                child: _LayeredSegmentationImage(
+                  baseBytes: bytes,
+                  overlayPngs: overlayPngs,
+                ),
+              ),
             ),
           ),
           Positioned(
@@ -228,35 +385,68 @@ class LesionLegendChip extends StatelessWidget {
     super.key,
     required this.entry,
     required this.lungAreaPx,
+    this.interactive = false,
+    this.selected = true,
+    this.onTap,
   });
 
   final LesionLegendEntry entry;
   final int lungAreaPx;
+  final bool interactive;
+  final bool selected;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final dimmed = entry.pixelCount == 0;
+    final muted = entry.pixelCount == 0 || (interactive && !selected);
     final proportion = lungAreaPx == 0
         ? 0.0
         : entry.pixelCount / lungAreaPx * 100;
     final color = Color.fromARGB(255, entry.red, entry.green, entry.blue);
-    return Container(
+    final fg = muted ? kResultTextLoColor : color;
+    final pill = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: dimmed ? kResultSurfaceAltColor : color.withValues(alpha: 0.18),
+        color: muted ? kResultSurfaceAltColor : color.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: dimmed ? kResultBorderColor : color.withValues(alpha: 0.45),
+          color: muted
+              ? kResultBorderColor
+              : color.withValues(alpha: interactive ? 0.70 : 0.45),
         ),
       ),
-      child: AppText(
-        '${kLesionNameLabels[entry.name.toLowerCase()] ?? entry.name} · '
-        '${proportion.toStringAsFixed(1)}%',
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: dimmed ? kResultTextLoColor : color,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (interactive) ...[
+            Icon(
+              selected
+                  ? Icons.check_circle_rounded
+                  : Icons.radio_button_unchecked,
+              size: 13,
+              color: fg,
+            ),
+            const SizedBox(width: 5),
+          ],
+          AppText(
+            '${kLesionNameLabels[entry.name.toLowerCase()] ?? entry.name} · '
+            '${proportion.toStringAsFixed(1)}%',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: fg,
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!interactive) return pill;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: pill,
       ),
     );
   }

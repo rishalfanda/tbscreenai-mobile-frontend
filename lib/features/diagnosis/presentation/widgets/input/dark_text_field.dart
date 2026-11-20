@@ -13,6 +13,9 @@ class DarkTextField extends StatelessWidget {
     this.inputFormatters,
     this.textInputAction,
     this.enabled = true,
+    this.label,
+    this.unit,
+    this.icon,
   });
 
   final TextEditingController controller;
@@ -22,6 +25,21 @@ class DarkTextField extends StatelessWidget {
   final List<TextInputFormatter>? inputFormatters;
   final TextInputAction? textInputAction;
   final bool enabled;
+  final String? label, unit;
+  final IconData? icon;
+  DarkTextField withLabel(String text, IconData? leading) => DarkTextField(
+    key: key,
+    controller: controller,
+    onChanged: onChanged,
+    validator: validator,
+    keyboardType: keyboardType,
+    inputFormatters: inputFormatters,
+    textInputAction: textInputAction,
+    enabled: enabled,
+    label: text,
+    unit: unit,
+    icon: leading,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -36,6 +54,9 @@ class DarkTextField extends StatelessWidget {
       style: const TextStyle(color: diagnosisText, fontSize: 15),
       cursorColor: diagnosisAccent,
       decoration: darkInputDecoration().copyWith(
+        labelText: label,
+        suffixText: unit,
+        prefixIcon: icon == null ? null : Icon(icon, color: diagnosisMuted),
         fillColor: enabled
             ? diagnosisInput
             : diagnosisInput.withValues(alpha: 0.55),
@@ -43,4 +64,3 @@ class DarkTextField extends StatelessWidget {
     );
   }
 }
-

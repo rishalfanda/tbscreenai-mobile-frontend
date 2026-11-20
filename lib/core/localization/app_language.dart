@@ -562,6 +562,7 @@ const _englishAliases = <String, String>{
   'Batal Pilih': 'Deselect All',
   'Mulai Unggah': 'Start Upload',
   'Mengunggah data pasien...': 'Uploading patient data...',
+  'Semua': 'All',
 };
 
 const _indonesian = <String, String>{

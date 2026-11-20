@@ -6,16 +6,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/core/localization/app_language.dart';
+import 'package:myapp/data/mock/mock_diagnosis_repository.dart';
 import 'package:myapp/data/mock/mock_validation_repository.dart';
 import 'package:myapp/data/models_ota/model_store.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/domain/models/user_profile.dart';
 import 'package:myapp/domain/repositories/auth_repository.dart';
 import 'package:myapp/domain/repositories/validation_repository.dart';
+import 'package:myapp/features/auth/presentation/auth_frame.dart';
 import 'package:myapp/features/auth/presentation/login_screen.dart';
+import 'package:myapp/features/diagnosis/presentation/widgets/diagnosis_input_tab.dart';
 import 'package:myapp/features/shared/presentation/app_shell.dart';
 import 'package:myapp/features/shared/presentation/model_initiation_dialog.dart';
 import 'package:myapp/state/auth_provider.dart';
+import 'package:myapp/state/diagnosis_provider.dart';
 
 class MockModelStore extends ModelStore {
   MockModelStore({this.mockActiveDir});
@@ -44,8 +48,10 @@ class FakeOnnxInferenceEngine extends OnnxInferenceEngine {
   bool mockIsStandbyReady;
   bool mockReady;
   Completer<void>? standbyCompleter;
+  int readyCalls = 0;
   int initiateCalls = 0;
   int releaseStandbyCalls = 0;
+  int _generation = 0;
 
   @override
   bool get hasBundle => mockHasBundle;
@@ -54,25 +60,37 @@ class FakeOnnxInferenceEngine extends OnnxInferenceEngine {
   bool get isStandbyReady => mockHasBundle && mockIsStandbyReady;
 
   @override
-  Future<bool> get ready => Future.value(mockReady);
+  Future<bool> get ready {
+    readyCalls++;
+    return Future.value(mockReady && mockHasBundle);
+  }
 
   @override
   Future<bool> initiateStandby({dynamic sampleBytes}) async {
+    if (isStandbyReady) return true;
+    final gen = _generation;
     initiateCalls++;
-    if (standbyCompleter != null) {
-      await standbyCompleter!.future;
+    isWarmingUp.value = true;
+    try {
+      if (standbyCompleter != null) {
+        await standbyCompleter!.future;
+      }
+      if (mockHasBundle && gen == _generation) {
+        mockIsStandbyReady = true;
+        return true;
+      }
+      return false;
+    } finally {
+      isWarmingUp.value = false;
     }
-    if (mockHasBundle) {
-      mockIsStandbyReady = true;
-      return true;
-    }
-    return false;
   }
 
   @override
   Future<void> releaseStandby() async {
+    _generation++;
     releaseStandbyCalls++;
     mockIsStandbyReady = false;
+    isWarmingUp.value = false;
   }
 }
 
@@ -105,6 +123,26 @@ void main() {
       final result = await engine.initiateStandby();
       expect(result, isFalse);
       expect(engine.isStandbyReady, isFalse);
+      expect(engine.isWarmingUp.value, isFalse);
+    });
+
+    test('releaseStandby during in-flight warmup prevents isStandbyReady from turning true', () async {
+      final completer = Completer<void>();
+      final engine = FakeOnnxInferenceEngine(
+        mockHasBundle: true,
+        mockIsStandbyReady: false,
+      )..standbyCompleter = completer;
+
+      final pending = engine.initiateStandby();
+      expect(engine.isWarmingUp.value, isTrue);
+
+      await engine.releaseStandby();
+      completer.complete();
+      final result = await pending;
+
+      expect(result, isFalse);
+      expect(engine.isStandbyReady, isFalse);
+      expect(engine.isWarmingUp.value, isFalse);
     });
   });
 
@@ -281,15 +319,18 @@ void main() {
 
       await tester.enterText(find.byType(TextFormField).at(0), 'doctor@example.test');
       await tester.enterText(find.byType(TextFormField).at(1), 'password123');
-      await tester.tap(find.text('Sign In'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign In'));
       await tester.pumpAndSettle();
 
       // Login must fail
       expect(auth.isLoggedIn, isFalse);
       expect(auth.status, AuthStatus.loggedOut);
+      expect(auth.sessionRefusalCode, 'no_active_model');
       expect(repo.logoutCalls, 1);
 
-      // Verify guidance message shown in SnackBar
+      // Verify guidance message shown once in AuthErrorBanner (no duplicate SnackBar)
+      expect(find.byType(AuthErrorBanner), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
       expect(
         find.text(
           'Login failed — no active AI model found. Please activate a model first or contact a technician.',
@@ -298,7 +339,7 @@ void main() {
       );
     });
 
-    testWidgets('Doctor login with active model succeeds and initiates standby in AppShell', (tester) async {
+    testWidgets('Doctor login defers warmup on /dashboard and warms in background without modal on /diagnosis', (tester) async {
       tester.view.physicalSize = const Size(1200, 1000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -317,7 +358,7 @@ void main() {
         mockHasBundle: true,
         mockIsStandbyReady: false,
       );
-
+      final language = AppLanguage();
       final auth = AuthProvider(
         repo,
         hasActiveModel: () async => true,
@@ -326,27 +367,133 @@ void main() {
       await auth.login(email: 'doctor@example.test', password: 'password123');
       expect(auth.isLoggedIn, isTrue);
 
+      Widget shell(String location, String title) => MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: auth),
+          ChangeNotifierProvider.value(value: language),
+          Provider<ValidationRepository>.value(value: MockValidationRepository()),
+          Provider<OnnxInferenceEngine>.value(value: engine),
+        ],
+        child: MaterialApp(
+          home: AppShell(
+            location: location,
+            child: Text(title),
+          ),
+        ),
+      );
+
+      // Landing on /dashboard stays responsive with zero dialog and zero ONNX warmup.
+      await tester.pumpWidget(shell('/dashboard', 'Doctor Dashboard'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Doctor Dashboard'), findsOneWidget);
+      expect(find.byType(Dialog), findsNothing);
+      expect(engine.initiateCalls, 0);
+      expect(engine.isStandbyReady, isFalse);
+
+      // Navigating to /diagnosis starts non-blocking background warmup without a modal Dialog.
+      await tester.pumpWidget(shell('/diagnosis', 'Doctor Diagnosis'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Doctor Diagnosis'), findsOneWidget);
+      expect(find.byType(Dialog), findsNothing);
+      expect(engine.initiateCalls, 1);
+      expect(engine.isStandbyReady, isTrue);
+
+      // Dependency rebuilds (e.g. toggling language) do not re-trigger standby checks.
+      language.select('id');
+      await tester.pumpAndSettle();
+      expect(engine.initiateCalls, 1);
+      expect(engine.readyCalls, 0);
+    });
+
+    testWidgets('AppShell stops re-polling didChangeDependencies when no bundle is installed', (tester) async {
+      tester.view.physicalSize = const Size(1200, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final repo = _TestAuthRepo(
+        profile: const UserProfile(
+          userId: 'doc-1',
+          tenantId: 'tenant-1',
+          displayName: 'Dr. Test',
+          email: 'doctor@example.test',
+          role: 'doctor',
+        ),
+      );
+      final engine = FakeOnnxInferenceEngine(mockHasBundle: false);
+      final language = AppLanguage();
+      final auth = AuthProvider(repo, hasActiveModel: () async => true);
+      await auth.login(email: 'doctor@example.test', password: 'password123');
+
       await tester.pumpWidget(
         MultiProvider(
           providers: [
             ChangeNotifierProvider.value(value: auth),
-            ChangeNotifierProvider(create: (_) => AppLanguage()),
+            ChangeNotifierProvider.value(value: language),
             Provider<ValidationRepository>.value(value: MockValidationRepository()),
             Provider<OnnxInferenceEngine>.value(value: engine),
           ],
           child: const MaterialApp(
             home: AppShell(
-              location: '/dashboard',
-              child: Text('Doctor Dashboard'),
+              location: '/diagnosis',
+              child: Text('Doctor Diagnosis'),
             ),
           ),
         ),
       );
+      await tester.pumpAndSettle();
+      expect(engine.readyCalls, 1);
+      expect(engine.initiateCalls, 0);
 
+      language.select('id');
+      await tester.pumpAndSettle();
+      expect(engine.readyCalls, 1);
+      expect(engine.initiateCalls, 0);
+    });
+
+    testWidgets('DiagnosisInputTab shows non-blocking warmup banner while engine warms up and keeps form interactive', (tester) async {
+      tester.view.physicalSize = const Size(1200, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final completer = Completer<void>();
+      final engine = FakeOnnxInferenceEngine(
+        mockHasBundle: true,
+        mockIsStandbyReady: false,
+      )..standbyCompleter = completer;
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider(create: (_) => AppLanguage()),
+            Provider<OnnxInferenceEngine>.value(value: engine),
+            ChangeNotifierProvider(
+              create: (_) => DiagnosisProvider(MockDiagnosisRepository()),
+            ),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: DiagnosisInputTab(onAnalyzeSuccess: () {}),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const Key('model-warmup-indicator')), findsOneWidget);
+      expect(find.text('Preparing AI model in background...'), findsOneWidget);
+      expect(find.byType(Dialog), findsNothing);
+
+      // Clinician can immediately type into patient name while warmup runs in background.
+      await tester.enterText(find.byType(TextFormField).first, 'Budi');
+      expect(find.text('Budi'), findsOneWidget);
+
+      completer.complete();
       await tester.pumpAndSettle();
 
-      expect(find.text('Doctor Dashboard'), findsOneWidget);
-      expect(engine.initiateCalls, 1);
+      expect(find.byKey(const Key('model-warmup-indicator')), findsNothing);
       expect(engine.isStandbyReady, isTrue);
     });
 
@@ -404,7 +551,7 @@ void main() {
   });
 
   group('AppLifecycleState management and memory leak prevention', () {
-    testWidgets('App paused releases standby and resumed restores standby for doctor', (tester) async {
+    testWidgets('App paused releases standby and resumed restores standby when on /diagnosis for doctor', (tester) async {
       tester.view.physicalSize = const Size(1200, 1000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -442,8 +589,8 @@ void main() {
           ],
           child: const MaterialApp(
             home: AppShell(
-              location: '/dashboard',
-              child: Text('Doctor Dashboard'),
+              location: '/diagnosis',
+              child: Text('Doctor Diagnosis'),
             ),
           ),
         ),
@@ -452,6 +599,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(engine.isStandbyReady, isTrue);
       expect(engine.initiateCalls, 1);
+      expect(find.byType(Dialog), findsNothing);
 
       // App is paused / backgrounded
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
@@ -460,18 +608,68 @@ void main() {
       expect(engine.releaseStandbyCalls, 1);
       expect(engine.isStandbyReady, isFalse);
 
-      // App is resumed
+      // App is resumed on /diagnosis -> restores in background with no Dialog
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
 
       expect(engine.initiateCalls, 2);
       expect(engine.isStandbyReady, isTrue);
+      expect(find.byType(Dialog), findsNothing);
 
       // Logout releases standby
       await auth.logout();
       await tester.pumpAndSettle();
 
       expect(engine.releaseStandbyCalls, greaterThanOrEqualTo(2));
+      expect(engine.isStandbyReady, isFalse);
+    });
+
+    testWidgets('App resumed on /dashboard keeps standby lazy for doctor', (tester) async {
+      tester.view.physicalSize = const Size(1200, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final repo = _TestAuthRepo(
+        profile: const UserProfile(
+          userId: 'doc-1',
+          tenantId: 'tenant-1',
+          displayName: 'Dr. Test',
+          email: 'doctor@example.test',
+          role: 'doctor',
+        ),
+      );
+      final engine = FakeOnnxInferenceEngine(
+        mockHasBundle: true,
+        mockIsStandbyReady: false,
+      );
+      final auth = AuthProvider(repo, hasActiveModel: () async => true);
+      await auth.login(email: 'doctor@example.test', password: 'password123');
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: auth),
+            ChangeNotifierProvider(create: (_) => AppLanguage()),
+            Provider<ValidationRepository>.value(value: MockValidationRepository()),
+            Provider<OnnxInferenceEngine>.value(value: engine),
+          ],
+          child: const MaterialApp(
+            home: AppShell(
+              location: '/dashboard',
+              child: Text('Doctor Dashboard'),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(engine.initiateCalls, 0);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pumpAndSettle();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
+      expect(engine.initiateCalls, 0);
       expect(engine.isStandbyReady, isFalse);
     });
 

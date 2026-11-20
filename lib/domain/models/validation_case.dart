@@ -25,7 +25,19 @@ class ValidationCase {
     required this.gender,
     required this.aiScore,
     required this.diagnosisDate,
+    this.diagnosedAt,
+    String? screeningDateTimeLabel,
     required this.status,
+    this.patientCode,
+    this.heightCm,
+    this.weightKg,
+    this.symptoms = const [],
+    this.isPositive,
+    this.validationScore,
+    this.lesionRating,
+    this.validationDeletedAt,
+    this.validationDeletedBy,
+    this.validationNote,
     this.patientId,
     this.serverVersion,
     this.hasConflict = false,
@@ -35,8 +47,17 @@ class ValidationCase {
     this.xrayUrl,
     this.heatmapUrl,
     required this.findings,
-  });
+  }) : _screeningDateTimeLabel = screeningDateTimeLabel;
 
+  final String? patientCode;
+  final double? heightCm, weightKg;
+  final List<String> symptoms;
+  final bool? isPositive;
+  final int? validationScore;
+  final int? lesionRating;
+  final DateTime? validationDeletedAt;
+  final String? validationDeletedBy;
+  final String? validationNote;
   final String id;
   final String name;
   final String initials;
@@ -44,6 +65,26 @@ class ValidationCase {
   final String gender;
   final int aiScore;
   final String diagnosisDate;
+
+  /// Original screening instant, kept separate from display text.
+  final DateTime? diagnosedAt;
+  final String? _screeningDateTimeLabel;
+
+  static String formatScreeningDateTimeLabel(
+    DateTime? diagnosedAt,
+    String diagnosisDate,
+  ) => diagnosedAt == null
+      ? diagnosisDate
+      : diagnosedAt
+            .toLocal()
+            .toIso8601String()
+            .replaceFirst('T', ' ')
+            .split('.')
+            .first;
+
+  String get screeningDateTimeLabel =>
+      _screeningDateTimeLabel ??
+      formatScreeningDateTimeLabel(diagnosedAt, diagnosisDate);
 
   /// "pending" | "agreed" | "disagreed"
   final String status;
@@ -72,7 +113,19 @@ class ValidationCase {
       gender: gender,
       aiScore: aiScore,
       diagnosisDate: diagnosisDate,
+      diagnosedAt: diagnosedAt,
+      screeningDateTimeLabel: _screeningDateTimeLabel,
       status: status ?? this.status,
+      patientCode: patientCode,
+      heightCm: heightCm,
+      weightKg: weightKg,
+      symptoms: symptoms,
+      isPositive: isPositive,
+      validationScore: validationScore,
+      lesionRating: lesionRating,
+      validationDeletedAt: validationDeletedAt,
+      validationDeletedBy: validationDeletedBy,
+      validationNote: validationNote,
       patientId: patientId,
       serverVersion: serverVersion ?? this.serverVersion,
       hasConflict: hasConflict ?? this.hasConflict,

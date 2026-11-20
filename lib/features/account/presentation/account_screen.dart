@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:myapp/core/localization/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/core/localization/app_language.dart';
+import 'package:myapp/features/auth/presentation/logout_confirmation_dialog.dart';
 import 'package:myapp/state/auth_provider.dart';
 
 class AccountScreen extends StatelessWidget {
@@ -36,19 +39,9 @@ class AccountScreen extends StatelessWidget {
             child: Text(context.tr('Ganti password', 'Change password')),
           ),
         FilledButton(
-          onPressed: () async {
-            try {
-              await auth.logout();
-            } catch (_) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: AppText('Sign out cleanup failed. Please retry.'),
-                  ),
-                );
-              }
-            }
-          },
+          onPressed: auth.isBusy
+              ? null
+              : () => unawaited(confirmAndLogout(context)),
           child: const AppText('Sign Out'),
         ),
       ],

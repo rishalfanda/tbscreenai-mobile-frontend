@@ -1,0 +1,973 @@
+{
+  "paths": {
+    "/api/v1/diagnoses/{diagnosis_id}/status": {
+      "patch": {
+        "tags": [
+          "diagnoses"
+        ],
+        "summary": "Update Status",
+        "description": "Doctor validation verdict \u00e2\u20ac\u201d mirrors the Flutter ValidationScreen flow.\n\nThe verdict's rules live on DiagnosisStatusUpdate rather than here, so\nthe offline sync path is held to them too; FastAPI answers a body that\nbreaks them with 422.\n\nThe validation is recorded beside the verdict: `lesion_rating` (the\nslider, 0-10, required), the note (optional, also when disagreeing), the\nsigned-in doctor as `validated_by`, and `validated_at` (sent, or now).\nBack to pending clears them. A deleted validation cannot be edited.\n\nThe same conflict rules as sync, so a validation is never replaced by a\nchange made on an older copy: `base_version` must match the server's\nversion, and once the diagnosis is validated it must be sent. A\nconcurrent change that lands between the check and the write is caught\nby the version counter and answered the same way.",
+        "operationId": "update_status_api_v1_diagnoses__diagnosis_id__status_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "diagnosis_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Diagnosis Id"
+            }
+          },
+          {
+            "name": "x-device-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Id of this tablet in the device registry. Sent together with X-Device-Credential on every request once the tablet is activated, and checked whenever sent.",
+              "title": "X-Device-Id"
+            },
+            "description": "Id of this tablet in the device registry. Sent together with X-Device-Credential on every request once the tablet is activated, and checked whenever sent."
+          },
+          {
+            "name": "x-device-credential",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The credential the tablet received when it redeemed its activation code (or, before that flow, the one shown at registration).",
+              "title": "X-Device-Credential"
+            },
+            "description": "The credential the tablet received when it redeemed its activation code (or, before that flow, the one shown at registration)."
+          },
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagnosisValidationPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosisOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict`: the diagnosis changed since `base_version`; `validation_exists`: it is already validated and no `base_version` was sent; `validation_deleted`: the doctor deleted this validation, so it cannot be edited. `detail.current_version` is the server's version."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/diagnoses/{diagnosis_id}/validation": {
+      "delete": {
+        "tags": [
+          "diagnoses"
+        ],
+        "summary": "Delete Diagnosis Validation",
+        "description": "The doctor deletes the validation from the validation list.\n\nNot a reset to pending, and not a deletion of the screening: the patient,\nthe AI result, the X-ray and the heatmap stay, and so do the verdict, the\nratings and the note, for audit. `validation_deleted_at` and\n`validation_deleted_by` record when and by whom. The diagnosis then drops\nout of GET /validations and its totals, comes to tablets through\n/sync/pull with those fields set, and can no longer be edited.\n\nHeld to the same version check as an edit. Deleting one already deleted\nchanges nothing and answers 200, whatever `base_version` says, so a\nretried request is harmless.",
+        "operationId": "delete_diagnosis_validation_api_v1_diagnoses__diagnosis_id__validation_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "diagnosis_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Diagnosis Id"
+            }
+          },
+          {
+            "name": "base_version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The diagnosis `version` the doctor was looking at.",
+              "title": "Base Version"
+            },
+            "description": "The diagnosis `version` the doctor was looking at."
+          },
+          {
+            "name": "x-device-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Id of this tablet in the device registry. Sent together with X-Device-Credential on every request once the tablet is activated, and checked whenever sent.",
+              "title": "X-Device-Id"
+            },
+            "description": "Id of this tablet in the device registry. Sent together with X-Device-Credential on every request once the tablet is activated, and checked whenever sent."
+          },
+          {
+            "name": "x-device-credential",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The credential the tablet received when it redeemed its activation code (or, before that flow, the one shown at registration).",
+              "title": "X-Device-Credential"
+            },
+            "description": "The credential the tablet received when it redeemed its activation code (or, before that flow, the one shown at registration)."
+          },
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosisOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`version_conflict`: the diagnosis changed since `base_version`. `detail.current_version` is the server's version."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ClinicalData": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "maximum": 1.0,
+            "minimum": 1.0,
+            "title": "Schema Version",
+            "default": 1
+          },
+          "height_cm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 300.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Cm"
+          },
+          "weight_kg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 500.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Kg"
+          },
+          "symptoms": {
+            "items": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Symptoms"
+          },
+          "comorbidity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comorbidity"
+          },
+          "smoking": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smoking"
+          },
+          "tb_contact": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tb Contact"
+          },
+          "pediatric_score": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 13.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pediatric Score"
+          },
+          "windows_presence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Windows Presence"
+          },
+          "sunlight_exposure": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sunlight Exposure"
+          },
+          "bta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bta"
+          },
+          "culture": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Culture"
+          },
+          "xpert": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xpert"
+          },
+          "igra": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Igra"
+          },
+          "tb_history": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tb History"
+          },
+          "tb_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tb Status"
+          }
+        },
+        "type": "object",
+        "title": "ClinicalData",
+        "description": "What the doctor recorded on the screening form beside the X-ray.\n\nMirrors the tablet's clinical snapshot (DiagnosisDraft.toClinicalSnapshot)\nso the app can send what it already builds. Unknown keys are dropped\nrather than stored: this is medical data, and only fields with a known\nmeaning are kept. The image file name the app includes is one of them,\nbecause a camera or a clinic may put a patient's name in it."
+      },
+      "DiagnosisOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "patient_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Patient Id"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "is_positive": {
+            "type": "boolean",
+            "title": "Is Positive"
+          },
+          "confidence": {
+            "type": "integer",
+            "title": "Confidence"
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version"
+          },
+          "processing_time_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processing Time Ms"
+          },
+          "findings": {
+            "$ref": "#/components/schemas/Findings-Output"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "doctor_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doctor Note"
+          },
+          "lesion_rating": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lesion Rating"
+          },
+          "validation_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Score"
+          },
+          "validated_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validated By"
+          },
+          "validated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validated At"
+          },
+          "validation_deleted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Deleted At"
+          },
+          "validation_deleted_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Deleted By"
+          },
+          "image_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Path"
+          },
+          "heatmap_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heatmap Sha256"
+          },
+          "heatmap_size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heatmap Size Bytes"
+          },
+          "diagnosed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Diagnosed At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "clinical": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClinicalData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Provenance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "patient_id",
+          "created_by",
+          "is_positive",
+          "confidence",
+          "model_version",
+          "processing_time_ms",
+          "findings",
+          "status",
+          "doctor_note",
+          "image_path",
+          "diagnosed_at",
+          "created_at",
+          "updated_at",
+          "version"
+        ],
+        "title": "DiagnosisOut"
+      },
+      "DiagnosisValidationPatch": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "pattern": "^(pending|agreed|disagreed)$",
+            "title": "Status"
+          },
+          "doctor_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doctor Note",
+            "description": "The doctor's note. Optional, also when disagreeing (Pak Wahyono's revision of 6 November); at most 500 characters."
+          },
+          "lesion_rating": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lesion Rating",
+            "description": "The doctor's rating of the lesion result, on the validation slider: an integer from 0 to 10. Required with agreed or disagreed; not allowed with pending."
+          },
+          "validation_score": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Score",
+            "description": "Deprecated. The slider's meaning from 1 November: the doctor's trust in the AI's result, 0 to 10. Still stored when sent, and never converted to or from `lesion_rating`; no longer required. Not allowed with pending."
+          },
+          "validated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validated At",
+            "description": "When the doctor confirmed, on the tablet. Send it for a validation made offline; left out, the server's time is used. Not later than the server's clock plus a few minutes."
+          },
+          "base_version": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version",
+            "description": "The diagnosis `version` the doctor was looking at. Required once the diagnosis has been validated: changing a validation without it is 409 `validation_exists`, and with an older one 409 `version_conflict`. Optional for the first validation of a pending diagnosis."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "DiagnosisValidationPatch",
+        "description": "PATCH /diagnoses/{id}/status: the verdict plus the version it was made on.\n\nSync carries the version on the op (`base_version`), so this field exists\nonly on the REST body."
+      },
+      "Findings-Output": {
+        "$ref": "#/components/schemas/FindingsOut"
+      },
+      "FindingsOut": {
+        "properties": {
+          "consolidation": {
+            "type": "number",
+            "title": "Consolidation"
+          },
+          "cavity": {
+            "type": "number",
+            "title": "Cavity"
+          },
+          "effusion": {
+            "type": "number",
+            "title": "Effusion"
+          },
+          "fibrotic": {
+            "type": "number",
+            "title": "Fibrotic"
+          },
+          "calcification": {
+            "type": "number",
+            "title": "Calcification"
+          },
+          "infiltrate": {
+            "type": "number",
+            "title": "Infiltrate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "consolidation",
+          "cavity",
+          "effusion",
+          "fibrotic",
+          "calcification"
+        ],
+        "title": "FindingsOut"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Provenance": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "maximum": 1.0,
+            "minimum": 1.0,
+            "title": "Schema Version",
+            "default": 1
+          },
+          "bundle_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Version"
+          },
+          "bundle_channel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Channel"
+          },
+          "rf_model": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rf Model"
+          },
+          "inferred_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inferred At"
+          },
+          "image_sha256": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Sha256"
+          },
+          "p_fused": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P Fused"
+          },
+          "p_cnn": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P Cnn"
+          },
+          "p_rf": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P Rf"
+          },
+          "lesion_confidence": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lesion Confidence"
+          },
+          "app_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Version"
+          }
+        },
+        "type": "object",
+        "title": "Provenance",
+        "description": "Which model produced the result, on what, and when.\n\nWritten by the tablet that ran the bundle. `bundle_version` and\n`rf_model` together name the exact graphs; the probabilities are the raw\npipeline outputs (manifest.json `outputs`) before rounding into\n`confidence`, kept so a disputed result can be re-examined."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

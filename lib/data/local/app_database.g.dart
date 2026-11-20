@@ -1021,6 +1021,72 @@ class $LocalDiagnosesTable extends LocalDiagnoses
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _lesionRatingMeta = const VerificationMeta(
+    'lesionRating',
+  );
+  @override
+  late final GeneratedColumn<int> lesionRating = GeneratedColumn<int>(
+    'lesion_rating',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _validationDeletedAtMeta =
+      const VerificationMeta('validationDeletedAt');
+  @override
+  late final GeneratedColumn<DateTime> validationDeletedAt =
+      GeneratedColumn<DateTime>(
+        'validation_deleted_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _validationDeletedByMeta =
+      const VerificationMeta('validationDeletedBy');
+  @override
+  late final GeneratedColumn<String> validationDeletedBy =
+      GeneratedColumn<String>(
+        'validation_deleted_by',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _validationScoreMeta = const VerificationMeta(
+    'validationScore',
+  );
+  @override
+  late final GeneratedColumn<int> validationScore = GeneratedColumn<int>(
+    'validation_score',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _validatedByMeta = const VerificationMeta(
+    'validatedBy',
+  );
+  @override
+  late final GeneratedColumn<String> validatedBy = GeneratedColumn<String>(
+    'validated_by',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _validatedAtMeta = const VerificationMeta(
+    'validatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> validatedAt = GeneratedColumn<DateTime>(
+    'validated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _diagnosedAtMeta = const VerificationMeta(
     'diagnosedAt',
   );
@@ -1209,6 +1275,12 @@ class $LocalDiagnosesTable extends LocalDiagnoses
     findings,
     status,
     doctorNote,
+    lesionRating,
+    validationDeletedAt,
+    validationDeletedBy,
+    validationScore,
+    validatedBy,
+    validatedAt,
     diagnosedAt,
     updatedAt,
     hasConflict,
@@ -1302,6 +1374,60 @@ class $LocalDiagnosesTable extends LocalDiagnoses
       context.handle(
         _doctorNoteMeta,
         doctorNote.isAcceptableOrUnknown(data['doctor_note']!, _doctorNoteMeta),
+      );
+    }
+    if (data.containsKey('lesion_rating')) {
+      context.handle(
+        _lesionRatingMeta,
+        lesionRating.isAcceptableOrUnknown(
+          data['lesion_rating']!,
+          _lesionRatingMeta,
+        ),
+      );
+    }
+    if (data.containsKey('validation_deleted_at')) {
+      context.handle(
+        _validationDeletedAtMeta,
+        validationDeletedAt.isAcceptableOrUnknown(
+          data['validation_deleted_at']!,
+          _validationDeletedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('validation_deleted_by')) {
+      context.handle(
+        _validationDeletedByMeta,
+        validationDeletedBy.isAcceptableOrUnknown(
+          data['validation_deleted_by']!,
+          _validationDeletedByMeta,
+        ),
+      );
+    }
+    if (data.containsKey('validation_score')) {
+      context.handle(
+        _validationScoreMeta,
+        validationScore.isAcceptableOrUnknown(
+          data['validation_score']!,
+          _validationScoreMeta,
+        ),
+      );
+    }
+    if (data.containsKey('validated_by')) {
+      context.handle(
+        _validatedByMeta,
+        validatedBy.isAcceptableOrUnknown(
+          data['validated_by']!,
+          _validatedByMeta,
+        ),
+      );
+    }
+    if (data.containsKey('validated_at')) {
+      context.handle(
+        _validatedAtMeta,
+        validatedAt.isAcceptableOrUnknown(
+          data['validated_at']!,
+          _validatedAtMeta,
+        ),
       );
     }
     if (data.containsKey('diagnosed_at')) {
@@ -1462,6 +1588,30 @@ class $LocalDiagnosesTable extends LocalDiagnoses
         DriftSqlType.string,
         data['${effectivePrefix}doctor_note'],
       ),
+      lesionRating: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}lesion_rating'],
+      ),
+      validationDeletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}validation_deleted_at'],
+      ),
+      validationDeletedBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}validation_deleted_by'],
+      ),
+      validationScore: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}validation_score'],
+      ),
+      validatedBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}validated_by'],
+      ),
+      validatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}validated_at'],
+      ),
       diagnosedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}diagnosed_at'],
@@ -1543,6 +1693,12 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
   final String findings;
   final String status;
   final String? doctorNote;
+  final int? lesionRating;
+  final DateTime? validationDeletedAt;
+  final String? validationDeletedBy;
+  final int? validationScore;
+  final String? validatedBy;
+  final DateTime? validatedAt;
   final DateTime diagnosedAt;
   final DateTime? updatedAt;
   final bool hasConflict;
@@ -1573,6 +1729,12 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     required this.findings,
     required this.status,
     this.doctorNote,
+    this.lesionRating,
+    this.validationDeletedAt,
+    this.validationDeletedBy,
+    this.validationScore,
+    this.validatedBy,
+    this.validatedAt,
     required this.diagnosedAt,
     this.updatedAt,
     required this.hasConflict,
@@ -1604,6 +1766,24 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     map['status'] = Variable<String>(status);
     if (!nullToAbsent || doctorNote != null) {
       map['doctor_note'] = Variable<String>(doctorNote);
+    }
+    if (!nullToAbsent || lesionRating != null) {
+      map['lesion_rating'] = Variable<int>(lesionRating);
+    }
+    if (!nullToAbsent || validationDeletedAt != null) {
+      map['validation_deleted_at'] = Variable<DateTime>(validationDeletedAt);
+    }
+    if (!nullToAbsent || validationDeletedBy != null) {
+      map['validation_deleted_by'] = Variable<String>(validationDeletedBy);
+    }
+    if (!nullToAbsent || validationScore != null) {
+      map['validation_score'] = Variable<int>(validationScore);
+    }
+    if (!nullToAbsent || validatedBy != null) {
+      map['validated_by'] = Variable<String>(validatedBy);
+    }
+    if (!nullToAbsent || validatedAt != null) {
+      map['validated_at'] = Variable<DateTime>(validatedAt);
     }
     map['diagnosed_at'] = Variable<DateTime>(diagnosedAt);
     if (!nullToAbsent || updatedAt != null) {
@@ -1652,6 +1832,24 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       doctorNote: doctorNote == null && nullToAbsent
           ? const Value.absent()
           : Value(doctorNote),
+      lesionRating: lesionRating == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lesionRating),
+      validationDeletedAt: validationDeletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validationDeletedAt),
+      validationDeletedBy: validationDeletedBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validationDeletedBy),
+      validationScore: validationScore == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validationScore),
+      validatedBy: validatedBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validatedBy),
+      validatedAt: validatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validatedAt),
       diagnosedAt: Value(diagnosedAt),
       updatedAt: updatedAt == null && nullToAbsent
           ? const Value.absent()
@@ -1699,6 +1897,16 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       findings: serializer.fromJson<String>(json['findings']),
       status: serializer.fromJson<String>(json['status']),
       doctorNote: serializer.fromJson<String?>(json['doctorNote']),
+      lesionRating: serializer.fromJson<int?>(json['lesionRating']),
+      validationDeletedAt: serializer.fromJson<DateTime?>(
+        json['validationDeletedAt'],
+      ),
+      validationDeletedBy: serializer.fromJson<String?>(
+        json['validationDeletedBy'],
+      ),
+      validationScore: serializer.fromJson<int?>(json['validationScore']),
+      validatedBy: serializer.fromJson<String?>(json['validatedBy']),
+      validatedAt: serializer.fromJson<DateTime?>(json['validatedAt']),
       diagnosedAt: serializer.fromJson<DateTime>(json['diagnosedAt']),
       updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
       hasConflict: serializer.fromJson<bool>(json['hasConflict']),
@@ -1729,6 +1937,12 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       'findings': serializer.toJson<String>(findings),
       'status': serializer.toJson<String>(status),
       'doctorNote': serializer.toJson<String?>(doctorNote),
+      'lesionRating': serializer.toJson<int?>(lesionRating),
+      'validationDeletedAt': serializer.toJson<DateTime?>(validationDeletedAt),
+      'validationDeletedBy': serializer.toJson<String?>(validationDeletedBy),
+      'validationScore': serializer.toJson<int?>(validationScore),
+      'validatedBy': serializer.toJson<String?>(validatedBy),
+      'validatedAt': serializer.toJson<DateTime?>(validatedAt),
       'diagnosedAt': serializer.toJson<DateTime>(diagnosedAt),
       'updatedAt': serializer.toJson<DateTime?>(updatedAt),
       'hasConflict': serializer.toJson<bool>(hasConflict),
@@ -1757,6 +1971,12 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     String? findings,
     String? status,
     Value<String?> doctorNote = const Value.absent(),
+    Value<int?> lesionRating = const Value.absent(),
+    Value<DateTime?> validationDeletedAt = const Value.absent(),
+    Value<String?> validationDeletedBy = const Value.absent(),
+    Value<int?> validationScore = const Value.absent(),
+    Value<String?> validatedBy = const Value.absent(),
+    Value<DateTime?> validatedAt = const Value.absent(),
     DateTime? diagnosedAt,
     Value<DateTime?> updatedAt = const Value.absent(),
     bool? hasConflict,
@@ -1784,6 +2004,18 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     findings: findings ?? this.findings,
     status: status ?? this.status,
     doctorNote: doctorNote.present ? doctorNote.value : this.doctorNote,
+    lesionRating: lesionRating.present ? lesionRating.value : this.lesionRating,
+    validationDeletedAt: validationDeletedAt.present
+        ? validationDeletedAt.value
+        : this.validationDeletedAt,
+    validationDeletedBy: validationDeletedBy.present
+        ? validationDeletedBy.value
+        : this.validationDeletedBy,
+    validationScore: validationScore.present
+        ? validationScore.value
+        : this.validationScore,
+    validatedBy: validatedBy.present ? validatedBy.value : this.validatedBy,
+    validatedAt: validatedAt.present ? validatedAt.value : this.validatedAt,
     diagnosedAt: diagnosedAt ?? this.diagnosedAt,
     updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
     hasConflict: hasConflict ?? this.hasConflict,
@@ -1827,6 +2059,24 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
       doctorNote: data.doctorNote.present
           ? data.doctorNote.value
           : this.doctorNote,
+      lesionRating: data.lesionRating.present
+          ? data.lesionRating.value
+          : this.lesionRating,
+      validationDeletedAt: data.validationDeletedAt.present
+          ? data.validationDeletedAt.value
+          : this.validationDeletedAt,
+      validationDeletedBy: data.validationDeletedBy.present
+          ? data.validationDeletedBy.value
+          : this.validationDeletedBy,
+      validationScore: data.validationScore.present
+          ? data.validationScore.value
+          : this.validationScore,
+      validatedBy: data.validatedBy.present
+          ? data.validatedBy.value
+          : this.validatedBy,
+      validatedAt: data.validatedAt.present
+          ? data.validatedAt.value
+          : this.validatedAt,
       diagnosedAt: data.diagnosedAt.present
           ? data.diagnosedAt.value
           : this.diagnosedAt,
@@ -1875,6 +2125,12 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
           ..write('findings: $findings, ')
           ..write('status: $status, ')
           ..write('doctorNote: $doctorNote, ')
+          ..write('lesionRating: $lesionRating, ')
+          ..write('validationDeletedAt: $validationDeletedAt, ')
+          ..write('validationDeletedBy: $validationDeletedBy, ')
+          ..write('validationScore: $validationScore, ')
+          ..write('validatedBy: $validatedBy, ')
+          ..write('validatedAt: $validatedAt, ')
           ..write('diagnosedAt: $diagnosedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('hasConflict: $hasConflict, ')
@@ -1905,6 +2161,12 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
     findings,
     status,
     doctorNote,
+    lesionRating,
+    validationDeletedAt,
+    validationDeletedBy,
+    validationScore,
+    validatedBy,
+    validatedAt,
     diagnosedAt,
     updatedAt,
     hasConflict,
@@ -1934,6 +2196,12 @@ class LocalDiagnose extends DataClass implements Insertable<LocalDiagnose> {
           other.findings == this.findings &&
           other.status == this.status &&
           other.doctorNote == this.doctorNote &&
+          other.lesionRating == this.lesionRating &&
+          other.validationDeletedAt == this.validationDeletedAt &&
+          other.validationDeletedBy == this.validationDeletedBy &&
+          other.validationScore == this.validationScore &&
+          other.validatedBy == this.validatedBy &&
+          other.validatedAt == this.validatedAt &&
           other.diagnosedAt == this.diagnosedAt &&
           other.updatedAt == this.updatedAt &&
           other.hasConflict == this.hasConflict &&
@@ -1961,6 +2229,12 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
   final Value<String> findings;
   final Value<String> status;
   final Value<String?> doctorNote;
+  final Value<int?> lesionRating;
+  final Value<DateTime?> validationDeletedAt;
+  final Value<String?> validationDeletedBy;
+  final Value<int?> validationScore;
+  final Value<String?> validatedBy;
+  final Value<DateTime?> validatedAt;
   final Value<DateTime> diagnosedAt;
   final Value<DateTime?> updatedAt;
   final Value<bool> hasConflict;
@@ -1987,6 +2261,12 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     this.findings = const Value.absent(),
     this.status = const Value.absent(),
     this.doctorNote = const Value.absent(),
+    this.lesionRating = const Value.absent(),
+    this.validationDeletedAt = const Value.absent(),
+    this.validationDeletedBy = const Value.absent(),
+    this.validationScore = const Value.absent(),
+    this.validatedBy = const Value.absent(),
+    this.validatedAt = const Value.absent(),
     this.diagnosedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.hasConflict = const Value.absent(),
@@ -2014,6 +2294,12 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     this.findings = const Value.absent(),
     this.status = const Value.absent(),
     this.doctorNote = const Value.absent(),
+    this.lesionRating = const Value.absent(),
+    this.validationDeletedAt = const Value.absent(),
+    this.validationDeletedBy = const Value.absent(),
+    this.validationScore = const Value.absent(),
+    this.validatedBy = const Value.absent(),
+    this.validatedAt = const Value.absent(),
     required DateTime diagnosedAt,
     this.updatedAt = const Value.absent(),
     this.hasConflict = const Value.absent(),
@@ -2046,6 +2332,12 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     Expression<String>? findings,
     Expression<String>? status,
     Expression<String>? doctorNote,
+    Expression<int>? lesionRating,
+    Expression<DateTime>? validationDeletedAt,
+    Expression<String>? validationDeletedBy,
+    Expression<int>? validationScore,
+    Expression<String>? validatedBy,
+    Expression<DateTime>? validatedAt,
     Expression<DateTime>? diagnosedAt,
     Expression<DateTime>? updatedAt,
     Expression<bool>? hasConflict,
@@ -2073,6 +2365,14 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
       if (findings != null) 'findings': findings,
       if (status != null) 'status': status,
       if (doctorNote != null) 'doctor_note': doctorNote,
+      if (lesionRating != null) 'lesion_rating': lesionRating,
+      if (validationDeletedAt != null)
+        'validation_deleted_at': validationDeletedAt,
+      if (validationDeletedBy != null)
+        'validation_deleted_by': validationDeletedBy,
+      if (validationScore != null) 'validation_score': validationScore,
+      if (validatedBy != null) 'validated_by': validatedBy,
+      if (validatedAt != null) 'validated_at': validatedAt,
       if (diagnosedAt != null) 'diagnosed_at': diagnosedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (hasConflict != null) 'has_conflict': hasConflict,
@@ -2102,6 +2402,12 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     Value<String>? findings,
     Value<String>? status,
     Value<String?>? doctorNote,
+    Value<int?>? lesionRating,
+    Value<DateTime?>? validationDeletedAt,
+    Value<String?>? validationDeletedBy,
+    Value<int?>? validationScore,
+    Value<String?>? validatedBy,
+    Value<DateTime?>? validatedAt,
     Value<DateTime>? diagnosedAt,
     Value<DateTime?>? updatedAt,
     Value<bool>? hasConflict,
@@ -2129,6 +2435,12 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
       findings: findings ?? this.findings,
       status: status ?? this.status,
       doctorNote: doctorNote ?? this.doctorNote,
+      lesionRating: lesionRating ?? this.lesionRating,
+      validationDeletedAt: validationDeletedAt ?? this.validationDeletedAt,
+      validationDeletedBy: validationDeletedBy ?? this.validationDeletedBy,
+      validationScore: validationScore ?? this.validationScore,
+      validatedBy: validatedBy ?? this.validatedBy,
+      validatedAt: validatedAt ?? this.validatedAt,
       diagnosedAt: diagnosedAt ?? this.diagnosedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       hasConflict: hasConflict ?? this.hasConflict,
@@ -2177,6 +2489,28 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
     }
     if (doctorNote.present) {
       map['doctor_note'] = Variable<String>(doctorNote.value);
+    }
+    if (lesionRating.present) {
+      map['lesion_rating'] = Variable<int>(lesionRating.value);
+    }
+    if (validationDeletedAt.present) {
+      map['validation_deleted_at'] = Variable<DateTime>(
+        validationDeletedAt.value,
+      );
+    }
+    if (validationDeletedBy.present) {
+      map['validation_deleted_by'] = Variable<String>(
+        validationDeletedBy.value,
+      );
+    }
+    if (validationScore.present) {
+      map['validation_score'] = Variable<int>(validationScore.value);
+    }
+    if (validatedBy.present) {
+      map['validated_by'] = Variable<String>(validatedBy.value);
+    }
+    if (validatedAt.present) {
+      map['validated_at'] = Variable<DateTime>(validatedAt.value);
     }
     if (diagnosedAt.present) {
       map['diagnosed_at'] = Variable<DateTime>(diagnosedAt.value);
@@ -2241,6 +2575,12 @@ class LocalDiagnosesCompanion extends UpdateCompanion<LocalDiagnose> {
           ..write('findings: $findings, ')
           ..write('status: $status, ')
           ..write('doctorNote: $doctorNote, ')
+          ..write('lesionRating: $lesionRating, ')
+          ..write('validationDeletedAt: $validationDeletedAt, ')
+          ..write('validationDeletedBy: $validationDeletedBy, ')
+          ..write('validationScore: $validationScore, ')
+          ..write('validatedBy: $validatedBy, ')
+          ..write('validatedAt: $validatedAt, ')
           ..write('diagnosedAt: $diagnosedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('hasConflict: $hasConflict, ')
@@ -4018,6 +4358,811 @@ class EncryptedXrayArtifactsCompanion
   }
 }
 
+class $ArchivedXrayArtifactsTable extends ArchivedXrayArtifacts
+    with TableInfo<$ArchivedXrayArtifactsTable, ArchivedXrayArtifact> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ArchivedXrayArtifactsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _archiveKeyMeta = const VerificationMeta(
+    'archiveKey',
+  );
+  @override
+  late final GeneratedColumn<String> archiveKey = GeneratedColumn<String>(
+    'archive_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _artifactIdMeta = const VerificationMeta(
+    'artifactId',
+  );
+  @override
+  late final GeneratedColumn<String> artifactId = GeneratedColumn<String>(
+    'artifact_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _cipherTextMeta = const VerificationMeta(
+    'cipherText',
+  );
+  @override
+  late final GeneratedColumn<Uint8List> cipherText = GeneratedColumn<Uint8List>(
+    'cipher_text',
+    aliasedName,
+    false,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nonceMeta = const VerificationMeta('nonce');
+  @override
+  late final GeneratedColumn<Uint8List> nonce = GeneratedColumn<Uint8List>(
+    'nonce',
+    aliasedName,
+    false,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _macMeta = const VerificationMeta('mac');
+  @override
+  late final GeneratedColumn<Uint8List> mac = GeneratedColumn<Uint8List>(
+    'mac',
+    aliasedName,
+    false,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _filenameMeta = const VerificationMeta(
+    'filename',
+  );
+  @override
+  late final GeneratedColumn<String> filename = GeneratedColumn<String>(
+    'filename',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _mimeTypeMeta = const VerificationMeta(
+    'mimeType',
+  );
+  @override
+  late final GeneratedColumn<String> mimeType = GeneratedColumn<String>(
+    'mime_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _checksumMeta = const VerificationMeta(
+    'checksum',
+  );
+  @override
+  late final GeneratedColumn<String> checksum = GeneratedColumn<String>(
+    'checksum',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sizeBytesMeta = const VerificationMeta(
+    'sizeBytes',
+  );
+  @override
+  late final GeneratedColumn<int> sizeBytes = GeneratedColumn<int>(
+    'size_bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _tenantIdMeta = const VerificationMeta(
+    'tenantId',
+  );
+  @override
+  late final GeneratedColumn<String> tenantId = GeneratedColumn<String>(
+    'tenant_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deviceIdMeta = const VerificationMeta(
+    'deviceId',
+  );
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+    'device_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    archiveKey,
+    artifactId,
+    cipherText,
+    nonce,
+    mac,
+    filename,
+    mimeType,
+    source,
+    checksum,
+    sizeBytes,
+    createdAt,
+    tenantId,
+    userId,
+    deviceId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'archived_xray_artifacts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ArchivedXrayArtifact> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('archive_key')) {
+      context.handle(
+        _archiveKeyMeta,
+        archiveKey.isAcceptableOrUnknown(data['archive_key']!, _archiveKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_archiveKeyMeta);
+    }
+    if (data.containsKey('artifact_id')) {
+      context.handle(
+        _artifactIdMeta,
+        artifactId.isAcceptableOrUnknown(data['artifact_id']!, _artifactIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_artifactIdMeta);
+    }
+    if (data.containsKey('cipher_text')) {
+      context.handle(
+        _cipherTextMeta,
+        cipherText.isAcceptableOrUnknown(data['cipher_text']!, _cipherTextMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_cipherTextMeta);
+    }
+    if (data.containsKey('nonce')) {
+      context.handle(
+        _nonceMeta,
+        nonce.isAcceptableOrUnknown(data['nonce']!, _nonceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nonceMeta);
+    }
+    if (data.containsKey('mac')) {
+      context.handle(
+        _macMeta,
+        mac.isAcceptableOrUnknown(data['mac']!, _macMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_macMeta);
+    }
+    if (data.containsKey('filename')) {
+      context.handle(
+        _filenameMeta,
+        filename.isAcceptableOrUnknown(data['filename']!, _filenameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_filenameMeta);
+    }
+    if (data.containsKey('mime_type')) {
+      context.handle(
+        _mimeTypeMeta,
+        mimeType.isAcceptableOrUnknown(data['mime_type']!, _mimeTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_mimeTypeMeta);
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceMeta);
+    }
+    if (data.containsKey('checksum')) {
+      context.handle(
+        _checksumMeta,
+        checksum.isAcceptableOrUnknown(data['checksum']!, _checksumMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_checksumMeta);
+    }
+    if (data.containsKey('size_bytes')) {
+      context.handle(
+        _sizeBytesMeta,
+        sizeBytes.isAcceptableOrUnknown(data['size_bytes']!, _sizeBytesMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sizeBytesMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('tenant_id')) {
+      context.handle(
+        _tenantIdMeta,
+        tenantId.isAcceptableOrUnknown(data['tenant_id']!, _tenantIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_tenantIdMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(
+        _deviceIdMeta,
+        deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deviceIdMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {archiveKey, artifactId};
+  @override
+  ArchivedXrayArtifact map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ArchivedXrayArtifact(
+      archiveKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}archive_key'],
+      )!,
+      artifactId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}artifact_id'],
+      )!,
+      cipherText: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}cipher_text'],
+      )!,
+      nonce: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}nonce'],
+      )!,
+      mac: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}mac'],
+      )!,
+      filename: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}filename'],
+      )!,
+      mimeType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mime_type'],
+      )!,
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      checksum: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}checksum'],
+      )!,
+      sizeBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}size_bytes'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      tenantId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tenant_id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      deviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_id'],
+      )!,
+    );
+  }
+
+  @override
+  $ArchivedXrayArtifactsTable createAlias(String alias) {
+    return $ArchivedXrayArtifactsTable(attachedDatabase, alias);
+  }
+}
+
+class ArchivedXrayArtifact extends DataClass
+    implements Insertable<ArchivedXrayArtifact> {
+  final String archiveKey;
+  final String artifactId;
+  final Uint8List cipherText;
+  final Uint8List nonce;
+  final Uint8List mac;
+  final String filename;
+  final String mimeType;
+  final String source;
+  final String checksum;
+  final int sizeBytes;
+  final DateTime createdAt;
+  final String tenantId;
+  final String userId;
+  final String deviceId;
+  const ArchivedXrayArtifact({
+    required this.archiveKey,
+    required this.artifactId,
+    required this.cipherText,
+    required this.nonce,
+    required this.mac,
+    required this.filename,
+    required this.mimeType,
+    required this.source,
+    required this.checksum,
+    required this.sizeBytes,
+    required this.createdAt,
+    required this.tenantId,
+    required this.userId,
+    required this.deviceId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['archive_key'] = Variable<String>(archiveKey);
+    map['artifact_id'] = Variable<String>(artifactId);
+    map['cipher_text'] = Variable<Uint8List>(cipherText);
+    map['nonce'] = Variable<Uint8List>(nonce);
+    map['mac'] = Variable<Uint8List>(mac);
+    map['filename'] = Variable<String>(filename);
+    map['mime_type'] = Variable<String>(mimeType);
+    map['source'] = Variable<String>(source);
+    map['checksum'] = Variable<String>(checksum);
+    map['size_bytes'] = Variable<int>(sizeBytes);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['tenant_id'] = Variable<String>(tenantId);
+    map['user_id'] = Variable<String>(userId);
+    map['device_id'] = Variable<String>(deviceId);
+    return map;
+  }
+
+  ArchivedXrayArtifactsCompanion toCompanion(bool nullToAbsent) {
+    return ArchivedXrayArtifactsCompanion(
+      archiveKey: Value(archiveKey),
+      artifactId: Value(artifactId),
+      cipherText: Value(cipherText),
+      nonce: Value(nonce),
+      mac: Value(mac),
+      filename: Value(filename),
+      mimeType: Value(mimeType),
+      source: Value(source),
+      checksum: Value(checksum),
+      sizeBytes: Value(sizeBytes),
+      createdAt: Value(createdAt),
+      tenantId: Value(tenantId),
+      userId: Value(userId),
+      deviceId: Value(deviceId),
+    );
+  }
+
+  factory ArchivedXrayArtifact.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ArchivedXrayArtifact(
+      archiveKey: serializer.fromJson<String>(json['archiveKey']),
+      artifactId: serializer.fromJson<String>(json['artifactId']),
+      cipherText: serializer.fromJson<Uint8List>(json['cipherText']),
+      nonce: serializer.fromJson<Uint8List>(json['nonce']),
+      mac: serializer.fromJson<Uint8List>(json['mac']),
+      filename: serializer.fromJson<String>(json['filename']),
+      mimeType: serializer.fromJson<String>(json['mimeType']),
+      source: serializer.fromJson<String>(json['source']),
+      checksum: serializer.fromJson<String>(json['checksum']),
+      sizeBytes: serializer.fromJson<int>(json['sizeBytes']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      tenantId: serializer.fromJson<String>(json['tenantId']),
+      userId: serializer.fromJson<String>(json['userId']),
+      deviceId: serializer.fromJson<String>(json['deviceId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'archiveKey': serializer.toJson<String>(archiveKey),
+      'artifactId': serializer.toJson<String>(artifactId),
+      'cipherText': serializer.toJson<Uint8List>(cipherText),
+      'nonce': serializer.toJson<Uint8List>(nonce),
+      'mac': serializer.toJson<Uint8List>(mac),
+      'filename': serializer.toJson<String>(filename),
+      'mimeType': serializer.toJson<String>(mimeType),
+      'source': serializer.toJson<String>(source),
+      'checksum': serializer.toJson<String>(checksum),
+      'sizeBytes': serializer.toJson<int>(sizeBytes),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'tenantId': serializer.toJson<String>(tenantId),
+      'userId': serializer.toJson<String>(userId),
+      'deviceId': serializer.toJson<String>(deviceId),
+    };
+  }
+
+  ArchivedXrayArtifact copyWith({
+    String? archiveKey,
+    String? artifactId,
+    Uint8List? cipherText,
+    Uint8List? nonce,
+    Uint8List? mac,
+    String? filename,
+    String? mimeType,
+    String? source,
+    String? checksum,
+    int? sizeBytes,
+    DateTime? createdAt,
+    String? tenantId,
+    String? userId,
+    String? deviceId,
+  }) => ArchivedXrayArtifact(
+    archiveKey: archiveKey ?? this.archiveKey,
+    artifactId: artifactId ?? this.artifactId,
+    cipherText: cipherText ?? this.cipherText,
+    nonce: nonce ?? this.nonce,
+    mac: mac ?? this.mac,
+    filename: filename ?? this.filename,
+    mimeType: mimeType ?? this.mimeType,
+    source: source ?? this.source,
+    checksum: checksum ?? this.checksum,
+    sizeBytes: sizeBytes ?? this.sizeBytes,
+    createdAt: createdAt ?? this.createdAt,
+    tenantId: tenantId ?? this.tenantId,
+    userId: userId ?? this.userId,
+    deviceId: deviceId ?? this.deviceId,
+  );
+  ArchivedXrayArtifact copyWithCompanion(ArchivedXrayArtifactsCompanion data) {
+    return ArchivedXrayArtifact(
+      archiveKey: data.archiveKey.present
+          ? data.archiveKey.value
+          : this.archiveKey,
+      artifactId: data.artifactId.present
+          ? data.artifactId.value
+          : this.artifactId,
+      cipherText: data.cipherText.present
+          ? data.cipherText.value
+          : this.cipherText,
+      nonce: data.nonce.present ? data.nonce.value : this.nonce,
+      mac: data.mac.present ? data.mac.value : this.mac,
+      filename: data.filename.present ? data.filename.value : this.filename,
+      mimeType: data.mimeType.present ? data.mimeType.value : this.mimeType,
+      source: data.source.present ? data.source.value : this.source,
+      checksum: data.checksum.present ? data.checksum.value : this.checksum,
+      sizeBytes: data.sizeBytes.present ? data.sizeBytes.value : this.sizeBytes,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      tenantId: data.tenantId.present ? data.tenantId.value : this.tenantId,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ArchivedXrayArtifact(')
+          ..write('archiveKey: $archiveKey, ')
+          ..write('artifactId: $artifactId, ')
+          ..write('cipherText: $cipherText, ')
+          ..write('nonce: $nonce, ')
+          ..write('mac: $mac, ')
+          ..write('filename: $filename, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('source: $source, ')
+          ..write('checksum: $checksum, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('deviceId: $deviceId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    archiveKey,
+    artifactId,
+    $driftBlobEquality.hash(cipherText),
+    $driftBlobEquality.hash(nonce),
+    $driftBlobEquality.hash(mac),
+    filename,
+    mimeType,
+    source,
+    checksum,
+    sizeBytes,
+    createdAt,
+    tenantId,
+    userId,
+    deviceId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ArchivedXrayArtifact &&
+          other.archiveKey == this.archiveKey &&
+          other.artifactId == this.artifactId &&
+          $driftBlobEquality.equals(other.cipherText, this.cipherText) &&
+          $driftBlobEquality.equals(other.nonce, this.nonce) &&
+          $driftBlobEquality.equals(other.mac, this.mac) &&
+          other.filename == this.filename &&
+          other.mimeType == this.mimeType &&
+          other.source == this.source &&
+          other.checksum == this.checksum &&
+          other.sizeBytes == this.sizeBytes &&
+          other.createdAt == this.createdAt &&
+          other.tenantId == this.tenantId &&
+          other.userId == this.userId &&
+          other.deviceId == this.deviceId);
+}
+
+class ArchivedXrayArtifactsCompanion
+    extends UpdateCompanion<ArchivedXrayArtifact> {
+  final Value<String> archiveKey;
+  final Value<String> artifactId;
+  final Value<Uint8List> cipherText;
+  final Value<Uint8List> nonce;
+  final Value<Uint8List> mac;
+  final Value<String> filename;
+  final Value<String> mimeType;
+  final Value<String> source;
+  final Value<String> checksum;
+  final Value<int> sizeBytes;
+  final Value<DateTime> createdAt;
+  final Value<String> tenantId;
+  final Value<String> userId;
+  final Value<String> deviceId;
+  final Value<int> rowid;
+  const ArchivedXrayArtifactsCompanion({
+    this.archiveKey = const Value.absent(),
+    this.artifactId = const Value.absent(),
+    this.cipherText = const Value.absent(),
+    this.nonce = const Value.absent(),
+    this.mac = const Value.absent(),
+    this.filename = const Value.absent(),
+    this.mimeType = const Value.absent(),
+    this.source = const Value.absent(),
+    this.checksum = const Value.absent(),
+    this.sizeBytes = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.tenantId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ArchivedXrayArtifactsCompanion.insert({
+    required String archiveKey,
+    required String artifactId,
+    required Uint8List cipherText,
+    required Uint8List nonce,
+    required Uint8List mac,
+    required String filename,
+    required String mimeType,
+    required String source,
+    required String checksum,
+    required int sizeBytes,
+    required DateTime createdAt,
+    required String tenantId,
+    required String userId,
+    required String deviceId,
+    this.rowid = const Value.absent(),
+  }) : archiveKey = Value(archiveKey),
+       artifactId = Value(artifactId),
+       cipherText = Value(cipherText),
+       nonce = Value(nonce),
+       mac = Value(mac),
+       filename = Value(filename),
+       mimeType = Value(mimeType),
+       source = Value(source),
+       checksum = Value(checksum),
+       sizeBytes = Value(sizeBytes),
+       createdAt = Value(createdAt),
+       tenantId = Value(tenantId),
+       userId = Value(userId),
+       deviceId = Value(deviceId);
+  static Insertable<ArchivedXrayArtifact> custom({
+    Expression<String>? archiveKey,
+    Expression<String>? artifactId,
+    Expression<Uint8List>? cipherText,
+    Expression<Uint8List>? nonce,
+    Expression<Uint8List>? mac,
+    Expression<String>? filename,
+    Expression<String>? mimeType,
+    Expression<String>? source,
+    Expression<String>? checksum,
+    Expression<int>? sizeBytes,
+    Expression<DateTime>? createdAt,
+    Expression<String>? tenantId,
+    Expression<String>? userId,
+    Expression<String>? deviceId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (archiveKey != null) 'archive_key': archiveKey,
+      if (artifactId != null) 'artifact_id': artifactId,
+      if (cipherText != null) 'cipher_text': cipherText,
+      if (nonce != null) 'nonce': nonce,
+      if (mac != null) 'mac': mac,
+      if (filename != null) 'filename': filename,
+      if (mimeType != null) 'mime_type': mimeType,
+      if (source != null) 'source': source,
+      if (checksum != null) 'checksum': checksum,
+      if (sizeBytes != null) 'size_bytes': sizeBytes,
+      if (createdAt != null) 'created_at': createdAt,
+      if (tenantId != null) 'tenant_id': tenantId,
+      if (userId != null) 'user_id': userId,
+      if (deviceId != null) 'device_id': deviceId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ArchivedXrayArtifactsCompanion copyWith({
+    Value<String>? archiveKey,
+    Value<String>? artifactId,
+    Value<Uint8List>? cipherText,
+    Value<Uint8List>? nonce,
+    Value<Uint8List>? mac,
+    Value<String>? filename,
+    Value<String>? mimeType,
+    Value<String>? source,
+    Value<String>? checksum,
+    Value<int>? sizeBytes,
+    Value<DateTime>? createdAt,
+    Value<String>? tenantId,
+    Value<String>? userId,
+    Value<String>? deviceId,
+    Value<int>? rowid,
+  }) {
+    return ArchivedXrayArtifactsCompanion(
+      archiveKey: archiveKey ?? this.archiveKey,
+      artifactId: artifactId ?? this.artifactId,
+      cipherText: cipherText ?? this.cipherText,
+      nonce: nonce ?? this.nonce,
+      mac: mac ?? this.mac,
+      filename: filename ?? this.filename,
+      mimeType: mimeType ?? this.mimeType,
+      source: source ?? this.source,
+      checksum: checksum ?? this.checksum,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
+      createdAt: createdAt ?? this.createdAt,
+      tenantId: tenantId ?? this.tenantId,
+      userId: userId ?? this.userId,
+      deviceId: deviceId ?? this.deviceId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (archiveKey.present) {
+      map['archive_key'] = Variable<String>(archiveKey.value);
+    }
+    if (artifactId.present) {
+      map['artifact_id'] = Variable<String>(artifactId.value);
+    }
+    if (cipherText.present) {
+      map['cipher_text'] = Variable<Uint8List>(cipherText.value);
+    }
+    if (nonce.present) {
+      map['nonce'] = Variable<Uint8List>(nonce.value);
+    }
+    if (mac.present) {
+      map['mac'] = Variable<Uint8List>(mac.value);
+    }
+    if (filename.present) {
+      map['filename'] = Variable<String>(filename.value);
+    }
+    if (mimeType.present) {
+      map['mime_type'] = Variable<String>(mimeType.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (checksum.present) {
+      map['checksum'] = Variable<String>(checksum.value);
+    }
+    if (sizeBytes.present) {
+      map['size_bytes'] = Variable<int>(sizeBytes.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (tenantId.present) {
+      map['tenant_id'] = Variable<String>(tenantId.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ArchivedXrayArtifactsCompanion(')
+          ..write('archiveKey: $archiveKey, ')
+          ..write('artifactId: $artifactId, ')
+          ..write('cipherText: $cipherText, ')
+          ..write('nonce: $nonce, ')
+          ..write('mac: $mac, ')
+          ..write('filename: $filename, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('source: $source, ')
+          ..write('checksum: $checksum, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $ClinicalAuditEventsTable extends ClinicalAuditEvents
     with TableInfo<$ClinicalAuditEventsTable, ClinicalAuditEvent> {
   @override
@@ -4794,6 +5939,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $SyncQueueTable syncQueue = $SyncQueueTable(this);
   late final $EncryptedXrayArtifactsTable encryptedXrayArtifacts =
       $EncryptedXrayArtifactsTable(this);
+  late final $ArchivedXrayArtifactsTable archivedXrayArtifacts =
+      $ArchivedXrayArtifactsTable(this);
   late final $ClinicalAuditEventsTable clinicalAuditEvents =
       $ClinicalAuditEventsTable(this);
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
@@ -4806,6 +5953,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     localDiagnoses,
     syncQueue,
     encryptedXrayArtifacts,
+    archivedXrayArtifacts,
     clinicalAuditEvents,
     appSettings,
   ];
@@ -5246,6 +6394,12 @@ typedef $$LocalDiagnosesTableCreateCompanionBuilder =
       Value<String> findings,
       Value<String> status,
       Value<String?> doctorNote,
+      Value<int?> lesionRating,
+      Value<DateTime?> validationDeletedAt,
+      Value<String?> validationDeletedBy,
+      Value<int?> validationScore,
+      Value<String?> validatedBy,
+      Value<DateTime?> validatedAt,
       required DateTime diagnosedAt,
       Value<DateTime?> updatedAt,
       Value<bool> hasConflict,
@@ -5274,6 +6428,12 @@ typedef $$LocalDiagnosesTableUpdateCompanionBuilder =
       Value<String> findings,
       Value<String> status,
       Value<String?> doctorNote,
+      Value<int?> lesionRating,
+      Value<DateTime?> validationDeletedAt,
+      Value<String?> validationDeletedBy,
+      Value<int?> validationScore,
+      Value<String?> validatedBy,
+      Value<DateTime?> validatedAt,
       Value<DateTime> diagnosedAt,
       Value<DateTime?> updatedAt,
       Value<bool> hasConflict,
@@ -5343,6 +6503,36 @@ class $$LocalDiagnosesTableFilterComposer
 
   ColumnFilters<String> get doctorNote => $composableBuilder(
     column: $table.doctorNote,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get lesionRating => $composableBuilder(
+    column: $table.lesionRating,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get validationDeletedAt => $composableBuilder(
+    column: $table.validationDeletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get validationDeletedBy => $composableBuilder(
+    column: $table.validationDeletedBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get validationScore => $composableBuilder(
+    column: $table.validationScore,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get validatedBy => $composableBuilder(
+    column: $table.validatedBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get validatedAt => $composableBuilder(
+    column: $table.validatedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5476,6 +6666,36 @@ class $$LocalDiagnosesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get lesionRating => $composableBuilder(
+    column: $table.lesionRating,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get validationDeletedAt => $composableBuilder(
+    column: $table.validationDeletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get validationDeletedBy => $composableBuilder(
+    column: $table.validationDeletedBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get validationScore => $composableBuilder(
+    column: $table.validationScore,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get validatedBy => $composableBuilder(
+    column: $table.validatedBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get validatedAt => $composableBuilder(
+    column: $table.validatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get diagnosedAt => $composableBuilder(
     column: $table.diagnosedAt,
     builder: (column) => ColumnOrderings(column),
@@ -5598,6 +6818,36 @@ class $$LocalDiagnosesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get lesionRating => $composableBuilder(
+    column: $table.lesionRating,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get validationDeletedAt => $composableBuilder(
+    column: $table.validationDeletedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get validationDeletedBy => $composableBuilder(
+    column: $table.validationDeletedBy,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get validationScore => $composableBuilder(
+    column: $table.validationScore,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get validatedBy => $composableBuilder(
+    column: $table.validatedBy,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get validatedAt => $composableBuilder(
+    column: $table.validatedAt,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get diagnosedAt => $composableBuilder(
     column: $table.diagnosedAt,
     builder: (column) => column,
@@ -5704,6 +6954,12 @@ class $$LocalDiagnosesTableTableManager
                 Value<String> findings = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> doctorNote = const Value.absent(),
+                Value<int?> lesionRating = const Value.absent(),
+                Value<DateTime?> validationDeletedAt = const Value.absent(),
+                Value<String?> validationDeletedBy = const Value.absent(),
+                Value<int?> validationScore = const Value.absent(),
+                Value<String?> validatedBy = const Value.absent(),
+                Value<DateTime?> validatedAt = const Value.absent(),
                 Value<DateTime> diagnosedAt = const Value.absent(),
                 Value<DateTime?> updatedAt = const Value.absent(),
                 Value<bool> hasConflict = const Value.absent(),
@@ -5730,6 +6986,12 @@ class $$LocalDiagnosesTableTableManager
                 findings: findings,
                 status: status,
                 doctorNote: doctorNote,
+                lesionRating: lesionRating,
+                validationDeletedAt: validationDeletedAt,
+                validationDeletedBy: validationDeletedBy,
+                validationScore: validationScore,
+                validatedBy: validatedBy,
+                validatedAt: validatedAt,
                 diagnosedAt: diagnosedAt,
                 updatedAt: updatedAt,
                 hasConflict: hasConflict,
@@ -5758,6 +7020,12 @@ class $$LocalDiagnosesTableTableManager
                 Value<String> findings = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> doctorNote = const Value.absent(),
+                Value<int?> lesionRating = const Value.absent(),
+                Value<DateTime?> validationDeletedAt = const Value.absent(),
+                Value<String?> validationDeletedBy = const Value.absent(),
+                Value<int?> validationScore = const Value.absent(),
+                Value<String?> validatedBy = const Value.absent(),
+                Value<DateTime?> validatedAt = const Value.absent(),
                 required DateTime diagnosedAt,
                 Value<DateTime?> updatedAt = const Value.absent(),
                 Value<bool> hasConflict = const Value.absent(),
@@ -5784,6 +7052,12 @@ class $$LocalDiagnosesTableTableManager
                 findings: findings,
                 status: status,
                 doctorNote: doctorNote,
+                lesionRating: lesionRating,
+                validationDeletedAt: validationDeletedAt,
+                validationDeletedBy: validationDeletedBy,
+                validationScore: validationScore,
+                validatedBy: validatedBy,
+                validatedAt: validatedAt,
                 diagnosedAt: diagnosedAt,
                 updatedAt: updatedAt,
                 hasConflict: hasConflict,
@@ -6671,6 +7945,414 @@ typedef $$EncryptedXrayArtifactsTableProcessedTableManager =
       EncryptedXrayArtifact,
       PrefetchHooks Function()
     >;
+typedef $$ArchivedXrayArtifactsTableCreateCompanionBuilder =
+    ArchivedXrayArtifactsCompanion Function({
+      required String archiveKey,
+      required String artifactId,
+      required Uint8List cipherText,
+      required Uint8List nonce,
+      required Uint8List mac,
+      required String filename,
+      required String mimeType,
+      required String source,
+      required String checksum,
+      required int sizeBytes,
+      required DateTime createdAt,
+      required String tenantId,
+      required String userId,
+      required String deviceId,
+      Value<int> rowid,
+    });
+typedef $$ArchivedXrayArtifactsTableUpdateCompanionBuilder =
+    ArchivedXrayArtifactsCompanion Function({
+      Value<String> archiveKey,
+      Value<String> artifactId,
+      Value<Uint8List> cipherText,
+      Value<Uint8List> nonce,
+      Value<Uint8List> mac,
+      Value<String> filename,
+      Value<String> mimeType,
+      Value<String> source,
+      Value<String> checksum,
+      Value<int> sizeBytes,
+      Value<DateTime> createdAt,
+      Value<String> tenantId,
+      Value<String> userId,
+      Value<String> deviceId,
+      Value<int> rowid,
+    });
+
+class $$ArchivedXrayArtifactsTableFilterComposer
+    extends Composer<_$AppDatabase, $ArchivedXrayArtifactsTable> {
+  $$ArchivedXrayArtifactsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get archiveKey => $composableBuilder(
+    column: $table.archiveKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get artifactId => $composableBuilder(
+    column: $table.artifactId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get cipherText => $composableBuilder(
+    column: $table.cipherText,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get nonce => $composableBuilder(
+    column: $table.nonce,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get mac => $composableBuilder(
+    column: $table.mac,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get filename => $composableBuilder(
+    column: $table.filename,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mimeType => $composableBuilder(
+    column: $table.mimeType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get checksum => $composableBuilder(
+    column: $table.checksum,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ArchivedXrayArtifactsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ArchivedXrayArtifactsTable> {
+  $$ArchivedXrayArtifactsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get archiveKey => $composableBuilder(
+    column: $table.archiveKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get artifactId => $composableBuilder(
+    column: $table.artifactId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get cipherText => $composableBuilder(
+    column: $table.cipherText,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get nonce => $composableBuilder(
+    column: $table.nonce,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get mac => $composableBuilder(
+    column: $table.mac,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get filename => $composableBuilder(
+    column: $table.filename,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mimeType => $composableBuilder(
+    column: $table.mimeType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get checksum => $composableBuilder(
+    column: $table.checksum,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ArchivedXrayArtifactsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ArchivedXrayArtifactsTable> {
+  $$ArchivedXrayArtifactsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get archiveKey => $composableBuilder(
+    column: $table.archiveKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get artifactId => $composableBuilder(
+    column: $table.artifactId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<Uint8List> get cipherText => $composableBuilder(
+    column: $table.cipherText,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<Uint8List> get nonce =>
+      $composableBuilder(column: $table.nonce, builder: (column) => column);
+
+  GeneratedColumn<Uint8List> get mac =>
+      $composableBuilder(column: $table.mac, builder: (column) => column);
+
+  GeneratedColumn<String> get filename =>
+      $composableBuilder(column: $table.filename, builder: (column) => column);
+
+  GeneratedColumn<String> get mimeType =>
+      $composableBuilder(column: $table.mimeType, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get checksum =>
+      $composableBuilder(column: $table.checksum, builder: (column) => column);
+
+  GeneratedColumn<int> get sizeBytes =>
+      $composableBuilder(column: $table.sizeBytes, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get tenantId =>
+      $composableBuilder(column: $table.tenantId, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+}
+
+class $$ArchivedXrayArtifactsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ArchivedXrayArtifactsTable,
+          ArchivedXrayArtifact,
+          $$ArchivedXrayArtifactsTableFilterComposer,
+          $$ArchivedXrayArtifactsTableOrderingComposer,
+          $$ArchivedXrayArtifactsTableAnnotationComposer,
+          $$ArchivedXrayArtifactsTableCreateCompanionBuilder,
+          $$ArchivedXrayArtifactsTableUpdateCompanionBuilder,
+          (
+            ArchivedXrayArtifact,
+            BaseReferences<
+              _$AppDatabase,
+              $ArchivedXrayArtifactsTable,
+              ArchivedXrayArtifact
+            >,
+          ),
+          ArchivedXrayArtifact,
+          PrefetchHooks Function()
+        > {
+  $$ArchivedXrayArtifactsTableTableManager(
+    _$AppDatabase db,
+    $ArchivedXrayArtifactsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ArchivedXrayArtifactsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$ArchivedXrayArtifactsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ArchivedXrayArtifactsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> archiveKey = const Value.absent(),
+                Value<String> artifactId = const Value.absent(),
+                Value<Uint8List> cipherText = const Value.absent(),
+                Value<Uint8List> nonce = const Value.absent(),
+                Value<Uint8List> mac = const Value.absent(),
+                Value<String> filename = const Value.absent(),
+                Value<String> mimeType = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String> checksum = const Value.absent(),
+                Value<int> sizeBytes = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<String> tenantId = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<String> deviceId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ArchivedXrayArtifactsCompanion(
+                archiveKey: archiveKey,
+                artifactId: artifactId,
+                cipherText: cipherText,
+                nonce: nonce,
+                mac: mac,
+                filename: filename,
+                mimeType: mimeType,
+                source: source,
+                checksum: checksum,
+                sizeBytes: sizeBytes,
+                createdAt: createdAt,
+                tenantId: tenantId,
+                userId: userId,
+                deviceId: deviceId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String archiveKey,
+                required String artifactId,
+                required Uint8List cipherText,
+                required Uint8List nonce,
+                required Uint8List mac,
+                required String filename,
+                required String mimeType,
+                required String source,
+                required String checksum,
+                required int sizeBytes,
+                required DateTime createdAt,
+                required String tenantId,
+                required String userId,
+                required String deviceId,
+                Value<int> rowid = const Value.absent(),
+              }) => ArchivedXrayArtifactsCompanion.insert(
+                archiveKey: archiveKey,
+                artifactId: artifactId,
+                cipherText: cipherText,
+                nonce: nonce,
+                mac: mac,
+                filename: filename,
+                mimeType: mimeType,
+                source: source,
+                checksum: checksum,
+                sizeBytes: sizeBytes,
+                createdAt: createdAt,
+                tenantId: tenantId,
+                userId: userId,
+                deviceId: deviceId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<
+                    $ArchivedXrayArtifactsTable,
+                    ArchivedXrayArtifact
+                  >(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $ArchivedXrayArtifactsTable,
+                    ArchivedXrayArtifact
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ArchivedXrayArtifactsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ArchivedXrayArtifactsTable,
+      ArchivedXrayArtifact,
+      $$ArchivedXrayArtifactsTableFilterComposer,
+      $$ArchivedXrayArtifactsTableOrderingComposer,
+      $$ArchivedXrayArtifactsTableAnnotationComposer,
+      $$ArchivedXrayArtifactsTableCreateCompanionBuilder,
+      $$ArchivedXrayArtifactsTableUpdateCompanionBuilder,
+      (
+        ArchivedXrayArtifact,
+        BaseReferences<
+          _$AppDatabase,
+          $ArchivedXrayArtifactsTable,
+          ArchivedXrayArtifact
+        >,
+      ),
+      ArchivedXrayArtifact,
+      PrefetchHooks Function()
+    >;
 typedef $$ClinicalAuditEventsTableCreateCompanionBuilder =
     ClinicalAuditEventsCompanion Function({
       required String id,
@@ -7139,6 +8821,8 @@ class $AppDatabaseManager {
         _db,
         _db.encryptedXrayArtifacts,
       );
+  $$ArchivedXrayArtifactsTableTableManager get archivedXrayArtifacts =>
+      $$ArchivedXrayArtifactsTableTableManager(_db, _db.archivedXrayArtifacts);
   $$ClinicalAuditEventsTableTableManager get clinicalAuditEvents =>
       $$ClinicalAuditEventsTableTableManager(_db, _db.clinicalAuditEvents);
   $$AppSettingsTableTableManager get appSettings =>

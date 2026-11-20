@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:myapp/core/config/app_config.dart';
+import 'package:myapp/data/backup/device_backup_restore_service.dart';
+import 'package:myapp/features/backup/presentation/backup_restore_screen.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myapp/features/account/presentation/account_screen.dart';
 import 'package:myapp/features/auth/presentation/login_screen.dart';
@@ -17,15 +21,33 @@ import 'package:myapp/features/institution/presentation/institution_screen.dart'
 import 'package:myapp/state/auth_provider.dart';
 
 class AppRouter {
-  static GoRouter create(AuthProvider authProvider) {
+  static GoRouter create(
+    AuthProvider authProvider, {
+    bool requireActivation = false,
+  }) {
     return GoRouter(
       initialLocation: '/login',
       refreshListenable: authProvider,
       redirect: (BuildContext context, GoRouterState state) {
+        if (requireActivation && !authProvider.deviceActivated) {
+          return state.uri.path == '/activate-tablet'
+              ? null
+              : '/activate-tablet';
+        }
+        if (requireActivation &&
+            authProvider.deviceActivated &&
+            state.uri.path == '/activate-tablet') {
+          return authProvider.isLoggedIn
+              ? authProvider.mobileRole.home
+              : '/login';
+        }
         final isLoggedIn = authProvider.isLoggedIn;
         final isLoggingIn = state.matchedLocation == '/login';
         if (state.uri.path == '/activate-tablet') {
           return isLoggedIn ? authProvider.mobileRole.home : null;
+        }
+        if (authProvider.status == AuthStatus.loggingOut) {
+          return null;
         }
 
         if (!isLoggedIn && !isLoggingIn) {
@@ -94,7 +116,8 @@ class AppRouter {
             GoRoute(path: '/result', redirect: (_, _) => '/diagnosis'),
             GoRoute(
               path: '/validation',
-              builder: (context, state) => const ValidationScreen(),
+              builder: (context, state) =>
+                  ValidationScreen(caseId: state.uri.queryParameters['caseId']),
             ),
             GoRoute(
               path: '/dataset',
@@ -103,6 +126,18 @@ class AppRouter {
             GoRoute(
               path: '/sync',
               builder: (context, state) => const OperatorSyncScreen(),
+            ),
+            GoRoute(
+              path: '/backup-restore',
+              builder: (context, state) => AppConfig.useHttp
+                  ? BackupRestoreScreen(
+                      service: context.read<DeviceBackupRestoreService>(),
+                    )
+                  : const Center(
+                      child: Text(
+                        'Backup & Restore memerlukan API dan perangkat terdaftar.',
+                      ),
+                    ),
             ),
             GoRoute(
               path: '/account',

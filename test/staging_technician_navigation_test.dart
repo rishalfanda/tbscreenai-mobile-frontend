@@ -37,6 +37,8 @@ class _Adapter implements HttpClientAdapter {
           'must_change_password': options.path == '/auth/login',
         },
       };
+    } else if (options.path == '/restores/pending') {
+      return ResponseBody.fromString('{}', 404);
     } else if (options.path == '/users' || options.path == '/datasets') {
       body = {'items': [], 'total': 0, 'limit': 20, 'offset': 0};
     } else {
@@ -99,7 +101,12 @@ void main() {
       addTearDown(tester.view.reset);
       final database = AppDatabase(NativeDatabase.memory());
       await tester.runAsync(() => database.customSelect('SELECT 1').get());
-      await tester.pumpWidget(TBScreenApp(database: database));
+      await tester.pumpWidget(
+        TBScreenApp(
+          database: database,
+          secureTokenStorage: await app_fixture.activatedStorage(),
+        ),
+      );
       await app_fixture.pumpApp(tester);
       final context = tester.element(find.byType(MaterialApp));
       final adapter = _Adapter();
@@ -133,7 +140,7 @@ void main() {
       );
       await tester.tap(find.text('Save password'));
       await app_fixture.pumpApp(tester);
-      expect(router.routeInformationProvider.value.uri.path, '/technician');
+      expect(router.routeInformationProvider.value.uri.path, '/users');
       expect(tester.takeException(), isNull);
       await tester.tap(find.byTooltip('Users'));
       await app_fixture.pumpApp(tester);
@@ -150,14 +157,24 @@ void main() {
       await app_fixture.pumpApp(tester);
       expect(router.routeInformationProvider.value.uri.path, '/sync');
       expect(find.text('Sync user data'), findsOneWidget);
-      expect(
-        find.textContaining('This tablet is not activated'),
-        findsOneWidget,
-      );
-      for (final route in ['/diagnosis', '/validation', '/camera']) {
+      expect(find.textContaining('This tablet is not activated'), findsNothing);
+      router.go('/backup-restore');
+      await app_fixture.pumpApp(tester);
+      expect(router.routeInformationProvider.value.uri.path, '/backup-restore');
+      expect(find.text('Create backup now'), findsOneWidget);
+      expect(find.text('No pending restore.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      for (final route in [
+        '/diagnosis',
+        '/validation',
+        '/camera',
+        '/dashboard',
+        '/account',
+        '/technician',
+      ]) {
         router.go(route);
         await app_fixture.pumpApp(tester);
-        expect(router.routeInformationProvider.value.uri.path, '/technician');
+        expect(router.routeInformationProvider.value.uri.path, '/users');
       }
       expect(find.byTooltip('Screening'), findsNothing);
       expect(find.byTooltip('Sync'), findsOneWidget);

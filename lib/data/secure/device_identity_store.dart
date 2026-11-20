@@ -22,7 +22,24 @@ class DeviceIdentityStore {
   final SecureTokenStorage storage;
   static const _identityKey = 'registered_tablet_identity_v1';
   static const _nonceKey = 'tablet_activation_nonce_v1';
+
+  DeviceIdentity? _cached;
+  int _generation = 0;
+
+  /// Server refused this registration. Clinical archives and their keys stay.
+  Future<void> clearRegistration() async {
+    _generation++;
+    _cached = null;
+    await Future.wait([
+      storage.delete(_identityKey),
+      storage.delete(_nonceKey),
+    ]);
+  }
+
   Future<DeviceIdentity?> read() async {
+    final cached = _cached;
+    if (cached != null) return cached;
+    final generation = _generation;
     final raw = await storage.read(_identityKey);
     if (raw == null) return null;
     final data = jsonDecode(raw);
@@ -34,12 +51,14 @@ class DeviceIdentityStore {
         (data['credential'] as String).isEmpty) {
       throw const FormatException('Invalid device identity');
     }
-    return DeviceIdentity(
+    final identity = DeviceIdentity(
       id: data['device_id'] as String,
       credential: data['credential'] as String,
       tenantId: data['tenant_id'] as String,
       label: data['label'] as String,
     );
+    if (generation == _generation) _cached = identity;
+    return identity;
   }
 
   Future<String> activationNonce() async {
@@ -63,15 +82,23 @@ class DeviceIdentityStore {
       throw const FormatException('Invalid tablet activation response');
     }
     if (await read() != null) throw StateError('Tablet already activated');
+    final identity = DeviceIdentity(
+      id: raw['device_id'] as String,
+      credential: raw['credential'] as String,
+      tenantId: raw['tenant_id'] as String,
+      label: raw['label'] as String,
+    );
+    final generation = ++_generation;
     await storage.write(
       _identityKey,
       jsonEncode({
-        'device_id': raw['device_id'],
-        'tenant_id': raw['tenant_id'],
-        'credential': raw['credential'],
-        'label': raw['label'],
+        'device_id': identity.id,
+        'tenant_id': identity.tenantId,
+        'credential': identity.credential,
+        'label': identity.label,
       }),
     );
+    if (generation == _generation) _cached = identity;
     await storage.delete(_nonceKey);
   }
 }

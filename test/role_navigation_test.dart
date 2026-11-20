@@ -130,9 +130,9 @@ void main() {
         'technician',
         width,
       );
-      expect(router.routeInformationProvider.value.uri.path, '/technician');
+      expect(router.routeInformationProvider.value.uri.path, '/users');
       expect(tester.takeException(), isNull, reason: 'technician workspace');
-      expect(find.text('Technician workspace'), findsOneWidget);
+      expect(find.byTooltip('Technician'), findsNothing);
       expect(find.byTooltip('Screening'), findsNothing);
       router.go('/users');
       await tester.pumpAndSettle();
@@ -172,7 +172,7 @@ void main() {
       ]) {
         router.go('$path?source=audit');
         await tester.pumpAndSettle();
-        expect(router.routeInformationProvider.value.uri.path, '/technician');
+        expect(router.routeInformationProvider.value.uri.path, '/users');
         expect(find.byKey(const Key('diagnosis-input-content')), findsNothing);
       }
       expect(validation.subscriptions, 0);
@@ -200,7 +200,14 @@ void main() {
       final (router, _, validation) = await mountRole(tester, 'doctor', width);
       expect(router.routeInformationProvider.value.uri.path, '/dashboard');
       expect(find.byTooltip('Sync'), findsNothing);
-      for (final path in ['/technician', '/users', '/models', '/sync']) {
+      for (final path in [
+        '/technician',
+        '/users',
+        '/models',
+        '/sync',
+        '/patients',
+        '/dataset',
+      ]) {
         router.go(path);
         await tester.pumpAndSettle();
         expect(router.routeInformationProvider.value.uri.path, '/dashboard');
@@ -269,7 +276,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.textContaining('Hubungi teknisi'),
-      AppConfig.useHttp ? findsNothing : findsOneWidget,
+      // This isolated widget has no AppLanguage provider, so its original
+      // Indonesian copy is shown in either build environment.
+      findsOneWidget,
     );
     expect(find.text('Buka Pusat Sinkronisasi'), findsNothing);
     expect(tester.takeException(), isNull);

@@ -2,8 +2,11 @@
 // Before this guard existed it rendered a hardcoded "TB Detected / 85%" even
 // when no analysis had been run.
 
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:provider/provider.dart';
 
 import 'package:myapp/data/mock/mock_repositories.dart';
@@ -332,6 +335,136 @@ void main() {
           reason: 'Disabled "$label" button must have high-contrast light text',
         );
       }
+    },
+  );
+
+  testWidgets(
+    'allows selecting all or specific lesions in lesion segmentation view and preserves selection in fullscreen viewer',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      Uint8List solidPng(int r, int g, int b, {int a = 255}) {
+        final im = img.Image(width: 4, height: 4, numChannels: 4);
+        for (var y = 0; y < 4; y++) {
+          for (var x = 0; x < 4; x++) {
+            im.setPixelRgba(x, y, r, g, b, a);
+          }
+        }
+        return Uint8List.fromList(img.encodePng(im));
+      }
+
+      final xrayPng = solidPng(20, 20, 20);
+      final lungPng = solidPng(40, 80, 120);
+      final lesionPng = solidPng(200, 100, 50);
+      final consolidationLayer = solidPng(255, 0, 0, a: 140);
+      final cavityLayer = solidPng(0, 255, 0, a: 140);
+
+      final provider = DiagnosisProvider(MockDiagnosisRepository())
+        ..attachPlaceholderImage('xray.png')
+        ..lastOutcome = DiagnosisOutcome(
+          isPositive: true,
+          confidence: 88,
+          processingTime: '1.2s',
+          modelVersion: 'TBScreen v2.1.0',
+          createdAt: DateTime(2026, 11, 11, 8, 40),
+          segmentation: SegmentationOverlays(
+            xrayPng: xrayPng,
+            lungPng: lungPng,
+            lesionPng: lesionPng,
+            lesionLayerPngs: {
+              'consolidation': consolidationLayer,
+              'cavity': cavityLayer,
+            },
+            legend: const [
+              LesionLegendEntry(
+                name: 'consolidation',
+                red: 255,
+                green: 0,
+                blue: 0,
+                pixelCount: 12,
+              ),
+              LesionLegendEntry(
+                name: 'cavity',
+                red: 0,
+                green: 255,
+                blue: 0,
+                pixelCount: 6,
+              ),
+              LesionLegendEntry(
+                name: 'effusion',
+                red: 0,
+                green: 0,
+                blue: 255,
+                pixelCount: 0,
+              ),
+            ],
+            lungAreaPx: 1000,
+          ),
+        );
+
+      List<Uint8List> previewImages() => tester
+          .widgetList<Image>(
+            find.descendant(
+              of: find.byKey(const Key('xray-image-viewer-trigger')),
+              matching: find.byType(Image),
+            ),
+          )
+          .map((w) => (w.image as MemoryImage).bytes)
+          .toList();
+
+      List<Uint8List> viewerImages() => tester
+          .widgetList<Image>(
+            find.descendant(
+              of: find.byKey(const Key('xray-image-viewer-dialog')),
+              matching: find.byType(Image),
+            ),
+          )
+          .map((w) => (w.image as MemoryImage).bytes)
+          .toList();
+
+      await tester.pumpWidget(_wrap(provider));
+      await tester.pump();
+
+      // Initially on X-ray view: lesion filter controls stay hidden.
+      expect(previewImages(), [xrayPng]);
+      expect(find.byKey(const Key('lesion-filter-all')), findsNothing);
+
+      // Switch to Lesion view: All + detected lesion toggle buttons appear.
+      await tester.tap(find.text('Lesi'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('lesion-filter-all')), findsOneWidget);
+      expect(
+        find.byKey(const Key('lesion-filter-consolidation')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('lesion-filter-cavity')), findsOneWidget);
+      expect(find.byKey(const Key('lesion-filter-effusion')), findsNothing);
+      expect(previewImages(), [lesionPng]);
+
+      // Deselect cavity: only consolidation layer renders over base X-ray.
+      await tester.tap(find.byKey(const Key('lesion-filter-cavity')));
+      await tester.pump();
+      expect(previewImages(), [xrayPng, consolidationLayer]);
+
+      // Fullscreen zoom viewer mirrors the filtered subset.
+      await tester.tap(find.byKey(const Key('xray-image-viewer-trigger')));
+      await tester.pumpAndSettle();
+      expect(viewerImages(), [xrayPng, consolidationLayer]);
+      await tester.tap(find.byKey(const Key('xray-image-viewer-close-button')));
+      await tester.pumpAndSettle();
+
+      // Deselect consolidation too: clean base X-ray shows with 0 overlays.
+      await tester.tap(find.byKey(const Key('lesion-filter-consolidation')));
+      await tester.pump();
+      expect(previewImages(), [xrayPng]);
+
+      // Clicking "Semua" selects all detected lesions again.
+      await tester.tap(find.byKey(const Key('lesion-filter-all')));
+      await tester.pump();
+      expect(previewImages(), [lesionPng]);
+      expect(tester.takeException(), isNull);
     },
   );
 }

@@ -47,6 +47,12 @@ class LocalDiagnoses extends Table {
   TextColumn get findings => text().withDefault(const Constant('{}'))();
   TextColumn get status => text().withDefault(const Constant('pending'))();
   TextColumn get doctorNote => text().nullable()();
+  IntColumn get lesionRating => integer().nullable()();
+  DateTimeColumn get validationDeletedAt => dateTime().nullable()();
+  TextColumn get validationDeletedBy => text().nullable()();
+  IntColumn get validationScore => integer().nullable()();
+  TextColumn get validatedBy => text().nullable()();
+  DateTimeColumn get validatedAt => dateTime().nullable()();
   DateTimeColumn get diagnosedAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime().nullable()();
   BoolColumn get hasConflict => boolean().withDefault(const Constant(false))();
@@ -137,6 +143,30 @@ class EncryptedXrayArtifacts extends Table {
 
   @override
   Set<Column> get primaryKey => {id};
+}
+
+/// Encrypted X-ray/overlay binary blobs held for the device outbox and
+/// retained received cache. Payloads remain AES-256-GCM encrypted using
+/// the hardware-backed clinical X-ray key; storing them as raw SQLite BLOBs
+/// avoids multi-megabyte JSON integer-array expansion and double encryption.
+class ArchivedXrayArtifacts extends Table {
+  TextColumn get archiveKey => text()();
+  TextColumn get artifactId => text()();
+  BlobColumn get cipherText => blob()();
+  BlobColumn get nonce => blob()();
+  BlobColumn get mac => blob()();
+  TextColumn get filename => text()();
+  TextColumn get mimeType => text()();
+  TextColumn get source => text()();
+  TextColumn get checksum => text()();
+  IntColumn get sizeBytes => integer()();
+  DateTimeColumn get createdAt => dateTime()();
+  TextColumn get tenantId => text()();
+  TextColumn get userId => text()();
+  TextColumn get deviceId => text()();
+
+  @override
+  Set<Column> get primaryKey => {archiveKey, artifactId};
 }
 
 /// Append-only local audit evidence for explicit conflict decisions.

@@ -10,6 +10,7 @@ class SegmentationOverlays {
     required this.lesionPng,
     required this.legend,
     required this.lungAreaPx,
+    this.lesionLayerPngs = const {},
   });
 
   /// The X-ray resampled to the mask grid, no overlay — same base image the
@@ -22,11 +23,20 @@ class SegmentationOverlays {
   /// X-ray with each detected lesion class tinted by its palette color.
   final Uint8List lesionPng;
 
+  /// Transparent per-class RGBA overlay PNGs keyed by lesion class name, drawn
+  /// over [xrayPng] when inspecting a subset of lesions.
+  final Map<String, Uint8List> lesionLayerPngs;
+
   final List<LesionLegendEntry> legend;
 
   /// Total lung-field pixel count for this run — the denominator for each
   /// [LesionLegendEntry]'s area proportion.
   final int lungAreaPx;
+
+  /// Lookup a per-class lesion overlay layer case-insensitively.
+  Uint8List? layerFor(String lesionName) =>
+      lesionLayerPngs[lesionName] ??
+      lesionLayerPngs[lesionName.toLowerCase()];
 }
 
 /// One row of the lesion color legend — plain RGB, no `dart:ui`/Flutter

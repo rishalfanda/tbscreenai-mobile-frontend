@@ -1,8 +1,11 @@
+import 'package:myapp/data/secure/doctor_session_store.dart';
 import 'package:myapp/data/models_ota/model_store.dart';
 import 'package:dio/dio.dart';
 import 'package:myapp/core/localization/app_language.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:async';
+import 'package:myapp/core/connectivity/connectivity_service.dart';
+import 'package:myapp/data/http/online_session_check.dart';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -12,7 +15,7 @@ import 'package:myapp/core/config/app_config.dart';
 import 'package:myapp/core/config/scroll_behavior.dart';
 import 'package:myapp/core/theme/app_theme.dart';
 import 'package:myapp/data/http/http_repositories.dart';
-import 'package:myapp/data/http/http_dashboard_repository.dart';
+import 'package:myapp/data/offline/offline_dashboard_repository.dart';
 import 'package:myapp/data/http/http_dataset_repository.dart';
 import 'package:myapp/data/local/app_database.dart';
 import 'package:myapp/data/local/encrypted_xray_store.dart';
@@ -28,9 +31,12 @@ import 'package:myapp/data/offline/offline_screening_store.dart';
 import 'package:myapp/data/offline/offline_sync_repository.dart';
 import 'package:myapp/data/offline/offline_validation_repository.dart';
 import 'package:myapp/data/onnx/hybrid_diagnosis_repository.dart';
+import 'package:myapp/data/onnx/on_device_diagnosis_repository.dart';
 import 'package:myapp/data/onnx/onnx_inference_engine.dart';
 import 'package:myapp/data/secure/secure_token_storage.dart';
 import 'package:myapp/data/sync/sync_engine.dart';
+import 'package:myapp/data/backup/device_backup_restore_service.dart';
+import 'package:myapp/features/auth/presentation/startup_recovery_screen.dart';
 import 'package:myapp/domain/repositories/repositories.dart';
 import 'package:myapp/state/auth_provider.dart';
 import 'package:myapp/state/institution_provider.dart';
@@ -69,11 +75,24 @@ class TBScreenApp extends StatelessWidget {
     }
     final db = database ?? AppDatabase();
     final secureStorage = secureTokenStorage ?? MemorySecureTokenStorage();
+    final hasActiveModelCheck =
+        hasActiveModelOverride ??
+        () async {
+          if (!useHttp) return true;
+          try {
+            final store = ModelStore();
+            final dir = await store.activeBundleDir();
+            return dir != null;
+          } catch (_) {
+            return false;
+          }
+        };
 
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AppLanguage()),
         ChangeNotifierProvider(create: (_) => InstitutionProvider()),
+        Provider<ConnectivityService>(create: (_) => ConnectivityService()),
         // === Section: Local storage & networking ===
         Provider<AppDatabase>.value(value: db),
         Provider<SecureTokenStorage>.value(value: secureStorage),
@@ -121,7 +140,8 @@ class TBScreenApp extends StatelessWidget {
         ),
         Provider<ModelUpdatePipeline>(
           create: (c) => ModelUpdatePipeline(
-            downloadDio: useHttp ? c.read<ApiClient>().dio : Dio(),
+            // External bundle URLs must never inherit account/device headers.
+            downloadDio: Dio(),
             authenticatedDio: c.read<ApiClient>().dio,
             apiBase: useHttp ? Uri.parse(AppConfig.apiBaseUrl) : null,
             engine: c.read<OnnxInferenceEngine>(),
@@ -143,6 +163,10 @@ class TBScreenApp extends StatelessWidget {
                   settings: c.read<SettingsStore>(),
                   db: db,
                   outbox: c.read<DeviceOperatorOutbox>(),
+                  doctorSession: DoctorSessionStore(
+                    c.read<SecureTokenStorage>(),
+                  ),
+                  hasActiveModel: hasActiveModelCheck,
                 )
               : MockAuthRepository(),
         ),
@@ -166,16 +190,16 @@ class TBScreenApp extends StatelessWidget {
         ),
         Provider<DashboardRepository>(
           create: (c) => useHttp
-              ? HttpDashboardRepository(c.read<ApiClient>())
+              ? OfflineDashboardRepository(db)
               : MockDashboardRepository(),
         ),
         Provider<DiagnosisRepository>(
-          create: (c) => HybridDiagnosisRepository(
-            engine: c.read<OnnxInferenceEngine>(),
-            fallback: useHttp
-                ? HttpDiagnosisRepository(c.read<ApiClient>())
-                : MockDiagnosisRepository(),
-          ),
+          create: (c) => useHttp
+              ? OnDeviceDiagnosisRepository(c.read<OnnxInferenceEngine>())
+              : HybridDiagnosisRepository(
+                  engine: c.read<OnnxInferenceEngine>(),
+                  fallback: MockDiagnosisRepository(),
+                ),
         ),
         Provider<ValidationRepository>(
           create: (c) => useHttp
@@ -183,6 +207,8 @@ class TBScreenApp extends StatelessWidget {
                   db: db,
                   client: c.read<ApiClient>(),
                   syncEngine: c.read<SyncEngine>(),
+                  xrayStore: c.read<EncryptedXrayStore>(),
+                  localOnly: true,
                 )
               : MockValidationRepository(),
         ),
@@ -197,17 +223,7 @@ class TBScreenApp extends StatelessWidget {
             final engine = context.read<OnnxInferenceEngine>();
             return AuthProvider(
               context.read<AuthRepository>(),
-              hasActiveModel: hasActiveModelOverride ??
-                  () async {
-                    if (!useHttp) return true;
-                    try {
-                      final store = ModelStore();
-                      final dir = await store.activeBundleDir();
-                      return dir != null;
-                    } catch (_) {
-                      return false;
-                    }
-                  },
+              hasActiveModel: hasActiveModelCheck,
               onSessionEnded: () async {
                 await engine.releaseStandby();
               },
@@ -223,6 +239,22 @@ class TBScreenApp extends StatelessWidget {
               xray: c.read<EncryptedXrayStore>(),
               auth: c.read<AuthProvider>(),
             ),
+          ),
+        if (useHttp)
+          Provider<DeviceBackupRestoreService>(
+            create: (c) {
+              final auth = c.read<AuthProvider>();
+              return DeviceBackupRestoreService(
+                client: c.read<ApiClient>(),
+                db: db,
+                outbox: c.read<DeviceOperatorOutbox>(),
+                secureStorage: c.read<SecureTokenStorage>(),
+                localDeviceId: c.read<SettingsStore>().readOrCreateDeviceId,
+                actor: () => auth.isLoggedIn && !auth.mustChangePassword
+                    ? auth.profile
+                    : null,
+              );
+            },
           ),
         ChangeNotifierProvider(
           create: (context) {
@@ -255,7 +287,58 @@ class _RouterView extends StatefulWidget {
   State<_RouterView> createState() => _RouterViewState();
 }
 
-class _RouterViewState extends State<_RouterView> {
+class _RouterViewState extends State<_RouterView> with WidgetsBindingObserver {
+  ConnectivityService? _connectivity;
+  StreamSubscription<bool>? _connectivitySubscription;
+  bool _checkingSession = false;
+
+  ConnectivityService get _connectivityService =>
+      _connectivity ??= context.read<ConnectivityService>();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_checkSession());
+  }
+
+  Future<void> _checkSession() async {
+    if (!AppConfig.useHttp || !mounted || _checkingSession || _client == null) {
+      return;
+    }
+    _checkingSession = true;
+    try {
+      if (await _connectivityService.checkNow() && mounted) {
+        await checkOnlineSession(_client!, context.read<AuthProvider>());
+      }
+    } finally {
+      _checkingSession = false;
+    }
+  }
+
+  Future<void> _watchConnectivity() async {
+    // Check platform availability before subscribing, including desktop tests
+    // where connectivity_plus has no native implementation.
+    final connectivity = _connectivityService;
+    final online = await connectivity.checkNow();
+    if (!mounted) return;
+    _connectivitySubscription ??= connectivity.onStatusChange
+        .distinct()
+        .listen((online) {
+          if (online) unawaited(_checkSession());
+        });
+    if (online) unawaited(_checkSession());
+  }
+
+  bool _ready = !AppConfig.useHttp;
+  bool _starting = false;
+  bool _recovering = false;
+  StartupErrorKind _startupError = StartupErrorKind.none;
+  String? _recoveryError;
   GoRouter? _router;
   ApiClient? _client;
   StreamSubscription<SessionExpiredEvent>? _sessionSubscription;
@@ -263,19 +346,101 @@ class _RouterViewState extends State<_RouterView> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final auth = context.read<AuthProvider>();
-    _router ??= AppRouter.create(auth);
+    _router ??= AppRouter.create(auth, requireActivation: AppConfig.useHttp);
+    if (!_starting && !_ready) {
+      _starting = true;
+      unawaited(_initialize(auth));
+    }
     final client = context.read<ApiClient>();
     if (!identical(_client, client)) {
       unawaited(_sessionSubscription?.cancel());
       _client = client;
-      _sessionSubscription = client.sessionExpired.listen((_) {
-        unawaited(auth.expireSession().catchError((_) {}));
+      _sessionSubscription = client.sessionExpired.listen((event) {
+        unawaited(auth.expireSession(code: event.code).catchError((_) {}));
       });
+    }
+  }
+
+  Future<void> _initialize(AuthProvider auth) async {
+    try {
+      final client = context.read<ApiClient>();
+      final device = await client.deviceIdentity.read();
+      auth.setDeviceActivated(device != null);
+      if (auth.deviceActivated) await auth.restoreSession(knownDevice: device);
+      if (mounted) {
+        unawaited(_watchConnectivity());
+      }
+      if (mounted) {
+        setState(() {
+          _ready = true;
+          _startupError = StartupErrorKind.none;
+          _recoveryError = null;
+        });
+      }
+    } on FormatException {
+      if (mounted) {
+        setState(
+          () => _startupError = StartupErrorKind.corruptedIdentity,
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _startupError = StartupErrorKind.storageUnavailable,
+        );
+      }
+    }
+  }
+
+  Future<void> _retryInitialize() async {
+    if (_recovering) return;
+    setState(() {
+      _recovering = true;
+      _recoveryError = null;
+    });
+    await _initialize(context.read<AuthProvider>());
+    if (mounted) {
+      setState(() => _recovering = false);
+    }
+  }
+
+  Future<void> _resetDeviceActivation() async {
+    if (_recovering) return;
+    setState(() {
+      _recovering = true;
+      _recoveryError = null;
+    });
+    try {
+      final client = context.read<ApiClient>();
+      final secureStorage = context.read<SecureTokenStorage>();
+      final auth = context.read<AuthProvider>();
+      await client.deviceIdentity.clearRegistration();
+      await DoctorSessionStore(secureStorage).clear();
+      await client.tokens.clear();
+      auth.sessionRefusalCode = 'device_required';
+      auth.setDeviceActivated(false);
+      if (mounted) {
+        unawaited(_watchConnectivity());
+        setState(() {
+          _ready = true;
+          _startupError = StartupErrorKind.none;
+          _recovering = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _recovering = false;
+          _recoveryError = 'reset_failed';
+        });
+      }
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_connectivitySubscription?.cancel());
     unawaited(_sessionSubscription?.cancel());
     _router?.dispose();
     super.dispose();
@@ -284,6 +449,26 @@ class _RouterViewState extends State<_RouterView> {
   @override
   Widget build(BuildContext context) {
     AppConfig.validate();
+    if (!_ready) {
+      return MaterialApp(
+        locale: context.watch<AppLanguage>().locale,
+        supportedLocales: const [Locale('en'), Locale('id')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        home: _startupError == StartupErrorKind.none
+            ? const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              )
+            : StartupRecoveryScreen(
+                errorKind: _startupError,
+                busy: _recovering,
+                recoveryError: _recoveryError,
+                onRetry: _retryInitialize,
+                onResetActivation: _resetDeviceActivation,
+              ),
+      );
+    }
     return MaterialApp.router(
       title: 'TBScreen',
       locale: context.watch<AppLanguage>().locale,
